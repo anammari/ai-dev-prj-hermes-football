@@ -1,0 +1,1638 @@
+openapi: 3.0.3
+
+info:
+  title: Hermes Football API
+  version: 0.1.0
+  description: |
+    Read-mostly HTTP API that wraps the Hermes Football database: the single source of factual
+    football data that the Telegram agent (Hermes) and the dashboard are allowed to state.
+
+    ## The grounding contract (normative)
+    Everything the agent says about results, fixtures, standings or form MUST come from this API.
+    Every factual payload therefore carries a 'meta' object with:
+      - source: the upstream provider, always 'football-data.org' for match data
+      - data_as_of: the timestamp the upstream data describes (NOT the time of this request)
+      - upstream_delay_minutes: how far behind live the upstream free tier is, when known
+    A client that cannot show 'data_as_of' is not allowed to present the data as current.
+
+    ## Free-tier coverage (why some fields are optional)
+    Upstream free tier: 12 competitions, 10 requests per minute, delayed scores and schedules,
+    fixtures and league tables included. Live scores, odds, lineups and advanced statistics are
+    paid and are explicitly NOT available here. Fields that depend on paid data are optional and
+    their absence is meaningful: see 'coverage' on the Competition schema.
+
+    ## Data freshness
+    Data is refreshed by a scheduled ingestion job, at most once per day for schedules and more
+    often on matchdays. Consumers should treat 'stale' as a normal, reportable state: read
+    GET /meta/freshness and say so, rather than guessing.
+
+    ## Authentication
+    All endpoints except /health require a bearer token.
+      - agentToken: read-only. Used by the Hermes agent, the MCP server and the dashboard.
+      - adminToken: read-write for administrative endpoints under /admin. This token is never
+        given to the agent and is never placed in the model context.
+    Write endpoints exist only under /admin and are audited.
+
+    ## Interactive documentation
+    Swagger UI is served at /docs and this document is served verbatim at /openapi.yaml.
+    Both are generated from this file, which is the contract: the implementation is checked
+    against it by a contract test, and it is reviewed before backend code is written.
+
+    ## MCP tools
+    Operations that the agent is allowed to call carry an 'x-mcp-tool' extension naming the MCP
+    tool that exposes them. Operations without it are for the dashboard or operators only.
+  contact:
+    name: Ahmad Ammari
+    url: https://github.com/anammari/ai-dev-prj-hermes-football
+  license:
+    name: Course project - license not chosen yet
+  x-course-project: AI Dev Tools Zoomcamp 2026 final project
+
+servers:
+  - url: http://localhost:8000
+    description: Local Docker Compose stack (default)
+  - url: https://{tunnelHost}
+    description: Public dashboard and read-only demo API via Cloudflare tunnel
+    variables:
+      tunnelHost:
+        default: hermes-football-demo.trycloudflare.com
+        description: Hostname of the Cloudflare tunnel fronting the local stack (named tunnel on a custom domain, or a quick tunnel host)
+
+tags:
+  - name: meta
+    description: Liveness, contract, freshness and ingestion history
+  - name: competitions
+    description: Free-tier competitions and league tables
+  - name: matches
+    description: Fixtures, results and head-to-head records
+  - name: teams
+    description: Team profiles and recent form
+  - name: knowledge
+    description: Retrieval over the curated football knowledge corpus
+  - name: agent
+    description: Agent turn log used by the dashboard and by evaluations
+  - name: admin
+    description: Administrative operations, adminToken only, never exposed to the agent
+
+security:
+  - agentToken: []
+
+paths:
+
+  /health:
+    get:
+      tags: [meta]
+      operationId: getHealth
+      summary: Liveness probe
+      description: |
+        Unauthenticated. Used by the container healthcheck, the post-deploy smoke test and CI.
+        Returns 200 when the process is up; 'db' reports database reachability independently so a
+        degraded stack is visible instead of silently green.
+      security: []
+      responses:
+        '200':
+          description: Service is up (the database may still be degraded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+              example:
+                status: ok
+                version: 0.1.0
+                uptime_seconds: 1284
+                db:
+                  status: ok
+                  schema_revision: 0001_init
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /openapi.yaml:
+    get:
+      tags: [meta]
+      operationId: getOpenApiDocument
+      summary: This contract, as served by the running app
+      description: |
+        Returns the reviewed contract file itself, not a regenerated approximation, so a reviewer
+        can diff the deployed API against the repository.
+      security: []
+      responses:
+        '200':
+          description: The OpenAPI 3.0.3 contract
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /docs:
+    get:
+      tags: [meta]
+      operationId: getSwaggerUi
+      summary: Swagger UI for this API
+      description: |
+        Interactive documentation rendered from /openapi.yaml. Available locally at
+        http://localhost:8000/docs and, behind the tunnel, on the public demo host.
+      security: []
+      responses:
+        '200':
+          description: Swagger UI HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /meta/freshness:
+    get:
+      tags: [meta]
+      operationId: getFreshness
+      summary: How old the data is, per competition
+      description: |
+        The endpoint that makes staleness a first-class state instead of an inference. The agent
+        calls this before answering anything time-sensitive and quotes the result; the dashboard
+        renders it as the landing view.
+      x-mcp-tool: get_data_freshness
+      responses:
+        '200':
+          description: Freshness report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FreshnessReport'
+              example:
+                as_of: '2026-10-11T18:04:22Z'
+                overall_status: fresh
+                max_age_minutes: 322
+                next_scheduled_run_at: '2026-10-12T06:00:00Z'
+                competitions:
+                  - code: PL
+                    name: Premier League
+                    last_success_at: '2026-10-11T12:42:10Z'
+                    last_status: succeeded
+                    age_minutes: 322
+                    status: fresh
+                    rows:
+                      matches: 380
+                      standings: 20
+                      teams: 20
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /meta/ingest-runs:
+    get:
+      tags: [meta]
+      operationId: listIngestRuns
+      summary: Ingestion run ledger
+      description: |
+        One row per ingestion run, including failures and partial runs. This is the evidence trail
+        behind the freshness numbers and the object the operational alert is built on.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: status
+          in: query
+          description: Filter by run status
+          schema:
+            type: string
+            enum: [running, succeeded, partial, failed]
+      responses:
+        '200':
+          description: Ingestion runs, most recent first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestRunList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /competitions:
+    get:
+      tags: [competitions]
+      operationId: listCompetitions
+      summary: Competitions available from the free tier
+      description: |
+        The free tier covers exactly 12 competitions. The response states, per competition, which
+        data points are actually available, so the agent can answer 'not in the free tier' honestly
+        instead of failing a lookup.
+      x-mcp-tool: get_competitions
+      responses:
+        '200':
+          description: Competition list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Competition'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+              example:
+                data:
+                  - code: PL
+                    name: Premier League
+                    area: England
+                    type: LEAGUE
+                    current_season: 2026
+                    season_start: '2026-08-15'
+                    season_end: '2027-05-24'
+                    coverage:
+                      fixtures: true
+                      standings: true
+                      scorers: true
+                      lineups: false
+                      live_scores: false
+                      note: Free tier serves delayed scores and schedules.
+                meta:
+                  source: football-data.org
+                  data_as_of: '2026-10-11T12:42:10Z'
+                  upstream_delay_minutes: 5
+                  generated_at: '2026-10-11T18:04:22Z'
+                  request_id: 0f2c1a4e-9c2b-4d1a-9b7f-2a1c3d4e5f60
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /competitions/{code}/standings:
+    get:
+      tags: [competitions]
+      operationId: getStandings
+      summary: League table for a competition
+      description: |
+        Returns the most recent stored table unless 'snapshot' is given. 'snapshot' makes
+        point-in-time questions answerable ("where were they in November?") and is also how the
+        dashboard shows movement over time.
+      x-mcp-tool: get_standings
+      parameters:
+        - $ref: '#/components/parameters/CompetitionCode'
+        - $ref: '#/components/parameters/Season'
+        - name: snapshot
+          in: query
+          description: Return the table as stored on or before this date
+          schema:
+            type: string
+            format: date
+            example: '2026-11-01'
+        - name: matchday
+          in: query
+          description: Matchday the table describes, when known
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: League table
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StandingsTable'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /competitions/{code}/matches:
+    get:
+      tags: [matches]
+      operationId: listCompetitionMatches
+      summary: Fixtures and results for a competition
+      description: |
+        Supports the questions fans actually ask: "what is on this weekend", "how did the last
+        matchday go", "when do these two play". Filters compose; at least one of matchday, date
+        range or team is recommended so the response stays LLM-sized.
+      x-mcp-tool: get_fixtures
+      parameters:
+        - $ref: '#/components/parameters/CompetitionCode'
+        - $ref: '#/components/parameters/Season'
+        - name: matchday
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+        - name: dateFrom
+          in: query
+          description: Inclusive lower bound on kickoff date (UTC)
+          schema:
+            type: string
+            format: date
+            example: '2026-10-10'
+        - name: dateTo
+          in: query
+          description: Inclusive upper bound on kickoff date (UTC)
+          schema:
+            type: string
+            format: date
+            example: '2026-10-12'
+        - name: teamId
+          in: query
+          description: Only matches involving this team
+          schema:
+            type: integer
+            example: 57
+        - name: status
+          in: query
+          description: Match lifecycle status
+          schema:
+            $ref: '#/components/schemas/MatchStatus'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Matching fixtures and results ordered by kickoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /matches/{matchId}:
+    get:
+      tags: [matches]
+      operationId: getMatch
+      summary: A single match
+      description: Result or fixture detail, including half-time score when the free tier supplies it.
+      x-mcp-tool: get_match_result
+      parameters:
+        - $ref: '#/components/parameters/MatchId'
+      responses:
+        '200':
+          description: Match detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Match'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /head-to-head:
+    get:
+      tags: [matches]
+      operationId: getHeadToHead
+      summary: Recent meetings between two teams
+      description: |
+        Deliberately its own endpoint rather than a filter on matches: "how do these two do against
+        each other" is one of the most common football questions and deserves a compact, single
+        answer with an aggregate record.
+      x-mcp-tool: get_head_to_head
+      parameters:
+        - name: teamA
+          in: query
+          required: true
+          description: Team id (as used by the provider)
+          schema:
+            type: integer
+            example: 57
+        - name: teamB
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 61
+        - name: limit
+          in: query
+          description: Number of most recent meetings to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+        - name: competition
+          in: query
+          description: Restrict to one competition, if given
+          schema:
+            $ref: '#/components/schemas/CompetitionCode'
+      responses:
+        '200':
+          description: Head-to-head record and the matches behind it
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/HeadToHead'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+              example:
+                data:
+                  teams:
+                    - id: 57
+                      name: Arsenal FC
+                      tla: ARS
+                    - id: 61
+                      name: Chelsea FC
+                      tla: CHE
+                  window:
+                    from: '2023-01-01T00:00:00Z'
+                    to: '2026-10-11T12:42:10Z'
+                    matches_considered: 12
+                  summary:
+                    played: 12
+                    team_a_wins: 5
+                    draws: 3
+                    team_b_wins: 4
+                    goals:
+                      team_a: 18
+                      team_b: 15
+                  matches:
+                    - id: 419823
+                      status: FINISHED
+                      utc_date: '2026-03-15T16:30:00Z'
+                      competition:
+                        code: PL
+                        name: Premier League
+                      home_team: { id: 57, name: Arsenal FC, tla: ARS }
+                      away_team: { id: 61, name: Chelsea FC, tla: CHE }
+                      score:
+                        winner: HOME_TEAM
+                        full_time: { home: 2, away: 1 }
+                meta:
+                  source: football-data.org
+                  data_as_of: '2026-10-11T12:42:10Z'
+                  generated_at: '2026-10-11T18:04:22Z'
+                  request_id: 6b1d0f2a-33c7-4a8e-9f4d-71c9b2e0a5d3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams/{teamId}:
+    get:
+      tags: [teams]
+      operationId: getTeam
+      summary: Team profile
+      description: |
+        Includes 'squad_available': the free tier does not guarantee squads, so the contract says
+        so explicitly and the agent can answer about players only when it is true.
+      x-mcp-tool: get_team
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+      responses:
+        '200':
+          description: Team detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamDetail'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams/{teamId}/form:
+    get:
+      tags: [teams]
+      operationId: getTeamForm
+      summary: Recent form for a team
+      description: |
+        A single compact object - last N matches, a W/D/L summary and points - because "how are
+        they doing" is cheaper to answer from one call than from a match list the model must
+        aggregate itself. Aggregating in the database also keeps the arithmetic out of the model.
+      x-mcp-tool: get_team_form
+      parameters:
+        - $ref: '#/components/parameters/TeamId'
+        - name: competition
+          in: query
+          description: Restrict form to one competition
+          schema:
+            $ref: '#/components/schemas/CompetitionCode'
+        - name: last
+          in: query
+          description: Number of most recent matches to consider
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+      responses:
+        '200':
+          description: Form summary and the matches behind it
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TeamForm'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /search/knowledge:
+    get:
+      tags: [knowledge]
+      operationId: searchKnowledge
+      summary: Search the curated football knowledge corpus
+      description: |
+        Retrieval over 'hermes/agent-knowledge/*.md' - competition formats, tiebreakers,
+        promotion and relegation rules, the provider's coverage and delay policy, and a glossary.
+        This answers the qualitative questions the database cannot: no table contains "how does
+        the Championship playoff work".
+
+        Hits always carry the source file and heading so an answer can cite where it came from,
+        and a result with no hit above the score threshold is a valid, expected response that the
+        agent must be able to report as "not in my knowledge".
+      x-mcp-tool: search_knowledge
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Natural-language question or keywords
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 300
+            example: how does promotion and relegation work in the Championship
+        - name: k
+          in: query
+          description: Maximum number of passages to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 4
+        - name: competition
+          in: query
+          description: Boost passages tagged with this competition
+          schema:
+            $ref: '#/components/schemas/CompetitionCode'
+        - name: minScore
+          in: query
+          description: Minimum similarity score; hits below it are dropped rather than padded
+          schema:
+            type: number
+            format: float
+            minimum: 0
+            maximum: 1
+            default: 0.3
+      responses:
+        '200':
+          description: Ranked knowledge passages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeSearchResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agent/turns:
+    get:
+      tags: [agent]
+      operationId: listAgentTurns
+      summary: Agent conversation log
+      description: |
+        Every answer the agent gave, with the tool calls behind it and whether it was grounded.
+        This is what makes the agent reviewable by a human and what the evaluation harness scores.
+        Chat identifiers are hashed; message text is stored for review and subject to the retention
+        rule in the AI tool and data policy.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: grounded
+          in: query
+          description: Filter to grounded or ungrounded answers
+          schema:
+            type: boolean
+        - name: reviewStatus
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Agent turns, most recent first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentTurnList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/ingest-runs:
+    post:
+      tags: [admin]
+      operationId: triggerIngestRun
+      summary: Start an ingestion run now
+      description: |
+        Administrative only. Idempotent per (date, competition set): a second call on the same day
+        returns the existing run instead of spending upstream quota. This is the endpoint the
+        dashboard's re-run button calls and the one the incident runbook uses after a failed run.
+      security:
+        - adminToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                competitions:
+                  type: array
+                  description: Restrict the run to these competitions; omit for all free-tier competitions
+                  items:
+                    $ref: '#/components/schemas/CompetitionCode'
+                force:
+                  type: boolean
+                  default: false
+                  description: Run even if a run for today already succeeded
+            example:
+              competitions: [PL, CL]
+              force: false
+      responses:
+        '202':
+          description: Run accepted; poll /meta/ingest-runs for progress
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/IngestRun'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: A run for the same window is already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/agent-turns/{turnId}/review:
+    patch:
+      tags: [admin]
+      operationId: reviewAgentTurn
+      summary: Record a human review decision on an answer
+      description: |
+        The human disposition in the audit trail: an answer can be marked correct, flagged for
+        investigation or marked wrong. Reviews feed the evaluation set, so this endpoint is how
+        the project gets better instead of just accumulating logs.
+      security:
+        - adminToken: []
+      parameters:
+        - name: turnId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reviewStatus]
+              properties:
+                reviewStatus:
+                  $ref: '#/components/schemas/ReviewStatus'
+                note:
+                  type: string
+                  maxLength: 1000
+            example:
+              reviewStatus: wrong
+              note: Said the match was live; the free tier is delayed by design.
+      responses:
+        '200':
+          description: Updated turn
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AgentTurn'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  securitySchemes:
+    agentToken:
+      type: http
+      scheme: bearer
+      description: |
+        Read-only token for the Hermes agent, the MCP server and the dashboard. Scope: GET
+        endpoints only. Rotation is documented in docs/permissions.md.
+    adminToken:
+      type: http
+      scheme: bearer
+      description: |
+        Administrative token for /admin endpoints. Never issued to the agent, never present in the
+        model context, never stored in the Compose file - injected from the local environment.
+
+  parameters:
+    CompetitionCode:
+      name: code
+      in: path
+      required: true
+      description: Competition code, restricted to the free-tier set
+      schema:
+        $ref: '#/components/schemas/CompetitionCode'
+    MatchId:
+      name: matchId
+      in: path
+      required: true
+      description: Provider match id
+      schema:
+        type: integer
+        example: 419823
+    TeamId:
+      name: teamId
+      in: path
+      required: true
+      description: Provider team id
+      schema:
+        type: integer
+        example: 57
+    Season:
+      name: season
+      in: query
+      description: |
+        Season start year, as used by the provider: 2026 means the 2026/27 season. Defaults to the
+        competition's current season.
+      schema:
+        type: integer
+        minimum: 1990
+        maximum: 2100
+        example: 2026
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Offset:
+      name: offset
+      in: query
+      description: Number of items to skip
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: The request was malformed or a parameter was out of range
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Token is valid but is not allowed to perform this operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: The requested resource is not in the database
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UpstreamUnavailable:
+      description: |
+        The requested data is not in the database yet (for example a competition that has never
+        been ingested successfully) and upstream is unavailable or over budget. Clients must
+        report this as 'no data', never as 'no matches'.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+
+    ResponseMeta:
+      type: object
+      description: Provenance block attached to every factual response
+      required: [source, generated_at, request_id]
+      properties:
+        source:
+          type: string
+          description: Upstream provider the data came from, or 'hermes-football' for derived data
+          example: football-data.org
+        data_as_of:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Timestamp the data describes, taken from the most recent successful ingestion. Null
+            only for derived data with no upstream timestamp (for example a knowledge passage).
+        upstream_delay_minutes:
+          type: integer
+          nullable: true
+          description: Known delay of the upstream free tier relative to live, when the provider states it
+        generated_at:
+          type: string
+          format: date-time
+          description: When this response was produced
+        request_id:
+          type: string
+          format: uuid
+          description: Correlates this response with application logs and traces
+        cached:
+          type: boolean
+          description: Whether the response was served from the local cache rather than the database
+
+    Pagination:
+      type: object
+      required: [limit, offset, total, has_more]
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+        has_more:
+          type: boolean
+
+    HealthCheck:
+      type: object
+      required: [status, version, db]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+          example: 0.1.0
+        uptime_seconds:
+          type: integer
+        db:
+          type: object
+          required: [status, schema_revision]
+          properties:
+            status:
+              type: string
+              enum: [ok, error]
+            schema_revision:
+              type: string
+              description: Alembic revision currently applied
+              example: 0001_init
+
+    CompetitionCode:
+      type: string
+      description: |
+        The 12 competitions the free tier covers. Any other code returns 404: the API does not
+        pretend to serve competitions it cannot ingest.
+      enum: [PL, ELC, BL1, SA, PD, FL1, DED, PPL, BSA, CL, EC, WC]
+      x-enum-descriptions:
+        PL: Premier League (England)
+        ELC: Championship (England)
+        BL1: Bundesliga (Germany)
+        SA: Serie A (Italy)
+        PD: Primera Division / La Liga (Spain)
+        FL1: Ligue 1 (France)
+        DED: Eredivisie (Netherlands)
+        PPL: Primeira Liga (Portugal)
+        BSA: Campeonato Brasileiro Serie A (Brazil)
+        CL: UEFA Champions League
+        EC: European Championship
+        WC: FIFA World Cup
+
+    Competition:
+      type: object
+      required: [code, name, coverage]
+      properties:
+        code:
+          $ref: '#/components/schemas/CompetitionCode'
+        name:
+          type: string
+          example: Premier League
+        area:
+          type: string
+          example: England
+        type:
+          type: string
+          enum: [LEAGUE, CUP, PLAYOFFS, SUPER_CUP]
+        current_season:
+          type: integer
+          nullable: true
+          example: 2026
+        season_start:
+          type: string
+          format: date
+          nullable: true
+        season_end:
+          type: string
+          format: date
+          nullable: true
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+
+    Coverage:
+      type: object
+      description: What this API can actually answer for a competition, given the upstream tier
+      required: [fixtures, standings]
+      properties:
+        fixtures:
+          type: boolean
+        standings:
+          type: boolean
+        scorers:
+          type: boolean
+          description: Top scorers, when the free tier returns them
+        lineups:
+          type: boolean
+          description: Always false on the free tier
+        live_scores:
+          type: boolean
+          description: Always false on the free tier; scores are delayed by design
+        note:
+          type: string
+          example: Free tier serves delayed scores and schedules.
+
+    StandingRow:
+      type: object
+      required: [position, team, played, points]
+      properties:
+        position:
+          type: integer
+        team:
+          $ref: '#/components/schemas/TeamSummary'
+        played:
+          type: integer
+        won:
+          type: integer
+        drawn:
+          type: integer
+        lost:
+          type: integer
+        goals_for:
+          type: integer
+        goals_against:
+          type: integer
+        goal_difference:
+          type: integer
+        points:
+          type: integer
+        form:
+          type: string
+          nullable: true
+          description: Most recent results first, for example WWDLW
+          example: WWDLW
+
+    StandingsTable:
+      type: object
+      required: [competition, season, updated_at, table]
+      properties:
+        competition:
+          type: object
+          required: [code, name]
+          properties:
+            code:
+              $ref: '#/components/schemas/CompetitionCode'
+            name:
+              type: string
+        season:
+          type: integer
+          example: 2026
+        matchday:
+          type: integer
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+        table:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandingRow'
+
+    TeamSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          example: 57
+        name:
+          type: string
+          example: Arsenal FC
+        tla:
+          type: string
+          nullable: true
+          description: Three-letter abbreviation when the provider supplies one
+          example: ARS
+        crest:
+          type: string
+          format: uri
+          nullable: true
+
+    TeamDetail:
+      allOf:
+        - $ref: '#/components/schemas/TeamSummary'
+        - type: object
+          properties:
+            area:
+              type: string
+              nullable: true
+            founded:
+              type: integer
+              nullable: true
+            venue:
+              type: string
+              nullable: true
+            club_colors:
+              type: string
+              nullable: true
+            competitions:
+              type: array
+              items:
+                type: object
+                required: [code, name]
+                properties:
+                  code:
+                    $ref: '#/components/schemas/CompetitionCode'
+                  name:
+                    type: string
+            squad_available:
+              type: boolean
+              description: |
+                Whether a squad is stored for this team. False on the free tier for most
+                competitions; the agent must not answer player questions when this is false.
+            squad_size:
+              type: integer
+              nullable: true
+
+    MatchStatus:
+      type: string
+      description: Provider lifecycle status
+      enum: [SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED, SUSPENDED, POSTPONED, CANCELLED, AWARDED]
+
+    Score:
+      type: object
+      properties:
+        winner:
+          type: string
+          nullable: true
+          enum: [HOME_TEAM, AWAY_TEAM, DRAW, null]
+        duration:
+          type: string
+          enum: [REGULAR, EXTRA_TIME, PENALTY_SHOOTOUT]
+        full_time:
+          $ref: '#/components/schemas/ScoreLine'
+        half_time:
+          $ref: '#/components/schemas/ScoreLine'
+
+    ScoreLine:
+      type: object
+      properties:
+        home:
+          type: integer
+          nullable: true
+        away:
+          type: integer
+          nullable: true
+
+    Match:
+      type: object
+      required: [id, status, utc_date, competition, home_team, away_team]
+      properties:
+        id:
+          type: integer
+          example: 419823
+        competition:
+          type: object
+          required: [code, name]
+          properties:
+            code:
+              $ref: '#/components/schemas/CompetitionCode'
+            name:
+              type: string
+        season:
+          type: integer
+          nullable: true
+        matchday:
+          type: integer
+          nullable: true
+        stage:
+          type: string
+          nullable: true
+          example: GROUP_STAGE
+        status:
+          $ref: '#/components/schemas/MatchStatus'
+        utc_date:
+          type: string
+          format: date-time
+        home_team:
+          $ref: '#/components/schemas/TeamSummary'
+        away_team:
+          $ref: '#/components/schemas/TeamSummary'
+        score:
+          $ref: '#/components/schemas/Score'
+        venue:
+          type: string
+          nullable: true
+        last_updated:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this row was last written by the ingestion job
+
+    MatchList:
+      type: object
+      required: [data, meta, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Match'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    TeamForm:
+      type: object
+      required: [team, window, summary, matches]
+      properties:
+        team:
+          $ref: '#/components/schemas/TeamSummary'
+        competition:
+          type: object
+          nullable: true
+          properties:
+            code:
+              $ref: '#/components/schemas/CompetitionCode'
+            name:
+              type: string
+        window:
+          type: object
+          required: [matches_considered]
+          properties:
+            matches_considered:
+              type: integer
+            from:
+              type: string
+              format: date-time
+              nullable: true
+            to:
+              type: string
+              format: date-time
+              nullable: true
+        summary:
+          type: object
+          required: [played, won, drawn, lost, points, goals_for, goals_against]
+          properties:
+            played:
+              type: integer
+            won:
+              type: integer
+            drawn:
+              type: integer
+            lost:
+              type: integer
+            points:
+              type: integer
+              description: Points earned in the window (3 for a win, 1 for a draw)
+            goals_for:
+              type: integer
+            goals_against:
+              type: integer
+            clean_sheets:
+              type: integer
+              nullable: true
+        matches:
+          type: array
+          items:
+            type: object
+            required: [match_id, utc_date, opponent, result]
+            properties:
+              match_id:
+                type: integer
+              utc_date:
+                type: string
+                format: date-time
+              competition:
+                type: string
+                nullable: true
+              opponent:
+                $ref: '#/components/schemas/TeamSummary'
+              home:
+                type: boolean
+              result:
+                type: string
+                enum: [W, D, L]
+              score:
+                $ref: '#/components/schemas/ScoreLine'
+
+    HeadToHead:
+      type: object
+      required: [teams, summary, matches]
+      properties:
+        teams:
+          type: array
+          description: Exactly two teams, in the order requested
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/TeamSummary'
+        window:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+              nullable: true
+            to:
+              type: string
+              format: date-time
+              nullable: true
+            matches_considered:
+              type: integer
+        summary:
+          type: object
+          required: [played, team_a_wins, draws, team_b_wins]
+          properties:
+            played:
+              type: integer
+            team_a_wins:
+              type: integer
+            draws:
+              type: integer
+            team_b_wins:
+              type: integer
+            goals:
+              type: object
+              properties:
+                team_a:
+                  type: integer
+                team_b:
+                  type: integer
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/Match'
+
+    KnowledgeHit:
+      type: object
+      required: [chunk_id, source_file, heading, snippet, score]
+      properties:
+        chunk_id:
+          type: string
+        source_file:
+          type: string
+          description: Path inside the knowledge corpus
+          example: hermes/agent-knowledge/competitions/championship.md
+        heading:
+          type: string
+          example: Promotion and the playoffs
+        snippet:
+          type: string
+          description: The retrieved passage, trimmed to a model-friendly length
+          maxLength: 1200
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    KnowledgeSearchResult:
+      type: object
+      required: [data, meta]
+      properties:
+        query:
+          type: string
+        data:
+          type: array
+          description: Ranked passages; an empty array means the corpus does not cover this question
+          items:
+            $ref: '#/components/schemas/KnowledgeHit'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ReviewStatus:
+      type: string
+      enum: [unreviewed, correct, flagged, wrong]
+
+    ToolCall:
+      type: object
+      required: [name, status]
+      properties:
+        name:
+          type: string
+          example: get_standings
+        args_summary:
+          type: object
+          additionalProperties: true
+          description: Arguments as called, with any secret-bearing field removed
+        status:
+          type: string
+          enum: [ok, error, timeout, rejected_by_policy]
+        latency_ms:
+          type: integer
+        policy_decision:
+          type: string
+          nullable: true
+          description: Set when a guardrail blocked, trimmed or rewrote the call
+          example: blocked_non_allowlisted_query
+
+    AgentTurn:
+      type: object
+      required: [id, user_message, answer, grounded, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        chat_id_hash:
+          type: string
+          description: Salted hash of the Telegram chat id, never the raw id
+        user_message:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCall'
+        answer:
+          type: string
+        grounded:
+          type: boolean
+          description: |
+            True when every factual claim in the answer traces to a tool result or a knowledge
+            hit. Computed by the answer-verifier, not self-reported by the answering model.
+        data_as_of:
+          type: string
+          format: date-time
+          nullable: true
+        model:
+          type: string
+          nullable: true
+          example: pinned-model-id
+        latency_ms:
+          type: integer
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
+        review_note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    AgentTurnList:
+      type: object
+      required: [data, meta, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentTurn'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    IngestRun:
+      type: object
+      required: [id, started_at, status, trigger]
+      properties:
+        id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [running, succeeded, partial, failed]
+        trigger:
+          type: string
+          enum: [schedule, manual]
+        competitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompetitionCode'
+        calls_used:
+          type: integer
+          description: Upstream API calls spent by this run
+        rate_limit_hits:
+          type: integer
+          description: Number of times the rate limiter delayed a call
+        rows:
+          type: object
+          properties:
+            inserted:
+              type: integer
+            updated:
+              type: integer
+            unchanged:
+              type: integer
+        errors:
+          type: array
+          description: Per-competition failures; a run can succeed partially
+          items:
+            type: object
+            required: [message]
+            properties:
+              competition:
+                $ref: '#/components/schemas/CompetitionCode'
+              message:
+                type: string
+        duration_seconds:
+          type: number
+          format: float
+          nullable: true
+
+    IngestRunList:
+      type: object
+      required: [data, meta, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestRun'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    FreshnessReport:
+      type: object
+      required: [as_of, overall_status, competitions]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+          description: When this report was produced
+        overall_status:
+          type: string
+          enum: [fresh, stale, unknown]
+          description: |
+            fresh when every competition is within its expected refresh window, stale when any is
+            not, unknown when no successful run has ever completed.
+        max_age_minutes:
+          type: integer
+          nullable: true
+        next_scheduled_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        competitions:
+          type: array
+          items:
+            type: object
+            required: [code, last_status, status]
+            properties:
+              code:
+                $ref: '#/components/schemas/CompetitionCode'
+              name:
+                type: string
+              last_success_at:
+                type: string
+                format: date-time
+                nullable: true
+              last_status:
+                type: string
+                enum: [succeeded, partial, failed, never]
+              age_minutes:
+                type: integer
+                nullable: true
+              status:
+                type: string
+                enum: [fresh, stale, unknown]
+              rows:
+                type: object
+                properties:
+                  matches:
+                    type: integer
+                  standings:
+                    type: integer
+                  teams:
+                    type: integer
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code
+              enum:
+                - unauthorized
+                - forbidden
+                - not_found
+                - invalid_parameter
+                - rate_limited
+                - upstream_unavailable
+                - data_not_available
+                - conflict
+                - internal_error
+            message:
+              type: string
+              description: Human-readable explanation, safe to show to a user
+              example: No standings have been ingested for this competition yet.
+            details:
+              type: object
+              additionalProperties: true
+              description: Field-level or contextual detail for debugging
+            request_id:
+              type: string
+              format: uuid
+      example:
+        error:
+          code: data_not_available
+          message: No standings have been ingested for this competition yet.
+          details:
+            competition: PPL
+          request_id: 9c8f8a4b-1f0d-4c9e-8f0b-6f4a2d1e7c3b

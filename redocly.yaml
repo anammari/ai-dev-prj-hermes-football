@@ -1,0 +1,13 @@
+# Lint configuration for the API contract (used by `make validate-spec`).
+extends:
+  - recommended
+
+rules:
+  # /health, /docs and /openapi.yaml are unauthenticated meta endpoints: they have no
+  # meaningful 4xx response. Everything else is covered by the shared responses.
+  operation-4xx-response: off
+  # The stack is local by design (course constraint: no VPS), so the first server is localhost.
+  no-server-example.com: off
+  # The license is deliberately undecided until the repo is published; the strict rule
+  # wants an SPDX URL that does not exist yet.
+  info-license-strict: off
