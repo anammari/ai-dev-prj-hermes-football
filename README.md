@@ -23,6 +23,30 @@ migration, the notes corpus and its local embedding provider exist and are teste
 Each milestone's meaning and "done when" are stated in two places: [`_docs/scoping.md`](_docs/scoping.md) §8 in plain
 language, and [`_docs/product-spec.md`](_docs/product-spec.md) §8 as requirements.
 
+## What works today (M1)
+
+- **The schema and its first migration.** Eleven tables named after the contract, `vector(768)` for the corpus, an
+  HNSW index for similarity search, and a read-only database role for the agent's data path. A test checks the schema
+  and `openapi.yaml` against each other in both directions, so the two cannot drift apart quietly.
+- **The notes corpus and its inventory.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source and
+  owner; a note missing from the manifest, or an entry with no file, fails the build.
+- **The local embedding provider.** `embeddinggemma:300m` runs in the `ollama` container — no data leaves the machine —
+  and the indexer keeps `knowledge_chunks` in step with the notes by content hash, so an unchanged note is not
+  re-embedded and a retired one stops being retrieved.
+- **The commands the rest of the project will build on.** `make up`, `make models`, `make migrate`, `make test`,
+  `make itest`, `make check-notes`, `make index-notes`, `make search Q="…"`.
+
+Verified on 2026-10-10 with `make up && make models && make test && make itest`: 35 unit tests and 7 integration tests
+pass against the real stack (PostgreSQL 16 + pgvector, the pinned model, the read-only role), `ruff check` is clean,
+and the seed note indexes and is retrieved end to end.
+
+Four things M1 found are written down rather than smoothed over:
+[`_docs/decisions/0004`](_docs/decisions/0004-embedding-tag-mlx.md) records that the embedding tag pinned earlier
+cannot run in a Linux container, and three test-level corrections are in
+[`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) (S4). One contract gap is open and owned by M3, not hidden:
+`openapi.yaml` has no `route`/`route_source`/`route_confidence` on `AgentTurn` although
+[`AGENTS.md`](AGENTS.md) rule 10 requires them (see [`_docs/data-model.md`](_docs/data-model.md)).
+
 ## Read next
 
 - [`_docs/scoping.md`](_docs/scoping.md) — start here: what we are building, what the free API actually allows, and

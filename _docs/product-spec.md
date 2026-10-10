@@ -234,16 +234,33 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 ## 7. Data model sketch
 
-- `competitions` (code, name, area, tier_fee), `seasons` (competition, start/end, current flag)
-- `teams` (id, name, tla, crest, area), `players` (optional, only if free tier returns squads)
-- `matches` (id, competition, season, matchday, utc kickoff, status, home/away team, score, last_updated)
-- `standings` (competition, season, snapshot date, team, position, played, won, drawn, lost, gf, ga, points, form)
-- `ingest_runs` (id, started_at, finished_at, status, calls_used, rows_upserted, errors)
-- `knowledge_chunks` (id, source_file, heading, chunk_text, embedding vector(768), embedding_model, embedding_dim,
-  content_hash, updated_at) — derived from the hand-written English files in `hermes/agent-knowledge/`, which are the
-  source of truth and are listed in its `manifest.yaml` (see `_docs/scoping.md` §4)
-- `agent_turns` (id, chat_id, user_message, tool_calls json, answer, grounded flag, data_as_of, route, route_source,
-  route_confidence, created_at)
+Eleven tables in one Alembic migration (`0001_init`), named after `openapi.yaml`. The column-by-column mapping, the
+deliberate renames and the local-only tables live in `_docs/data-model.md`; this is the shape.
+
+- `competitions` (code, name, area, type, current season with its start and end, and the coverage flags flattened into
+  `coverage_fixtures`, `coverage_standings`, `coverage_scorers`, `coverage_lineups`, `coverage_live_scores`,
+  `coverage_note`), `seasons` (competition, year, start, end, current flag)
+- `teams` (id, name, tla, crest, area, founded, venue, club colors), `team_competitions` (which competitions a team is
+  in — the table the API's `TeamDetail` needs), `players` (squad members: name, position, date of birth, nationality)
+- `matches` (id, competition, season, matchday, stage, status, utc kickoff, home and away team, the score flattened
+  into `score_winner`, `score_duration`, `score_full_time_*`, `score_half_time_*`, venue, referees as json, and the
+  provider's own `last_updated`)
+- `standings` (competition, season, snapshot date, matchday, stage, `group_label`, `table_type`, team, position, played,
+  won, drawn, lost, `goals_for`, `goals_against`, `goal_difference`, points, form) — one row per team per snapshot, so
+  yesterday's table stays queryable instead of being overwritten
+- `ingest_runs` (id, started and finished, status, trigger, competitions, calls used, rate-limit hits,
+  `rows_inserted`/`rows_updated`/`rows_unchanged`, errors as json, duration)
+- `knowledge_chunks` (id, source_file, heading, ordinal, chunk_text, embedding `vector(768)`, embedding_model,
+  embedding_dim, content_hash, updated_at) — derived from the hand-written English files in
+  `hermes/agent-knowledge/`, which are the source of truth and are listed in its `manifest.yaml`
+  (see `_docs/scoping.md` §4)
+- `agent_turns` (id, `chat_id_hash`, user_message, tool_calls json, answer, grounded flag, data_as_of, model,
+  latency_ms, route, route_source, route_confidence, review status and note, created_at) — the chat id is hashed and
+  never stored or logged in the clear (`AGENTS.md` rule 6)
+
+Two gaps against the contract are open and owned by M3, and are listed in `_docs/data-model.md`: v0.1.0's
+`AgentTurn` carries no `route`/`route_source`/`route_confidence` although rule 10 requires them (the columns exist),
+and the `KnowledgeHit.source_file` example is repo-relative while the corpus stores corpus-relative paths.
 
 ## 8. Milestones
 
