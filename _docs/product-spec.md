@@ -219,9 +219,10 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 ## 8. Milestones
 
-M0 scaffold (this repo state) -> M1 contract + schema (including the notes table) -> M2 ingestion + re-indexing of
-changed notes -> M3 API -> M4 agent on Telegram, with the first notes authored and reviewed -> M5 dashboard + evals ->
-M6 CI/CD, observability, security, AI-usage report. Details in `_docs/scoping.md#8`.
+M0 scaffold (this repo state, contract included) -> M1 database schema and the first migration, matching the contract
+and including the notes table -> M2 ingestion + re-indexing of changed notes -> M3 API -> M4 agent on Telegram, with
+the first notes authored and reviewed -> M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report.
+Details in `_docs/scoping.md#8`.
 
 ## 9. Risks and mitigations
 
