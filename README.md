@@ -4,8 +4,45 @@ A Telegram agent that answers football questions **accurately** — grounded in 
 football-data.org, with a read-only tool layer, an evaluation harness, and a dashboard that shows whether any of it is
 actually working. Everything runs locally in Docker Compose; there is no server to rent.
 
-Status: **M1**. The specs, the API contract (v0.1.0), the decision records, the database schema with its first
-migration, the notes corpus and its local embedding provider exist and are tested. No API or agent code yet.
+Status: **M1** done of M0–M6 (see the [milestone tracker](#milestone-tracker)).
+
+## Problem description
+
+Football answers are easy to find and often wrong: scores are delayed, tables are stale, and a confident model will
+invent both. This bot answers questions about fixtures, results, standings and competition rules from the free
+football-data.org API plus a small hand-written English knowledge corpus, and it carries the data timestamp on every
+answer. When the data does not support an answer — an unanswerable question, a competition the free plan does not
+cover, a match not yet played — it says so instead of guessing. Predictions, betting and live scores are explicit
+non-goals.
+
+In plain language: [`_docs/scoping.md`](_docs/scoping.md). As requirements:
+[`_docs/product-spec.md`](_docs/product-spec.md).
+
+## API contract
+
+Written down before it is implemented: [`openapi.yaml`](openapi.yaml) (v0.1.0) is the source of truth for what the API
+serves. `make validate-spec` lints it, `make swagger` serves it, and
+[`tests/test_contract_coverage.py`](tests/test_contract_coverage.py) fails when the contract and the database schema
+drift apart in either direction. The backend that implements it arrives with M3; the gap already known — the route
+fields on `AgentTurn` — is recorded in [`_docs/data-model.md`](_docs/data-model.md).
+
+## Database schema
+
+PostgreSQL 16 with pgvector in the stack, SQLite in development, on one code path, with Alembic migrations applied on
+startup. Eleven tables mirror the contract, including the notes index with `vector(768)` and an HNSW index for
+similarity search, plus a read-only database role for the agent's data path.
+
+- Tables: [`db/models.py`](db/models.py), and the migration that creates them:
+  [`db/migrations/versions/0001_init.py`](db/migrations/versions/0001_init.py)
+- Table by table, with the mapping onto the contract and the open items: [`_docs/data-model.md`](_docs/data-model.md)
+- Notes corpus the index is built from: [`hermes/agent-knowledge/manifest.yaml`](hermes/agent-knowledge/manifest.yaml)
+
+## Integration testing
+
+[`tests/integration/`](tests/integration) holds the tests that need the real stack — PostgreSQL + pgvector, the
+embedding model in the `ollama` container, the read-only role — and they are kept out of the fast unit run.
+`make test` runs the unit tests, `make itest` runs these against the running stack, and both run in containers rather
+than on the host. Schema, corpus, chunker and indexer checks live in [`tests/`](tests).
 
 ## Milestone tracker
 
@@ -23,41 +60,6 @@ migration, the notes corpus and its local embedding provider exist and are teste
 Each milestone's meaning and "done when" are stated in two places: [`_docs/scoping.md`](_docs/scoping.md) §8 in plain
 language, and [`_docs/product-spec.md`](_docs/product-spec.md) §8 as requirements.
 
-## What works today (M1)
-
-- **The schema and its first migration.** Eleven tables named after the contract, `vector(768)` for the corpus, an
-  HNSW index for similarity search, and a read-only database role for the agent's data path. A test checks the schema
-  and `openapi.yaml` against each other in both directions, so the two cannot drift apart quietly.
-- **The notes corpus and its inventory.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source and
-  owner; a note missing from the manifest, or an entry with no file, fails the build.
-- **The local embedding provider.** `embeddinggemma:300m` runs in the `ollama` container — no data leaves the machine —
-  and the indexer keeps `knowledge_chunks` in step with the notes by content hash, so an unchanged note is not
-  re-embedded and a retired one stops being retrieved.
-- **The commands the rest of the project will build on.** `make up`, `make models`, `make migrate`, `make test`,
-  `make itest`, `make check-notes`, `make index-notes`, `make search Q="…"`.
-
-Verified on 2026-10-10 with `make up && make models && make test && make itest`: 35 unit tests and 7 integration tests
-pass against the real stack (PostgreSQL 16 + pgvector, the pinned model, the read-only role), `ruff check` is clean,
-and the seed note indexes and is retrieved end to end.
-
-Four things M1 found are written down rather than smoothed over:
-[`_docs/decisions/0004`](_docs/decisions/0004-embedding-tag-mlx.md) records that the embedding tag pinned earlier
-cannot run in a Linux container, and three test-level corrections are in
-[`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) (S4). One contract gap is open and owned by M3, not hidden:
-`openapi.yaml` has no `route`/`route_source`/`route_confidence` on `AgentTurn` although
-[`AGENTS.md`](AGENTS.md) rule 10 requires them (see [`_docs/data-model.md`](_docs/data-model.md)).
-
-## Read next
-
-- [`_docs/scoping.md`](_docs/scoping.md) — start here: what we are building, what the free API actually allows, and
-  how the 14 course criteria are covered
-- [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, data model
-- [`_docs/data-model.md`](_docs/data-model.md) — the tables, how they map onto the contract, and what is still open
-- [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, router
-- [`AGENTS.md`](AGENTS.md) — durable context and the hard rules for anyone (or anything) working here
-- [`openapi.yaml`](openapi.yaml) — the API contract, written before the code
-- [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what was delegated to agents, what a human caught
-
 ## Commands
 
 Everything runs in containers: apart from Docker, this repository and a `.env`, nothing is installed on the host.
@@ -69,10 +71,22 @@ Everything runs in containers: apart from Docker, this repository and a `.env`, 
 | `make up` / `make down` | Start the stack (`db`, `ollama`) and apply migrations / stop everything |
 | `make migrate` | Apply the Alembic migrations |
 | `make models` | Pull the pinned embedding model into the `ollama` volume |
-| `make test` / `make itest` | Unit tests (no stack) / integration tests against the running stack |
+| `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack |
 | `make lint` | Ruff over the repository |
 | `make check-notes` / `make index-notes` | Validate the notes corpus against its manifest / index the changed notes |
 | `make search Q="…"` | Ask the corpus a question and see the passages it would retrieve |
 | `make db-port` | Also publish the database on the host, for development only |
 | `make logs S=db` | Tail one service's logs |
 | `make swagger` / `make swagger-stop` / `make validate-spec` | Serve, stop and lint the API contract |
+
+## Project documents
+
+- [`_docs/scoping.md`](_docs/scoping.md) — start here: what we are building, what the free API actually allows, and
+  how the 14 course criteria are covered
+- [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, data model
+- [`_docs/data-model.md`](_docs/data-model.md) — the tables, how they map onto the contract, and what is still open
+- [`openapi.yaml`](openapi.yaml) — the API contract, written before the code
+- [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, router
+- [`AGENTS.md`](AGENTS.md) — durable context and the hard rules for anyone (or anything) working here
+- [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what was delegated to agents, what a human caught
+- [`prompts/`](prompts/README.md) — the versioned prompt bank
