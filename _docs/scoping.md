@@ -158,12 +158,15 @@ Each row is a requirement from the course's draft project criteria and the thing
 | Step | What it means | Done when |
 | --- | --- | --- |
 | M0 | Empty repo, scope, spec, API contract | Done |
-| M1 | Database schema and the first migration, matching the contract | Tests against the real stack pass |
-| M2 | Daily collection from the football API | A day's data lands with a run log, and the real score delay is measured |
+| M1 | Database schema and the first migration, matching the contract, including the notes table | Tests against the real stack pass, and a note file can be indexed end to end |
+| M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need |
-| M4 | The bot on Telegram | It answers the golden questions correctly, and refuses when it should |
+| M4 | The bot on Telegram, with the first notes written and reviewed | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
 | M5 | Dashboard and scoreboard | Both tested, and the scoreboard runs on every change |
 | M6 | Automation, monitoring, security | One alert that fires on real user impact, plus the audit paperwork |
+
+The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
+the collection job does not go looking for them; it only re-indexes the ones that changed.
 
 ## 9. Still to decide
 

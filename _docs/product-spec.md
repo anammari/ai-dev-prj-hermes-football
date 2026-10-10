@@ -145,10 +145,16 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 - **R-F6.1** `hermes/agent-knowledge/*.md` documents competition formats, tiebreakers, promotion/relegation, the API's
   coverage and delay policy, and a glossary.
+- **R-F6.1a** The corpus is **authored by hand** from stable public sources (competition regulations, the provider's
+  own documentation) and reviewed like code: versioned in git, changed through pull requests, never generated at
+  runtime and never scraped from a remote feed. Upstream API payloads carry no prose and are not a source.
 - **R-F6.2** Files are chunked and embedded into pgvector; retrieval returns passages with source file and heading.
 - **R-F6.3** Structured questions are answered from SQL; qualitative questions from retrieval; the agent does not use
   retrieval to answer questions the database already answers correctly.
+- **R-F6.4** Re-indexing a changed file is deterministic, runs on the ingest schedule (and in CI when a note changes),
+  and needs no model call to decide what to index: the file's content hash says whether it is stale.
 - **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
+- **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
 
 ### F7 — Dashboard (`frontend/`)
 
@@ -207,13 +213,15 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - `matches` (id, competition, season, matchday, utc kickoff, status, home/away team, score, last_updated)
 - `standings` (competition, season, snapshot date, team, position, played, won, drawn, lost, gf, ga, points, form)
 - `ingest_runs` (id, started_at, finished_at, status, calls_used, rows_upserted, errors)
-- `knowledge_chunks` (id, source_file, heading, chunk_text, embedding vector, updated_at)
+- `knowledge_chunks` (id, source_file, heading, chunk_text, embedding vector, content_hash, updated_at) — derived
+  from the hand-written files in `hermes/agent-knowledge/`, which are the source of truth (see `_docs/scoping.md` §4)
 - `agent_turns` (id, chat_id, user_message, tool_calls json, answer, grounded flag, data_as_of, created_at)
 
 ## 8. Milestones
 
-M0 scaffold (this repo state) -> M1 contract + schema -> M2 ingestion -> M3 API -> M4 agent on Telegram ->
-M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report. Details in `_docs/scoping.md#8`.
+M0 scaffold (this repo state) -> M1 contract + schema (including the notes table) -> M2 ingestion + re-indexing of
+changed notes -> M3 API -> M4 agent on Telegram, with the first notes authored and reviewed -> M5 dashboard + evals ->
+M6 CI/CD, observability, security, AI-usage report. Details in `_docs/scoping.md#8`.
 
 ## 9. Risks and mitigations
 
