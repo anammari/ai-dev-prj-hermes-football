@@ -39,7 +39,51 @@ is actually working.
 - Kubernetes or a VPS deployment; production-scale traffic.
 - Training or fine-tuning models.
 
-## 4. Functional requirements and acceptance criteria
+## 4. The Compose project
+
+Everything runs locally in one Compose project. Nothing is installed on the host except Docker, this repository and a
+`.env`. Three different things get called "container" here, and the distinction matters:
+
+| Layer | What it is | This project |
+| --- | --- | --- |
+| Hermes itself | The agent process: gateway, Telegram adapter, cron scheduler | A container, data volume at `/opt/data` |
+| Hermes tool backend (`terminal.backend`) | Where the agent's shell commands run: `local`, `docker`, `ssh`, `modal`… | `local` — inside Hermes' own container, which is the boundary |
+| Our application | backend, ingest, mcp-server, Postgres, frontend, observability | One container each |
+
+We deliberately do **not** use `terminal.backend: docker`: it would require mounting the Docker socket into the
+agent's container, which is root-equivalent control of the host. The container is the isolation boundary.
+
+| Service | Role | Host port | Volume |
+| --- | --- | --- | --- |
+| `hermes` | Gateway, Telegram long polling, cron, skills, `SOUL.md` | none | `hermes-data` → `/opt/data` |
+| `mcp-server` | Read-only football tools over HTTP on the Compose network | none | — |
+| `backend` | FastAPI: the only component that reads Postgres, and the only one serving the contract | 8000 | — |
+| `ingest` | Scheduler, upstream client, run ledger | none | — |
+| `db` | Postgres 16 + pgvector | none (5432 exposed in dev only) | `pgdata` |
+| `frontend` | Next.js dashboard | 3000 (dev) | — |
+| `obs` | OTel collector, Prometheus, Loki, Tempo, Grafana | 3001 | `grafana-data` |
+
+Only `backend` is published; the Cloudflare tunnel points at it. Telegram uses long polling, so `hermes` needs egress
+only — no inbound port, no static IP, no VPS.
+
+Rules the layout enforces:
+
+- **No Docker socket** in any container; the knowledge corpus is mounted **read-only** into `hermes`.
+- **MCP over HTTP, not stdio.** A stdio server would have to live inside the Hermes image, coupling tool code to the
+  agent image and complicating its own tests and scans. As a sibling container it keeps a read-only DB role, its own
+  tests and its own scan artifacts.
+- **Secrets** arrive as environment variables from `.env`; never baked into an image layer, never placed in the model
+  context.
+- **Resource limits** live in Compose (`mem_limit`, cpus), not in Hermes `container_*` settings, which apply only to
+  the Docker terminal backend we do not use.
+- **Operator access** is `docker compose exec hermes hermes ...` (for example `hermes cron list`).
+
+- **AC** `make up` on a machine with only Docker and `.env` brings all seven services up healthy, and `make down`
+  leaves no orphan containers.
+- **AC** No service other than `backend` publishes a host port, and `docker inspect` shows no Docker socket mount
+  anywhere.
+
+## 5. Functional requirements and acceptance criteria
 
 Acceptance criteria are **checkable**: a reviewer should be able to answer yes/no without interpretation.
 
@@ -144,7 +188,7 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F10.5** `_docs/ai-tool-policy.md` states which model providers see which data, retention, and approval rules.
 - **AC** `make setup && make up && make e2e` works from a clean clone on a machine that has only Docker and an API key.
 
-## 5. Non-functional requirements
+## 6. Non-functional requirements
 
 | Area | Target |
 | --- | --- |
@@ -156,7 +200,7 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 | Portability | Compose is the single entry point; SQLite/PgSQL switch stays working |
 | Auditability | Every ingestion run, tool call, answer, and admin action is logged or reconstructable |
 
-## 6. Data model sketch
+## 7. Data model sketch
 
 - `competitions` (code, name, area, tier_fee), `seasons` (competition, start/end, current flag)
 - `teams` (id, name, tla, crest, area), `players` (optional, only if free tier returns squads)
@@ -166,12 +210,12 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - `knowledge_chunks` (id, source_file, heading, chunk_text, embedding vector, updated_at)
 - `agent_turns` (id, chat_id, user_message, tool_calls json, answer, grounded flag, data_as_of, created_at)
 
-## 7. Milestones
+## 8. Milestones
 
 M0 scaffold (this repo state) -> M1 contract + schema -> M2 ingestion -> M3 API -> M4 agent on Telegram ->
 M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report. Details in `_docs/scoping.md#8`.
 
-## 8. Risks and mitigations
+## 9. Risks and mitigations
 
 | Risk | Mitigation |
 | --- | --- |
@@ -183,7 +227,7 @@ M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report. Deta
 | Scope creep (prediction, betting, live scores) | Explicit non-goals in §3; new features must name the criterion or user need they serve |
 | Prompt injection through Telegram | Read-only tool surface, allowlists, injection test suite, no secrets in context |
 
-## 9. Success measures for v1
+## 10. Success measures for v1
 
 1. `make up` on a clean machine yields a working bot that answers the golden set within threshold.
 2. Eval accuracy >= 90% on answerable questions, 100% correct refusals on unanswerable ones.
