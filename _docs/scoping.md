@@ -175,7 +175,7 @@ Each row is a requirement from the course's draft project criteria and the thing
 | M3b | A test, not an opinion, on how questions get routed: the two designs run over the same questions, and an AI judge scores each choice against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask |
 | M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
 | M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
-| M6 | Automation, monitoring, security | One alert that fires on real user impact, plus the audit paperwork |
+| M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork and a record of what the agents did |
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
 the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,

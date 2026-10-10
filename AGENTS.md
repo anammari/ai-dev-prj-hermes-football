@@ -28,7 +28,7 @@ Telegram users
 hermes            container: Hermes Agent gateway
       |           SOUL.md (role + grounding policy), skills/, subagents/, hooks/
       |           cron: daily data-quality digest, owner report, weekly evals
-      |  MCP (stdio) — read-only, allowlisted tools
+      |  MCP (HTTP) — read-only, allowlisted tools
       v
 mcp-server        thin adapter: tool schema -> backend REST calls, compact JSON out
       |  REST (OpenAPI)
@@ -57,7 +57,7 @@ _docs/                  scoping.md (14-criteria map), product-spec.md, architect
 backend/                FastAPI app, Alembic migrations, tests/
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger
 frontend/               Next.js dashboard (centralized API client, unit tests)
-mcp-server/             MCP stdio server exposing read-only football tools
+mcp-server/             MCP server over HTTP exposing read-only football tools
 hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
 skills/ subagents/ hooks/ plugins/    agent extension pack
 evals/                  golden questions, groundedness/accuracy scoring
@@ -74,7 +74,7 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 - Ollama for the two small local models: `embeddinggemma-2:270m` (768-d embeddings, hence `vector(768)` in Postgres)
   and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
-- Hermes Agent in Docker, data volume at `/opt/data`; MCP over stdio; skills as `SKILL.md`
+- Hermes Agent in Docker, data volume at `/opt/data`; MCP over HTTP; skills as `SKILL.md`
 - Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
 
 ## Commands (make targets land with the scaffold — keep them working)
@@ -147,4 +147,5 @@ Next, in order:
 5. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
    in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it.
 6. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
-7. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts.
+7. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
+   (criterion 2, started — see its backfill list).
