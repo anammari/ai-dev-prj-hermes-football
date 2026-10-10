@@ -40,7 +40,9 @@ checked and work that merely looked right.
      recommended the older `embeddinggemma:300m` instead. The human supplied the library URL; the agent verified it,
      found the tag real (378 MB, 768-dimensional output) and corrected the record before it was committed. Cause: it
      had read only the sibling `embeddinggemma` tag list, not the `embeddinggemma-2` page. The facts table in
-     `_docs/decisions/0002` now cites its source and the date it was checked.
+     `_docs/decisions/0002` now cites its source and the date it was checked. The sequel is S4: the tag was real and
+     still unusable here, so the recommendation the agent was overruled on is the one now shipped, for a different
+     reason.
   2. **A recommendation was overruled by method.** The agent proposed adopting deterministic-first routing by
      default. The human required an experiment instead: both routing designs must be sampled and scored by an
      LLM-as-judge against hand-checked expectations before either is adopted. That became M3b and
@@ -48,7 +50,7 @@ checked and work that merely looked right.
 - **Evidence:** `_docs/decisions/0001`–`0003`; the product spec gains R-F6.5 and R-F6.6 with acceptance criteria; the
   model facts were verified against the vendor pages on 2026-10-10 (the agent had no other source, and said so).
 
-### S3 — M6 scope and the MCP transport (2026-10-10, the commit that adds this report)
+### S3 — M6 scope and the MCP transport (commit `eed27f9`, 2026-10-10)
 
 - **Delegated:** choose the M6 wording that better matches the 14 course criteria, align the MCP transport across the
   documents, and start this report.
@@ -63,6 +65,42 @@ checked and work that merely looked right.
   server would have to live inside the Hermes image.
 - **Evidence:** `_docs/scoping.md` §8 and `AGENTS.md` now name the same four M6 artifacts, and outside this report the
   only remaining mention of stdio is the product spec's rationale for avoiding it.
+
+### S4 — M1: the schema, the notes corpus and the embedding provider (commit that lands M1, 2026-10-10)
+
+- **Delegated:** build and test M1 as `_docs/product-spec.md` §4 and §8 define it — the Alembic migration matching
+  `openapi.yaml`, the notes corpus with its manifest, the local embedding provider in Compose, one note indexed end to
+  end — and report what the tests found.
+- **Reviewed:** the human reviewed the plan and this outcome; the one judgement it asked for (which model to pin) was
+  already answered in S2, and M1 followed it until the container disagreed.
+- **Rejected or revised (four, all caught by running the thing rather than reading it):**
+  1. **The pinned embedding model cannot run in the stack.** `embeddinggemma-2:270m`, chosen in S2 and pinned in
+     `_docs/decisions/0002`, is published in Ollama's MLX/Safetensors packaging (`application/vnd.ollama.image.tensor`
+     layers only). Pulling it inside the `ollama` Compose container fails with *"this model requires MLX support, but
+     the MLX runtime is not available"*. MLX is Apple-only; the deployment is a Linux container. `embeddinggemma:300m`
+     pulls and probes to the same 768 dimensions in that container, so nothing in the schema changed. Recorded as
+     `_docs/decisions/0004`, which supersedes `0002` rather than editing it. **The agent had read the library page,
+     not the container** — the same class of mistake as S2, caught this time by an integration test instead of a human.
+  2. **The read-only role test was passing for the wrong reason.** The first version granted the statements via
+     `SET ROLE` and rolled back between them; `SET ROLE` is undone by a rollback, so the second statement onwards ran
+     with the owner's rights. The test now logs in *as* the agent role and opens a connection per statement. Verified
+     by hand in `psql` before rewriting it.
+  3. **A too-long identifier only breaks on Postgres.** The naming convention generated a 67-byte unique-constraint
+     name for `standings`; the migration failed half way on Postgres after passing every SQLite test. The constraint is
+     now named explicitly, and a unit test asserts every identifier fits in 63 bytes.
+  4. **The test image did not contain `openapi.yaml`.** The contract-coverage test read the contract off the host path
+     and passed locally, then failed in the container the tests actually run in.
+- **Evidence, all reproducible with `make up && make models && make test && make itest`:**
+  - 35 unit tests and 7 integration tests pass; `ruff check` is clean.
+  - Integration: `select version()` is PostgreSQL 16 with pgvector 0.8.7, `knowledge_chunks.embedding` is
+    `vector(768)`, the HNSW index uses `vector_cosine_ops`, the provider returns 768 floats, the agent role can read
+    and cannot insert, update, delete, create, alter or drop.
+  - End to end: `python -m ingest.knowledge index` writes 5 chunks for the seed note and writes 0 on the second run;
+    `search "how old is the data and is it live"` returns the note's passages, best score 0.402.
+  - `tests/contract_map.py` plus `tests/test_contract_coverage.py` fail in both directions when the schema and
+    `openapi.yaml` drift apart. They currently flag one real gap: `agent_turns.route`/`route_source`/
+    `route_confidence` are required by `AGENTS.md` rule 10 but absent from contract v0.1.0. M3 owns the fix; it is
+    written down in `_docs/data-model.md` rather than silently allowed.
 
 ## Sessions that predate this log (backfill needed)
 

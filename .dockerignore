@@ -1,0 +1,13 @@
+# Keep the build context small, and keep secrets and local state out of the image.
+.env
+.env.*
+!.env.example
+.git/
+.venv/
+.uv-cache/
+data/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.db

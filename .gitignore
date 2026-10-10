@@ -23,3 +23,6 @@ data/
 *.db
 *.sqlite3
 logs/
+
+# uv cache when the default one is not writable
+.uv-cache/

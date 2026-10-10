@@ -16,8 +16,9 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **scoping stage**. `_docs/` plus the reviewed API contract (`openapi.yaml`, v0.1.0) and its tooling exist.
-No application code yet.
+Status: **M1**. The database schema and its first migration, the notes corpus with `manifest.yaml`, and the local
+embedding provider in Compose exist and are tested (`make test`, `make itest`); `_docs/data-model.md` describes the
+tables and how they map onto the contract. No API or agent code yet.
 
 ## Architecture (target)
 
@@ -41,7 +42,7 @@ ingest            scheduler: 10 req/min bucket,      frontend (Next.js): freshne
       |           run ledger, idempotent upserts       eval results, admin controls
       v
 football-data.org v4 (free tier)        Postgres (+ pgvector for the knowledge corpus)
-                                        ollama (embeddinggemma-2:270m, laya): local models, no egress
+                                        ollama (embeddinggemma:300m, laya): local models, no egress
 ```
 
 Supporting, all in the same Compose project: `observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana),
@@ -51,11 +52,13 @@ Supporting, all in the same Compose project: `observability/` (OTel collector ->
 
 ```text
 README.md               product-spec.md        openapi.yaml      docker-compose.yml   Makefile
-AGENTS.md               .env.example
+AGENTS.md               .env.example          Dockerfile
 _docs/                  scoping.md (14-criteria map), product-spec.md, architecture.md,
                         data-model.md, decisions/, ai-usage-report.md
-backend/                FastAPI app, Alembic migrations, tests/
-ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger
+db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
+backend/                FastAPI app
+ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
+                        knowledge/ (corpus manifest, chunker, embedding client, indexer)
 frontend/               Next.js dashboard (centralized API client, unit tests)
 mcp-server/             MCP server over HTTP exposing read-only football tools
 hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
@@ -71,7 +74,7 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 - Python 3.12 (FastAPI, SQLAlchemy 2.x, Alembic, httpx, APScheduler, pytest, ruff)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
-- Ollama for the two small local models: `embeddinggemma-2:270m` (768-d embeddings, hence `vector(768)` in Postgres)
+- Ollama for the two small local models: `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres)
   and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
 - Hermes Agent in Docker, data volume at `/opt/data`; MCP over HTTP; skills as `SKILL.md`
@@ -132,20 +135,22 @@ make logs      # tail logs for a service
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`), first decision records in
-`_docs/decisions/` (0001 notes corpus + manifest, 0002 embedding model, 0003 router spike).
+API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`), decision records in `_docs/decisions/`
+(0001 notes corpus + manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the
+container). M1 is done: `db/models.py` plus migration `0001_init` matching the contract, the corpus with
+`hermes/agent-knowledge/manifest.yaml`, the chunker and embedding client, and one note indexed and retrieved end to
+end in Postgres (`_docs/data-model.md`, `make test`, `make itest`).
 
 Next, in order:
-1. DB schema and the first Alembic migration, matching the contract: notes table with `vector(768)`, the corpus
-   manifest (`hermes/agent-knowledge/manifest.yaml`) and the local `ollama` embedding provider, with one note indexed
-   end to end.
-2. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
+1. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
    results in `_docs/scoping.md` §3 (squads, scorers and players ARE available; h2h aggregates and odds are not
    trustworthy; fixtures fetch in batch across competitions).
-3. `backend/` endpoints against the contract + unit/integration tests.
-4. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.
-5. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
+2. `backend/` endpoints against the contract + unit/integration tests. This is also where `agent_turns.route`,
+   `route_source` and `route_confidence` join `openapi.yaml` — they exist in the schema today (`_docs/data-model.md`,
+   open items).
+3. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.
+4. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
    in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it.
-6. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
-7. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
+5. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
+6. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
    (criterion 2, started — see its backfill list).

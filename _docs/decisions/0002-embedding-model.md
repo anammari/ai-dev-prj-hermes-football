@@ -1,6 +1,7 @@
 # 0002 — Embedding model: embeddinggemma-2:270m, local, 768 dimensions
 
-- **Status:** Accepted (2026-10-10)
+- **Status:** Superseded by [0004](0004-embedding-tag-mlx.md) on 2026-10-10 — the family, the 768 width, the prefix rules
+  and the re-index rules below all still stand; only the tag changed
 - **Milestone:** M1 (provider, client, migration), M5 (retrieval quality)
 - **Related:** `_docs/product-spec.md` R-F6.2, `_docs/scoping.md` §9
 
@@ -40,7 +41,7 @@ Rules that follow:
 ## Alternatives considered
 
 - **`embeddinggemma:300m` (v1)** — works, 2K context, slightly worse on code and superseded by v2. No reason to start
-  on the older generation.
+  on the older generation. *(This is the alternative that turned out to be the only one that runs; see 0004.)*
 - **A hosted embedding API** — would put note text and user questions on someone else's servers, against both the data
   policy (`R-F10.5`) and the free-tier cost target.
 - **A larger variant of the same family** (`440m`/`570m`/`740m`) — bigger for modalities we do not use; the notes are
@@ -51,6 +52,8 @@ Rules that follow:
 - No per-call cost, no network dependency, note text never leaves the machine, one extra container and one more
   capability row.
 - The embedding provider becomes part of M1 instead of a detail discovered later.
+- Not checked at the time, and the reason this record is superseded: whether the tag can run in *our* container, as
+  opposed to on the machine that read the library page.
 
 ## Verification
 

@@ -1,0 +1,12 @@
+# Development override: exposes the database on the host so a local client, a host-run migration or
+# a psql session can reach it. `make up` never uses this file, which is what keeps the stack's only
+# published port the one `backend` will own (_docs/product-spec.md §4).
+#
+#   make db-port     # docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+#
+# The host `DATABASE_URL` in `.env` points at localhost, so it only works while this is up.
+
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"

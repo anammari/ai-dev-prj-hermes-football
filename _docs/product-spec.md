@@ -63,7 +63,7 @@ agent's container, which is root-equivalent control of the host. The container i
 | `db` | Postgres 16 + pgvector | none (5432 exposed in dev only) | `pgdata` |
 | `frontend` | Next.js dashboard | 3000 (dev) | — |
 | `obs` | OTel collector, Prometheus, Loki, Tempo, Grafana | 3001 | `grafana-data` |
-| `ollama` | Local model server: `embeddinggemma-2:270m` for the notes index, and `laya` if the M3b spike adopts model routing | none | `ollama-data` |
+| `ollama` | Local model server: `embeddinggemma:300m` for the notes index, and `laya` if the M3b spike adopts model routing | none | `ollama-data` |
 
 Only `backend` is published; the Cloudflare tunnel points at it. Telegram uses long polling, so `hermes` needs egress
 only — no inbound port, no static IP, no VPS.
@@ -152,11 +152,13 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F6.1a** The corpus is **authored by hand** from stable public sources (competition regulations, the provider's
   own documentation) and reviewed like code: versioned in git, changed through pull requests, never generated at
   runtime and never scraped from a remote feed. Upstream API payloads carry no prose and are not a source.
-- **R-F6.2** Files are chunked and embedded into pgvector with `embeddinggemma-2:270m`, served locally by the `ollama`
+- **R-F6.2** Files are chunked and embedded into pgvector with `embeddinggemma:300m`, served locally by the `ollama`
   container (768 dimensions, pinned in the migration as `vector(768)`); retrieval returns passages with source file and
   heading. The client applies the model's task prefixes — documents and queries are formatted differently. Each chunk
   records `embedding_model` and `embedding_dim`, so changing either is a detectable re-index rather than a silently
-  mixed vector space.
+  mixed vector space. The tag must be runnable *by that container*: packaging that needs a macOS-only runtime is
+  rejected, and the integration test probes the width the container actually returns instead of trusting the library
+  page (`_docs/decisions/0002`).
 - **R-F6.3** Structured questions are answered from SQL; qualitative questions from retrieval; the agent does not use
   retrieval to answer questions the database already answers correctly.
 - **R-F6.4** Re-indexing a changed file is deterministic, runs on the ingest schedule (and in CI when a note changes),

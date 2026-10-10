@@ -182,7 +182,7 @@ the collection job does not go looking for them; it only re-indexes the ones tha
 one topic per file, and each one is listed with its source in `hermes/agent-knowledge/manifest.yaml`; the build fails
 if a note is not in the list or the list names a note that is not there.
 
-Searching and routing run on two small models inside the same local stack: `embeddinggemma-2:270m` turns text into
+Searching and routing run on two small models inside the same local stack: `embeddinggemma:300m` turns text into
 768 numbers per chunk, and — if the M3b test says so — `laya` decides where an ambiguous question should go. Both are
 small enough for a laptop, so nothing leaves the machine and there is no per-question bill. The decisions behind them
 are written down in `_docs/decisions/`.
@@ -194,6 +194,6 @@ are written down in `_docs/decisions/`.
 2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
    admin-only and logged.
 3. **Which model holds the conversation:** configurable in Hermes, but pinned for the scoreboard so scores stay
-   comparable. This is no longer every model in the stack: the embedding model is fixed at `embeddinggemma-2:270m`
+   comparable. This is no longer every model in the stack: the embedding model is fixed at `embeddinggemma:300m`
    (768 numbers per chunk) and the router is decided by the M3b test.
 4. **Licence:** the public repo currently has none chosen.
