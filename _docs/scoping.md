@@ -72,7 +72,9 @@ There are two ways to answer a football question, and mixing them up is how bots
 - **From the database** — the answer is a number, a date, or a table. The bot asks a tool, the tool runs a query, rows
   come back, the bot writes the sentence. Nothing needs to be "searched".
 - **From our notes** — the answer is a sentence that someone wrote down: a rule, a format, a definition, or a policy
-  of ours. Here the bot searches our own notes and answers from the passage it finds, citing where it came from.
+  of ours. Here the bot searches our own notes and answers from the passage it finds, citing where it came from. The
+  notes are written in English, one topic per file, and each one is listed in a manifest with the source it came from,
+  so we can say what should exist and notice what is missing.
 
 **Questions the database answers on its own:**
 
@@ -98,6 +100,13 @@ There are two ways to answer a football question, and mixing them up is how bots
 from a document, it comes from our notes. A football bot that searches documents for a score is doing it wrong, and
 so is one that tries to query a database for the meaning of "aggregate".
 
+**How the bot decides which way to look.** Not by vibes. The shape of the question is read in plain code first: a
+table, a score or a date goes to the database, while "how does the promotion playoff work?" goes to the notes. A small
+model is asked only when the question is genuinely ambiguous, and whichever way it went is written down with the
+answer — so a wrong turn shows up on the dashboard and in the scoreboard instead of hiding inside a confident
+sentence. Which of the two designs we use is not settled yet: we are testing them against each other first (section 8,
+step M3b).
+
 ## 5. Extra work beyond the first brief
 
 The first brief was: a Telegram bot, a free football API, daily data collection, an API in front of the database, all
@@ -114,6 +123,8 @@ in Docker. To make that a real, checkable product — and to cover the course re
 | **Watching and incident practice** | Logs, metrics and one alert that fires when something actually hurts users, plus a rehearsal of "what do we do when it breaks at night" |
 | **Security and audit work** | A list of everything the bot can reach, scans of our own code, and tests that try to trick the bot through a Telegram message |
 | **A written record of how AI was used** | The course asks for it, and it is how you review a project built mostly by agents |
+| **A written list of the notes** | The bot can only cite what exists. A manifest names every note, where it came from and who owns it, and the build fails if a note or an entry goes missing |
+| **Two small models on the laptop** | Turning notes into searchable numbers, and deciding where a question should go, both use small local models: nothing leaves the machine and there is no per-question bill |
 
 ## 6. Where it runs (and why not on Hugging Face)
 
@@ -158,15 +169,23 @@ Each row is a requirement from the course's draft project criteria and the thing
 | Step | What it means | Done when |
 | --- | --- | --- |
 | M0 | Empty repo, scope, spec, API contract | Done |
-| M1 | Database schema and the first migration, matching the contract, including the notes table | Tests against the real stack pass, and a note file can be indexed end to end |
+| M1 | Database schema and the first migration, matching the contract, including the notes table, the list of notes and the small model that turns text into searchable numbers | Tests against the real stack pass, and a note file can be indexed end to end |
 | M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need |
-| M4 | The bot on Telegram, with the first notes written and reviewed | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
-| M5 | Dashboard and scoreboard | Both tested, and the scoreboard runs on every change |
+| M3b | A test, not an opinion, on how questions get routed: the two designs run over the same questions, and an AI judge scores each choice against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask |
+| M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
+| M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
 | M6 | Automation, monitoring, security | One alert that fires on real user impact, plus the audit paperwork |
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
-the collection job does not go looking for them; it only re-indexes the ones that changed.
+the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,
+one topic per file, and each one is listed with its source in `hermes/agent-knowledge/manifest.yaml`; the build fails
+if a note is not in the list or the list names a note that is not there.
+
+Searching and routing run on two small models inside the same local stack: `embeddinggemma-2:270m` turns text into
+768 numbers per chunk, and — if the M3b test says so — `laya` decides where an ambiguous question should go. Both are
+small enough for a laptop, so nothing leaves the machine and there is no per-question bill. The decisions behind them
+are written down in `_docs/decisions/`.
 
 ## 9. Still to decide
 
@@ -174,5 +193,7 @@ the collection job does not go looking for them; it only re-indexes the ones tha
    changes on restart. Default: temporary first, permanent before the final submission.
 2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
    admin-only and logged.
-3. **Which AI model:** configurable in Hermes, but pinned for the scoreboard so scores stay comparable.
+3. **Which model holds the conversation:** configurable in Hermes, but pinned for the scoreboard so scores stay
+   comparable. This is no longer every model in the stack: the embedding model is fixed at `embeddinggemma-2:270m`
+   (768 numbers per chunk) and the router is decided by the M3b test.
 4. **Licence:** the public repo currently has none chosen.

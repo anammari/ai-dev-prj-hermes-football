@@ -41,6 +41,7 @@ ingest            scheduler: 10 req/min bucket,      frontend (Next.js): freshne
       |           run ledger, idempotent upserts       eval results, admin controls
       v
 football-data.org v4 (free tier)        Postgres (+ pgvector for the knowledge corpus)
+                                        ollama (embeddinggemma-2:270m, laya): local models, no egress
 ```
 
 Supporting, all in the same Compose project: `observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana),
@@ -57,7 +58,7 @@ backend/                FastAPI app, Alembic migrations, tests/
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger
 frontend/               Next.js dashboard (centralized API client, unit tests)
 mcp-server/             MCP stdio server exposing read-only football tools
-hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md, context files, cron definitions
+hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
 skills/ subagents/ hooks/ plugins/    agent extension pack
 evals/                  golden questions, groundedness/accuracy scoring
 observability/          otel collector, prometheus, grafana, loki, alerts
@@ -70,6 +71,8 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 - Python 3.12 (FastAPI, SQLAlchemy 2.x, Alembic, httpx, APScheduler, pytest, ruff)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
+- Ollama for the two small local models: `embeddinggemma-2:270m` (768-d embeddings, hence `vector(768)` in Postgres)
+  and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
 - Hermes Agent in Docker, data volume at `/opt/data`; MCP over stdio; skills as `SKILL.md`
 - Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
@@ -78,7 +81,7 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # docker compose up -d (db, ingest, backend, mcp-server, hermes, frontend)
+make up        # docker compose up -d (db, ingest, backend, mcp-server, hermes, frontend, ollama)
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the Compose stack
@@ -109,6 +112,12 @@ make logs      # tail logs for a service
    the tool schema, and the refusal behavior intact. New tool = new row in `security/capability-table.md`.
 8. **Every capability is declared.** Skills, subagents, hooks, MCP tools, cron jobs and their permissions are
    written down in `docs/permissions.md`. Undocumented capability = not shippable.
+9. **Every note is declared.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source citation and
+   owner; the build fails on a note missing from it or an entry with no file. The corpus is hand-written, English, one
+   topic per file, reviewed like code — never generated at runtime, never scraped.
+10. **Every answer says which road it took.** Each turn records whether it came from a tool or from the notes
+    (`route`, `route_source`, `route_confidence`), and routing is scored in the evals. Routing is deterministic first;
+    a model only breaks ties, and it never sees retrieved text or tool output.
 
 ## Working agreement (course criterion 2)
 
@@ -123,14 +132,19 @@ make logs      # tail logs for a service
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`).
+API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`), first decision records in
+`_docs/decisions/` (0001 notes corpus + manifest, 0002 embedding model, 0003 router spike).
 
 Next, in order:
-1. DB schema and the first Alembic migration, matching the contract.
+1. DB schema and the first Alembic migration, matching the contract: notes table with `vector(768)`, the corpus
+   manifest (`hermes/agent-knowledge/manifest.yaml`) and the local `ollama` embedding provider, with one note indexed
+   end to end.
 2. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
    results in `_docs/scoping.md` §3 (squads, scorers and players ARE available; h2h aggregates and odds are not
    trustworthy; fixtures fetch in batch across competitions).
 3. `backend/` endpoints against the contract + unit/integration tests.
 4. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.
-5. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
-6. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts.
+5. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
+   in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it.
+6. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
+7. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts.
