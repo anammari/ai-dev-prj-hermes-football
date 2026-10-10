@@ -128,7 +128,7 @@ API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`).
 Next, in order:
 1. DB schema and the first Alembic migration, matching the contract.
 2. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
-   results in `_docs/scoping.md` §4.2 (squads, scorers and players ARE available; h2h aggregates and odds are not
+   results in `_docs/scoping.md` §3 (squads, scorers and players ARE available; h2h aggregates and odds are not
    trustworthy; fixtures fetch in batch across competitions).
 3. `backend/` endpoints against the contract + unit/integration tests.
 4. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.

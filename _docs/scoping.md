@@ -1,215 +1,175 @@
-# Scoping — Hermes Football (ai-dev-prj-hermes-football)
+# Scoping — Hermes Football
 
-Status: **draft, scoping stage**. This file is the project's map: what we build, why each piece exists, and how each
-of the 14 course project criteria is covered. Update it when scope changes — a criteria row that no longer matches
-reality is a bug in the deliverable.
+What this file is: the plain-English picture of the project — what we are building, what we checked, what each piece
+is for, and how it covers the course requirements. If you want the technical detail (requirements, acceptance
+criteria, data model), read `_docs/product-spec.md` instead. This file is the one to read first.
 
 ---
 
-## 1. Original brief
+## 1. What we are building
 
-- A **Hermes AI agent** that answers football questions accurately on **Telegram**.
-- Data source: a free-tier football API — **football-data.org**.
-- Hermes, its backend and the Telegram hook all run in **Docker**.
-- A **scheduled workflow** ingests batch data from the API daily into the backend store.
-- An **API wraps the database** so the agent can use tool calling to fetch the right rows for the LLM.
-- Inspired by the tutorial project `MariyaSha/hermes_business_agent` (RAG over a company-specific text corpus).
-- Constraints: **localhost only** — no VPS hosting for Hermes.
+A Telegram bot that answers football questions correctly.
 
-## 2. Reference project anatomy (what we learned from it)
+You ask it something like "how are Arsenal doing?" or "when do they play Chelsea?", and it replies with a real answer
+taken from a database we keep up to date — not from the model's memory, which is exactly where football bots usually
+go wrong.
 
-`hermes_business_agent` is five files; the value is in the pattern, not the code:
+Three things make it work:
 
-| Piece | Role |
+1. **We collect the data ourselves.** Every day a scheduled job pulls fixtures, results and tables from
+   football-data.org (a free football API) and stores them locally.
+2. **The bot looks things up before it answers.** It has a small set of "tools" — one for the league table, one for
+   fixtures, one for recent form, and so on. To answer, it asks a tool, gets real rows back, and writes the sentence
+   from those rows. If the data isn't there, it says so instead of guessing.
+3. **It knows the things a table can't hold.** Competition rules, how the playoffs work, what "aggregate" means, why
+   our scores are a few minutes behind — that lives in our own notes, which the bot can search.
+
+Everything runs on your laptop in Docker: one command starts the whole system. There is no server to rent.
+
+## 2. What we took from the tutorial project
+
+The inspiration is a public tutorial project (`MariyaSha/hermes_business_agent`) where a business answers customer
+questions from its own documents. It is only five files, and two ideas in it are worth copying:
+
+- **It does the counting in code, and only asks the AI to explain.** A plain Python script totals up the day's
+  conversations; the AI's only job is to write the report. Cheap, repeatable, and easy to check.
+- **It writes the rules down as instructions.** Its `SOUL.md` doesn't just set the personality — it tells the agent
+  "these files are the truth, never invent a price, and if you don't know, say so".
+
+What it does *not* have: a real database, an API, tests, a dashboard, automatic deployment, or any way to tell whether
+it is still working. That is the engineering we are adding around the same idea.
+
+## 3. The football data we can actually get
+
+The free plan is genuinely free, but it is not unlimited, and the limits shape the design.
+
+**The advertised terms:** 12 competitions, 10 requests per minute, scores and schedules arrive delayed, fixtures and
+league tables included. Live scores, odds, lineups and advanced statistics are paid tiers.
+
+**What we found when we tested it** (a real free key, 10 October 2026 — we called every part of the API we planned to
+use before writing any code):
+
+| Question we asked the API | What came back |
 | --- | --- |
-| `agent-knowledge/*.md` (5 files) | Grounding corpus, mounted at `/opt/data/agent-knowledge/`, read by the agent directly |
-| `SOUL.md` | Role + personality **and the refusal/grounding policy**: files are the source of truth, never invent prices or policies, say "I don't know" |
-| `scripts/daily_report.py` | Deterministic Python: reads Hermes' own SQLite `state.db`, counts sessions and messages, prints a compact payload — no LLM involved |
-| `DAILY_PROMPT.md` | Prompt that turns that payload into an owner report, run by a Hermes **cron** job |
-| `README.md` | VPS deploy, Telegram gateway, `allow_admin_from`, `user_allowed_commands`, cron |
+| League tables? | Yes |
+| Fixtures and results? | Yes, with filters by date, matchday and season |
+| Player squads? | **Yes** — 24 players for Arsenal, 48 for Fluminense. We expected this to be paid; it isn't |
+| Top scorers? | **Yes** — available on the free plan |
+| Head-to-head records? | The data arrives, but the win/draw/loss counts are wrong (0–0–0 for a pair with 3 meetings), so **we count them ourselves** |
+| Betting odds? | No — the field exists but only says "activate Odds-Package" |
+| How many competitions? | **13, not the 12 advertised** — the extra one is the Copa Libertadores |
+| A competition we're not allowed? | The API refuses with "not within your permissions" — we must show "no data", never an empty table |
+| Several competitions in one call? | Yes — which is how we stay comfortably under 10 calls a minute |
+| How delayed are the scores? | **Still unknown.** Every match that day was still upcoming, so we couldn't watch a delay happen. We measure it in M2 by watching one match until its score appears |
 
-Two ideas we adopt deliberately:
+One more helpful detail: the API tells us how many calls we have left in the current minute, so we pace ourselves on
+its own numbers instead of guessing.
 
-1. **Deterministic code does the counting; the LLM only reasons over a prepared payload.** Cheap, reproducible, auditable.
-2. **`SOUL.md` is a refusal policy as much as a personality.** Grounding rules belong in the agent's standing instructions.
+## 4. When the database answers, and when our notes do
 
-What the reference does *not* have — and therefore what "extending the scope" means here: real retrieval (it dumps
-whole markdown files), a domain database, an API, an OpenAPI contract, tests, a frontend, CI/CD, observability,
-security artifacts, or reproducibility. Our project keeps the pattern and builds the missing engineering around it.
+There are two ways to answer a football question, and mixing them up is how bots start making things up.
 
-## 3. Target architecture
+- **From the database** — the answer is a number, a date, or a table. The bot asks a tool, the tool runs a query, rows
+  come back, the bot writes the sentence. Nothing needs to be "searched".
+- **From our notes** — the answer is a sentence that someone wrote down: a rule, a format, a definition, or a policy
+  of ours. Here the bot searches our own notes and answers from the passage it finds, citing where it came from.
 
-```text
-Telegram users
-      |  long polling (no inbound ports, works behind NAT, no VPS)
-      v
-hermes            Hermes Agent gateway in its own container
-      |           SOUL.md, AGENTS.md context, skills/, subagents/, hooks/, cron jobs
-      |  MCP (stdio), read-only, allowlisted tools
-      v
-mcp-server        tool schema -> backend REST; returns compact JSON sized for an LLM
-      |  REST (contract = openapi.yaml)
-      v
-backend           FastAPI + SQLAlchemy + Alembic; read paths for agent and dashboard
-      ^                                        ^
-      |                                        |
-ingest            scheduler + 10 req/min bucket   frontend (Next.js): data freshness, fixtures,
-      |           bronze JSON -> normalized tables   standings, agent conversation log, eval
-      |           run ledger, idempotent upserts      results, admin controls
-      v
-football-data.org v4 (free tier)          Postgres 16 + pgvector (SQLite for dev)
-```
+**Questions the database answers on its own:**
 
-Cross-cutting, in the same Compose project: `observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana +
-alerts), `security/` (scan outputs, capability table, threat model, policy), `ops/` (runbooks, incident drill
-evidence), `evals/` (golden questions), `tests/` (unit, integration, e2e), `.github/workflows/` (CI, CD, PR audit, scans).
+- "Where are Arsenal in the table?" — position and points, straight from the league table.
+- "When do Arsenal play Chelsea?" — the fixture date, straight from the fixtures.
+- "What was the score?" — the result, straight from the results.
+- "How have Arsenal done in their last five?" — wins, draws and losses, counted in the database.
+- "How many goals has Haaland scored?" — one row from the top-scorers table.
+- "Who does Arsenal beat more often, Chelsea or Spurs?" — the head-to-head counts, which we calculate ourselves.
+- "How up to date is this?" — the timestamp on the data.
 
-## 4. Data source: free-tier reality check
+**Questions only our notes can answer** (this is what the note-searching, "RAG", is for):
 
-### 4.1 Documented terms (pricing, coverage and policies pages)
+- Competition formats — "how does the Championship promotion playoff work?" Nothing in a table describes a bracket's rules.
+- Tiebreakers — "what happens if two teams in Serie A finish level on points?" Goal difference or head-to-head is a rule, not a row.
+- Qualification and relegation — "how many teams go down from the Bundesliga, and how do you qualify for the Champions League?".
+- Our own data policy — "is that score live, and why is it delayed?" The delay and coverage policy is prose we wrote.
+- Coverage limits — "why can't you give me lineups?", "do you cover the Greek league?" — so the bot explains the limit instead of claiming no data exists.
+- Glossary — "what does aggregate mean in a two-legged tie?", "what is a clean sheet?".
+- Multi-hop rules questions — "if a team finishes fifth and also wins the cup, do they still get a European place?" The answer is spread across several notes, which is where searching beats a lookup.
 
-- **Free plan: 12 competitions** — Premier League, Championship, Bundesliga, Serie A, La Liga, Ligue 1, Eredivisie,
-  Primeira Liga, Brasileirao Serie A, Champions League, European Championship, World Cup.
-- **10 requests/minute** on the free plan (30 on Standard, 60 above). Unauthenticated clients: 100 requests/24h.
-- **Scores and schedules are delayed** on the free tier; **fixtures and league tables** are included.
-- Live scores, odds, lineups and advanced stats are paid tiers.
+**The one-line rule:** if the answer is a number, a date or a table, it comes from the database. If it is a sentence
+from a document, it comes from our notes. A football bot that searches documents for a score is doing it wrong, and
+so is one that tries to query a database for the meaning of "aggregate".
 
-### 4.2 Verified against the live API (free-tier key, 2026-10-10)
+## 5. Extra work beyond the first brief
 
-Every endpoint our contract depends on was probed with a real free-tier key before any backend code was written.
-Server time at probe: 2026-10-10 05:46 UTC.
+The first brief was: a Telegram bot, a free football API, daily data collection, an API in front of the database, all
+in Docker. To make that a real, checkable product — and to cover the course requirements — we added:
 
-| Upstream endpoint | Result | Consequence for us |
-| --- | --- | --- |
-| `GET /v4/competitions` | 200 | The list is **plan-filtered**: it returned **13** competitions — the documented 12 **plus `CLI` (Copa Libertadores)**. Our competition set follows what the plan exposes, not a hardcoded dozen |
-| `GET /v4/competitions/{code}` | 200 | The **`coverage` object is empty (`{}`)** on this plan. Our `Coverage` block cannot be scraped from upstream — it is locally maintained metadata |
-| `GET /v4/competitions/{code}/standings` | 200 | Works for leagues and cups. Carries `stage`, `group`, `type` (CL returned `LEAGUE_STAGE`/`TOTAL`); PL = 20 rows with `playedGames`, `goalsFor/Against`, `goalDifference`, `form` |
-| `GET /v4/competitions/{code}/matches` | 200 | `season`, `matchday`, `status`, `dateFrom/dateTo` all work (PL 2025 = 380 matches; a 17-day window = 30). Each match carries `lastUpdated`, `referees`, `group`, `stage` — and a decorative `odds` field |
-| `GET /v4/competitions/{code}/teams` | 200 | 20 teams for PL and BSA. Team objects carry **`squad`** (24 players for Arsenal, 48 for Fluminense), plus `coach`, `staff`, `venue`, `clubColors`, `founded`, `website`, `runningCompetitions` |
-| `GET /v4/competitions/{code}/scorers` | 200 | **Top scorers are available on the free tier** (contrary to the early assumption) |
-| `GET /v4/teams/{id}`, `/teams/{id}/matches` | 200 | `resultSet` returns `count/first/last/played/wins/draws/losses` — useful for our own aggregates and pagination totals |
-| `GET /v4/matches/{id}`, `/matches/{id}/head2head` | 200 | h2h returns `aggregates`, but they were **unreliable**: `numberOfMatches: 3`, `totalGoals: 12`, yet `wins/draws/losses: 0` for both teams → **we compute head-to-head ourselves from the match list** |
-| `GET /v4/persons/{id}` | 200 | Player detail available; player questions are answerable |
-| `GET /v4/matches?competitions=A,B,C&dateFrom=&dateTo=` | 200 | **Batch fetch across competitions works** (27 matches for three leagues in one week, one call) — this is what makes the rate budget comfortable |
-| `GET /v4/competitions/EL` (out of plan) | **403** | `{"message": "...not within your permissions. Please check your subscription.", "errorCode": 403}` → we surface `upstream_unavailable`/`data_not_available`, never a silent empty list |
+| Extra piece | Why it earns its place |
+| --- | --- |
+| **Notes the bot can search** (RAG) | The tutorial lets the agent read whole documents. Real searching makes the qualitative answers — the ones in section 4 — measurable instead of lucky |
+| **Data collection treated as a product** | Daily run, a log of every run, no duplicates, and a visible "how fresh is this?" answer. The brief said "scheduled"; this makes it trustworthy |
+| **A wrapped API with a written contract** | The bot gets a small, typed, read-only set of tools instead of a database password |
+| **A web dashboard** | Shows data freshness, the matches, what the bot answered, and how the answers scored. The brief had no front end, and the course requires one — it is also how you actually audit a bot |
+| **An answer-quality scoreboard** | A fixed set of test questions ("golden questions") that the bot answers on every change, so "it works" is a number, not a feeling |
+| **The bot's own tool kit** | Reusable instructions, a checker that verifies answers, a guardrail that blocks risky calls, and a written list of what the bot is allowed to do |
+| **Watching and incident practice** | Logs, metrics and one alert that fires when something actually hurts users, plus a rehearsal of "what do we do when it breaks at night" |
+| **Security and audit work** | A list of everything the bot can reach, scans of our own code, and tests that try to trick the bot through a Telegram message |
+| **A written record of how AI was used** | The course asks for it, and it is how you review a project built mostly by agents |
 
-Response headers we can build on: `x-requests-available-minute` (calls left in the current minute),
-`X-RequestCounter-Reset` (seconds until reset), `X-Cache-Status`, `X-Authenticated-Client`, `X-API-Version`.
+## 6. Where it runs (and why not on Hugging Face)
 
-**Still unmeasured: the size of the score delay.** At 05:46 UTC on 2026-10-10 every match in the "today" window was
-still `TIMED` with `lastUpdated` values from a nightly refresh (00:20 and 01:32 UTC), so no live delay could be
-observed in that session. Procedure for M2: poll one finished match every 5 minutes until its score appears,
-record the elapsed time, publish the number, and use it in the freshness stamp instead of the word "delayed".
+Everything runs locally in Docker — the bot, the API, the database, the collector, the dashboard, the monitoring.
+Nothing is installed on your machine except Docker itself.
 
-### 4.3 What this changes in the design
+The public part is the **Telegram bot itself**: Telegram works by the bot calling out to Telegram, so it needs no
+incoming port, no static IP and no server. That is why "local only" and "a bot anyone can message" are not in
+conflict.
 
-- **Rate limiting gets real inputs.** The ingester reads `x-requests-available-minute` and
-  `X-RequestCounter-Reset` and paces on them; the local token bucket is a safety net, not the primary mechanism.
-- **Ingestion is fixture-first, not competition-first.** One `/v4/matches?competitions=...&dateFrom=&dateTo=` call
-  covers a whole matchday across competitions; per-competition calls are reserved for standings, teams and scorers.
-  A full daily refresh is therefore on the order of a few dozen calls, well inside the 10/min budget.
-- **`Coverage` becomes our own metadata**, maintained by this project and reviewed when ingestion changes.
-- **Squads and players are in scope.** `squad_available` now means "ingestion has stored a squad", not "the plan
-  forbids it".
-- **Head-to-head is computed locally** from stored matches; upstream aggregates are not trusted.
-- **`odds` is present but unusable** (`{"msg": "Activate Odds-Package in User-Panel to retrieve odds."}`) — the
-  contract exposes no odds, and the ingestion ignores the field.
-- **Out-of-plan is a first-class state**: upstream 403 is mapped to a documented error, never to an empty result.
+For the dashboard we use a **free Cloudflare tunnel** — a public web address that points at the local stack. We also
+have the option to publish the dashboard as a free static page on Hugging Face.
 
-Evidence for this section is the probe output recorded on 2026-10-10; a re-runnable probe script is on the M2 list so
-the findings can be regenerated rather than trusted.
+**Could Hugging Face Spaces host the whole thing for free? No.** Docker Spaces on free hardware now require a paid
+plan (about $9/month), and even then one Space holds a single container — no database, no dashboard, no monitoring
+alongside it. Its disk is wiped on restart, and free Spaces fall asleep after 48 hours of quiet, which for a Telegram
+bot means a bot that stops answering. It is the wrong shape for this project, not just the wrong price.
 
-Design consequences that are now hard rules in `AGENTS.md`:
+## 7. How the 14 course criteria are covered
 
-- Batch ingestion only, with a token bucket, backoff, and caching; no upstream call in a request path.
-- Every answer that contains a score or a table carries a **data timestamp** and the source.
-- The agent must state that data is delayed rather than imply it is live.
-- A missing or refused resource is reported as such, never rendered as an empty table.
+Each row is a requirement from the course's draft project criteria and the thing in this repo that satisfies it.
 
-## 5. Scope extensions (beyond the original brief)
-
-| # | Extension | Why / what it adds |
-| --- | --- | --- |
-| A | **Real RAG layer** — curated football knowledge corpus embedded into pgvector, retrieved with a `search_knowledge` tool, hybrid with structured SQL answers | The reference "RAG" reads whole files. This makes retrieval a first-class, measurable component and grounds the qualitative questions (formats, tiebreakers, promotion rules, glossary) that no table can answer |
-| B | **Ingestion as a product** — scheduled container, bronze/silver/gold layers, run ledger, idempotent upserts, freshness endpoint | "Scheduled workflow" in the brief; makes data quality observable and testable |
-| C | **API + MCP tool surface** — OpenAPI-first backend, thin MCP server exposing 6-8 read-only tools | Tool calling needs a narrow, typed, allowlisted surface, not a SQL hole |
-| D | **Frontend dashboard** (Next.js) — freshness, fixtures/standings explorer, agent conversation log + review flags, eval results, admin controls | The brief had no frontend; criteria 3 and 4 require one, and it is genuinely useful for auditing agent behavior |
-| E | **Eval harness** — golden question set, accuracy/groundedness/refusal scoring, run in CI | Turns "the agent is accurate" into a checkable claim with a regression signal |
-| F | **Agent extension pack** — project instructions, a reusable skill, a verifier subagent, the MCP server, a guardrail hook, a plugin package, permission notes | Course criterion 12, and it is the natural next layer for a Hermes project |
-| G | **Observability + incident response** — OTel instrumentation, Prometheus/Loki/Tempo/Grafana, actionable alerts, bounded read-only responder, evidence packet | Criterion 13; the reference project has no idea whether it still works |
-| H | **Security and audit** — capability table, MCP threat model, Semgrep + dependency/image scans, agent-supply-chain scan, PR audit, prompt-injection tests, AI tool/data policy | Telegram input is untrusted; an agent with data access is attack surface |
-| I | **AI-assisted workflow artifacts** — prompt bank, task/PR log, review log, `_docs/ai-usage-report.md`, Hermes used to build itself | Criterion 2 |
-| J | **Containerization and reproducibility** — one `docker compose up` brings the whole system up; Make targets; `.env.example`; pinned versions | Criteria 8 and 14 |
-
-## 6. Deployment investigation — can Hugging Face Spaces host this for free?
-
-Asked and answered in this round, because criterion 10 wants a public URL while the brief says "localhost only".
-
-Findings (Hugging Face docs, pricing page, and forum threads, July 2026):
-
-- **Docker/Gradio Spaces on compute are no longer free.** Hub docs: "Static Spaces are free for everyone. Gradio and
-  Docker Spaces run on compute and require a paid plan to create: PRO for personal accounts, Team or Enterprise for
-  organizations." The CLI returns: "hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription."
-  The change landed around 8 July 2026 with no announcement ([forum thread](https://discuss.huggingface.co/t/docker-sdk-now-marked-as-paid-when-creating-a-new-space/177580),
-  [docs PR](https://github.com/huggingface/hub-docs/pull/2624)). PRO is $9/month.
-- Even with PRO, the shape is wrong for us: **one container per Space**, exposed port `7860` (`app_port`), 16 GB RAM /
-  2 vCPU / **50 GB non-persistent disk**, outbound network limited to ports 80, 443 and 8080, container runs as UID 1000.
-  No Compose, so Postgres + backend + MCP + Hermes + frontend + observability cannot be deployed as one unit.
-- **Sleep policy:** on free hardware a Space stops executing after **48 hours of inactivity** and cold-starts on the
-  next request. A long-polling Telegram bot that sleeps is a dead bot — and the "warm ping" workaround is fragile.
-  Only paid hardware tiers are effectively always-on.
-
-**Verdict: no.** HF Spaces cannot host the dockerized system for free, and it is a poor architectural fit even when
-paid. We keep the **free Cloudflare tunnel** as the public URL for the local stack. That is not a workaround, it is a
-reasonable reading of criterion 10: the system runs as containers on the developer machine and is reachable at a
-public HTTPS URL, with the Telegram bot public by nature.
-
-Resulting deployment story for criterion 10:
-
-1. **Primary, public:** the Telegram bot — reachable from any device, no hosting required beyond outbound polling.
-2. **Public URL:** a Cloudflare named tunnel (`cloudflared`) -> stable HTTPS URL for the dashboard and read-only demo
-   API, with a post-deploy smoke check on `/health` and `/meta/freshness`.
-3. **Optional, free:** publish the *built dashboard* as a **Static Space** on Hugging Face (static Spaces are still
-   free for everyone) as a showcase; it points at the tunnel API. No compute, no sleep problem.
-4. **Documented fallback:** if a genuinely hosted instance is ever wanted, a $9 HF PRO Space or a free-tier container
-   host can serve the dashboard — the Compose file stays the source of truth.
-
-## 7. Coverage of the 14 draft project criteria
-
-| # | Criterion (top band) | How this project shows it | Artifact |
+| # | Course requirement | How this project meets it | Where to look |
 | --- | --- | --- | --- |
-| 1 | Problem description (2) | README + spec: what the agent answers, free-tier data limits, delayed-data disclosure, example dialogues, expected behavior | `README.md`, `_docs/product-spec.md` |
-| 2 | AI-assisted workflow (2) | Versioned prompt bank, AGENTS.md context, spec -> task -> implement -> independent verify loop, review/rejection logs, Hermes dogfooding | `prompts/`, `AGENTS.md`, `_docs/ai-usage-report.md` |
-| 3 | Tech & architecture (2) | Architecture diagram with the role of every component; why MCP, why a thin tool layer, why batch ingestion | `_docs/architecture.md#` |
-| 4 | Frontend (3) | Next.js dashboard, single typed API client, component + unit tests with run instructions, Playwright coverage of core flows | `frontend/`, `tests/e2e/` |
-| 5 | API contract (2) | `openapi.yaml` written before code, backend implemented against it, contract test asserting spec/app parity | `openapi.yaml`, `backend/tests/test_contract.py` |
-| 6 | Backend (3) | Layered FastAPI (router/service/repo), pydantic models from the spec, pytest on core endpoints, typed errors, documented | `backend/`, `backend/tests/` |
-| 7 | Database (2) | SQLite (dev) <-> Postgres (prod) via `DATABASE_URL`, Alembic migrations, pgvector corpus, seed script, documented schema | `_docs/data-model.md`, `db/` |
-| 8 | Containerization (2) | One `docker compose up` starts db, ingest, backend, mcp-server, hermes, frontend, observability; healthchecks; `make up` | `docker-compose.yml`, `Makefile` |
-| 9 | Integration testing (2) | Tests against the real Compose stack: ingest -> DB -> API -> MCP -> agent reply; kept separate from unit tests | `tests/integration/` |
-| 10 | Deployment (2) | Public Telegram bot + Cloudflare tunnel URL for dashboard/API + post-deploy smoke check (see §6) | `_docs/deployment.md` |
-| 11 | CI/CD (2) | Actions: lint, unit, integration, evals, image build -> on merge to main migrate, redeploy, smoke check, rollback path | `.github/workflows/ci.yml`, `deploy.yml` |
-| 12 | Agent extension pack (2) | Project instructions, reusable `SKILL.md` workflow, verifier subagent, MCP tool server, guardrail hook, plugin package, permission notes | `skills/`, `subagents/`, `mcp-server/`, `hooks/`, `plugins/`, `docs/permissions.md` |
-| 13 | Security/audit/DevOps (2) | PR-Agent audit output, Semgrep + dependency/image scan findings, agent & MCP capability/threat tables, incident drill evidence packet, AI tool/data policy | `security/`, `ops/`, `observability/` |
-| 14 | Reproducibility (2) | `make setup && make up && make e2e`, `.env.example`, pinned versions, documented free-tier key setup, seed data | `README.md`, `Makefile` |
+| 1 | Problem description | README and spec explain what the bot answers, what the free data allows, and what it says when it doesn't know | `README.md`, `_docs/product-spec.md` |
+| 2 | How AI was used | A versioned collection of the prompts used, written project instructions for AI helpers, and a log of what was delegated, reviewed and rejected | `prompts/`, `AGENTS.md`, `_docs/ai-usage-report.md` |
+| 3 | Technologies and architecture | A diagram and a short explanation of every part, and why it is there | `_docs/architecture.md` |
+| 4 | Front end | The dashboard, with its own tests and clear instructions to run them | `frontend/`, `tests/e2e/` |
+| 5 | API contract | The API is written down first in `openapi.yaml`, the backend follows it, and a test fails if they drift apart | `openapi.yaml` |
+| 6 | Back end | Layered FastAPI code with tests on the important endpoints | `backend/` |
+| 7 | Database | Works with a simple file database in development and Postgres in the full stack, with migrations and a documented schema | `db/`, `_docs/data-model.md` |
+| 8 | Containerisation | One `make up` starts everything; health checks included | `docker-compose.yml`, `Makefile` |
+| 9 | Integration testing | Tests that run against the real stack, from collection to a bot reply — kept separate from the unit tests | `tests/integration/` |
+| 10 | Deployment | A public Telegram bot plus a public dashboard address, with a check after each deploy | `_docs/deployment.md` |
+| 11 | CI/CD | Every pull request runs lint, tests and the answer-quality scoreboard; merging to main deploys, verifies and can roll back | `.github/workflows/` |
+| 12 | Agent extension pack | Project instructions, a reusable routine, a checker helper, our own tool server, a guardrail, and a written list of what the bot may do | `skills/`, `subagents/`, `mcp-server/`, `hooks/`, `docs/permissions.md` |
+| 13 | Security, audit and ops | An AI code-review on pull requests, scanner findings, a capability list for the bot, an incident rehearsal, and a written data policy | `security/`, `ops/`, `observability/` |
+| 14 | Reproducibility | Three commands from a clean machine: set up, start, test end to end | `README.md`, `Makefile` |
 
-## 8. Milestones
+## 8. The plan
 
-| M | Goal | Exit condition |
+| Step | What it means | Done when |
 | --- | --- | --- |
-| M0 | Scaffold | Repo, AGENTS.md, spec, scoping, git initialized |
-| M1 | Contract + schema | `openapi.yaml` + migrations applied in Compose; contract test green |
-| M2 | Ingestion | Daily run loads 12 competitions into Postgres; ledger row per run; rate limiter proven by test |
-| M3 | API | Backend endpoints pass unit + integration tests against the real stack |
-| M4 | Agent | MCP tools wired into Hermes; Telegram answers grounded questions end to end |
-| M5 | Dashboard + evals | Frontend tested; golden-question eval run in CI with a pass threshold |
-| M6 | Ops + hardening | CI/CD, observability with one actionable alert, incident drill, security artifacts, AI usage report |
+| M0 | Empty repo, scope, spec, API contract | Done |
+| M1 | Database schema and the first migration, matching the contract | Tests against the real stack pass |
+| M2 | Daily collection from the football API | A day's data lands with a run log, and the real score delay is measured |
+| M3 | The wrapped API | The bot's tools can read everything they need |
+| M4 | The bot on Telegram | It answers the golden questions correctly, and refuses when it should |
+| M5 | Dashboard and scoreboard | Both tested, and the scoreboard runs on every change |
+| M6 | Automation, monitoring, security | One alert that fires on real user impact, plus the audit paperwork |
 
-## 9. Open decisions
+## 9. Still to decide
 
-1. **Dashboard hosting:** Cloudflare named tunnel (needs a domain) vs. quick tunnel (random URL, changes on restart).
-   Default: named tunnel, quick tunnel documented as fallback.
-2. **RAG depth:** pgvector inside Postgres (default, one store) vs. a separate vector service (not worth it at this size).
-3. **Scope guard:** keep the frontend to read-only observability first; write actions (pause ingestion, re-run job) are
-   admin-only and audited.
-4. **Model choice:** Hermes' provider is configurable; the eval harness must run against a pinned model so scores are comparable.
+1. **Dashboard address:** a permanent Cloudflare tunnel (needs a domain you own) or a temporary one whose address
+   changes on restart. Default: temporary first, permanent before the final submission.
+2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
+   admin-only and logged.
+3. **Which AI model:** configurable in Hermes, but pinned for the scoreboard so scores stay comparable.
+4. **Licence:** the public repo currently has none chosen.

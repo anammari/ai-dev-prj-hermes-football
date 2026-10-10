@@ -219,7 +219,7 @@ M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report. Deta
 
 | Risk | Mitigation |
 | --- | --- |
-| Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §4.2; a re-runnable probe in CI reports a change instead of failing at answer time |
+| Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §3; a re-runnable probe in CI reports a change instead of failing at answer time |
 | The score delay is unmeasured, so "delayed" could be mistaken for "live" | M2 measures it by polling one finished match until its score appears; the freshness stamp then carries the measured number |
 | Delayed data mistaken for live data | Freshness stamping enforced in the API layer, not only in the prompt |
 | Agent hallucinating scores under pressure | Grounding policy in `SOUL.md` + eval cases with unanswerable questions + retrieval of facts only via tools |
