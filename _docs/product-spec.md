@@ -45,10 +45,13 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 ### F1 — Ingestion pipeline (`ingest/`)
 
-- **R-F1.1** A daily scheduled run loads, for each of the 12 free-tier competitions: competitions, teams, matches
-  (season fixtures + results), and standings.
-- **R-F1.2** All upstream traffic passes through one client that enforces **<= 10 requests/minute** with backoff on
-  429/5xx and a retry ceiling.
+- **R-F1.1** A daily scheduled run loads, for every competition the plan exposes (13 observed on 2026-10-10, not a
+  hardcoded 12): the competition record, teams and squads, matches (season fixtures + results), standings and top
+  scorers. Fixtures and results are fetched **in batch across competitions by date window**, not competition by
+  competition.
+- **R-F1.2** All upstream traffic passes through one client that paces on the upstream `x-requests-available-minute`
+  and `X-RequestCounter-Reset` headers and enforces **<= 10 requests/minute** as a hard ceiling, with backoff on
+  429/5xx, a retry ceiling, and upstream 403 treated as `data_not_available`.
 - **R-F1.3** Runs are **idempotent**: re-running the same day does not duplicate rows.
 - **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver).
 - **R-F1.5** Each run writes a ledger row: start/end, status, upstream calls used, rows upserted, errors.
@@ -172,7 +175,8 @@ M5 dashboard + evals -> M6 CI/CD, observability, security, AI-usage report. Deta
 
 | Risk | Mitigation |
 | --- | --- |
-| Free tier returns less than assumed (scorers, lineups, h2h) | Spike sub-resources in M2; every feature degrades to "not available in the free tier" instead of failing |
+| Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §4.2; a re-runnable probe in CI reports a change instead of failing at answer time |
+| The score delay is unmeasured, so "delayed" could be mistaken for "live" | M2 measures it by polling one finished match until its score appears; the freshness stamp then carries the measured number |
 | Delayed data mistaken for live data | Freshness stamping enforced in the API layer, not only in the prompt |
 | Agent hallucinating scores under pressure | Grounding policy in `SOUL.md` + eval cases with unanswerable questions + retrieval of facts only via tools |
 | Rate limit exhaustion from retries or dev usage | Token bucket, cache table for repeated windows, dev environment reads from the local DB only |

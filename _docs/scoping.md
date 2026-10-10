@@ -66,7 +66,7 @@ evidence), `evals/` (golden questions), `tests/` (unit, integration, e2e), `.git
 
 ## 4. Data source: free-tier reality check
 
-Verified against football-data.org pricing/coverage/policies pages:
+### 4.1 Documented terms (pricing, coverage and policies pages)
 
 - **Free plan: 12 competitions** — Premier League, Championship, Bundesliga, Serie A, La Liga, Ligue 1, Eredivisie,
   Primeira Liga, Brasileirao Serie A, Champions League, European Championship, World Cup.
@@ -74,13 +74,57 @@ Verified against football-data.org pricing/coverage/policies pages:
 - **Scores and schedules are delayed** on the free tier; **fixtures and league tables** are included.
 - Live scores, odds, lineups and advanced stats are paid tiers.
 
+### 4.2 Verified against the live API (free-tier key, 2026-10-10)
+
+Every endpoint our contract depends on was probed with a real free-tier key before any backend code was written.
+Server time at probe: 2026-10-10 05:46 UTC.
+
+| Upstream endpoint | Result | Consequence for us |
+| --- | --- | --- |
+| `GET /v4/competitions` | 200 | The list is **plan-filtered**: it returned **13** competitions — the documented 12 **plus `CLI` (Copa Libertadores)**. Our competition set follows what the plan exposes, not a hardcoded dozen |
+| `GET /v4/competitions/{code}` | 200 | The **`coverage` object is empty (`{}`)** on this plan. Our `Coverage` block cannot be scraped from upstream — it is locally maintained metadata |
+| `GET /v4/competitions/{code}/standings` | 200 | Works for leagues and cups. Carries `stage`, `group`, `type` (CL returned `LEAGUE_STAGE`/`TOTAL`); PL = 20 rows with `playedGames`, `goalsFor/Against`, `goalDifference`, `form` |
+| `GET /v4/competitions/{code}/matches` | 200 | `season`, `matchday`, `status`, `dateFrom/dateTo` all work (PL 2025 = 380 matches; a 17-day window = 30). Each match carries `lastUpdated`, `referees`, `group`, `stage` — and a decorative `odds` field |
+| `GET /v4/competitions/{code}/teams` | 200 | 20 teams for PL and BSA. Team objects carry **`squad`** (24 players for Arsenal, 48 for Fluminense), plus `coach`, `staff`, `venue`, `clubColors`, `founded`, `website`, `runningCompetitions` |
+| `GET /v4/competitions/{code}/scorers` | 200 | **Top scorers are available on the free tier** (contrary to the early assumption) |
+| `GET /v4/teams/{id}`, `/teams/{id}/matches` | 200 | `resultSet` returns `count/first/last/played/wins/draws/losses` — useful for our own aggregates and pagination totals |
+| `GET /v4/matches/{id}`, `/matches/{id}/head2head` | 200 | h2h returns `aggregates`, but they were **unreliable**: `numberOfMatches: 3`, `totalGoals: 12`, yet `wins/draws/losses: 0` for both teams → **we compute head-to-head ourselves from the match list** |
+| `GET /v4/persons/{id}` | 200 | Player detail available; player questions are answerable |
+| `GET /v4/matches?competitions=A,B,C&dateFrom=&dateTo=` | 200 | **Batch fetch across competitions works** (27 matches for three leagues in one week, one call) — this is what makes the rate budget comfortable |
+| `GET /v4/competitions/EL` (out of plan) | **403** | `{"message": "...not within your permissions. Please check your subscription.", "errorCode": 403}` → we surface `upstream_unavailable`/`data_not_available`, never a silent empty list |
+
+Response headers we can build on: `x-requests-available-minute` (calls left in the current minute),
+`X-RequestCounter-Reset` (seconds until reset), `X-Cache-Status`, `X-Authenticated-Client`, `X-API-Version`.
+
+**Still unmeasured: the size of the score delay.** At 05:46 UTC on 2026-10-10 every match in the "today" window was
+still `TIMED` with `lastUpdated` values from a nightly refresh (00:20 and 01:32 UTC), so no live delay could be
+observed in that session. Procedure for M2: poll one finished match every 5 minutes until its score appears,
+record the elapsed time, publish the number, and use it in the freshness stamp instead of the word "delayed".
+
+### 4.3 What this changes in the design
+
+- **Rate limiting gets real inputs.** The ingester reads `x-requests-available-minute` and
+  `X-RequestCounter-Reset` and paces on them; the local token bucket is a safety net, not the primary mechanism.
+- **Ingestion is fixture-first, not competition-first.** One `/v4/matches?competitions=...&dateFrom=&dateTo=` call
+  covers a whole matchday across competitions; per-competition calls are reserved for standings, teams and scorers.
+  A full daily refresh is therefore on the order of a few dozen calls, well inside the 10/min budget.
+- **`Coverage` becomes our own metadata**, maintained by this project and reviewed when ingestion changes.
+- **Squads and players are in scope.** `squad_available` now means "ingestion has stored a squad", not "the plan
+  forbids it".
+- **Head-to-head is computed locally** from stored matches; upstream aggregates are not trusted.
+- **`odds` is present but unusable** (`{"msg": "Activate Odds-Package in User-Panel to retrieve odds."}`) — the
+  contract exposes no odds, and the ingestion ignores the field.
+- **Out-of-plan is a first-class state**: upstream 403 is mapped to a documented error, never to an empty result.
+
+Evidence for this section is the probe output recorded on 2026-10-10; a re-runnable probe script is on the M2 list so
+the findings can be regenerated rather than trusted.
+
 Design consequences that are now hard rules in `AGENTS.md`:
 
 - Batch ingestion only, with a token bucket, backoff, and caching; no upstream call in a request path.
 - Every answer that contains a score or a table carries a **data timestamp** and the source.
 - The agent must state that data is delayed rather than imply it is live.
-- Early spike task: confirm which sub-resources (scorers, lineups, head-to-head) actually return on free — the
-  product must degrade gracefully, not crash on 403.
+- A missing or refused resource is reported as such, never rendered as an empty table.
 
 ## 5. Scope extensions (beyond the original brief)
 

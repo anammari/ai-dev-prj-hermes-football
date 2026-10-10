@@ -16,7 +16,8 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **scoping stage**. Only `_docs/` exists. No application code yet.
+Status: **scoping stage**. `_docs/` plus the reviewed API contract (`openapi.yaml`, v0.1.0) and its tooling exist.
+No application code yet.
 
 ## Architecture (target)
 
@@ -94,8 +95,10 @@ make logs      # tail logs for a service
 2. **Freshness is part of every answer.** The free tier serves *delayed* scores and schedules. Any answer with a
    score or table must carry the data timestamp ("as of <ts>, source: football-data.org"). Never present stale data
    as live.
-3. **Free-tier budget: 10 requests/minute, 12 competitions.** All API access goes through the ingest client, which
-   owns a token bucket, retries with backoff, and caches. Never call the upstream API from request-handling code.
+3. **Free-tier budget: 10 requests/minute.** Pace on the upstream `x-requests-available-minute` and
+   `X-RequestCounter-Reset` headers; the local token bucket is the safety net, not the primary mechanism. The
+   competition list is plan-filtered upstream (13 exposed on 2026-10-10, not the documented 12): never hardcode it.
+   All API access goes through the ingest client — never call upstream from request-handling code.
 4. **The agent's data path is read-only.** The MCP server and every agent-facing endpoint use a read-only DB role.
    No write tool, no DDL, no arbitrary SQL from model output.
 5. **No Docker socket inside the Hermes container.** Isolation comes from the container boundary plus read-only
@@ -119,11 +122,14 @@ make logs      # tail logs for a service
 
 ## Current status / next steps
 
-Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`).
+Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
+API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`).
 
 Next, in order:
-1. `openapi.yaml` + DB schema and Alembic migration (contract first).
-2. `ingest/` client with the rate limiter and run ledger; spike which sub-resources the free tier really returns.
+1. DB schema and the first Alembic migration, matching the contract.
+2. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
+   results in `_docs/scoping.md` §4.2 (squads, scorers and players ARE available; h2h aggregates and odds are not
+   trustworthy; fixtures fetch in batch across competitions).
 3. `backend/` endpoints against the contract + unit/integration tests.
 4. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.
 5. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
