@@ -53,6 +53,7 @@ class RunReport:
     duration_seconds: float = 0.0
     payloads_unchanged: int = 0
     payloads_pruned: int = 0
+    matches_skipped: int = 0
     notes_index: dict[str, Any] = field(default_factory=dict)
 
 
@@ -259,6 +260,11 @@ def prune_raw_payloads(
         return int(result.rowcount or 0)
 
 
+def _has_both_teams(match: dict[str, Any]) -> bool:
+    # Future knockout fixtures are published before their teams are decided.
+    return all((match.get(side) or {}).get("id") is not None for side in ("homeTeam", "awayTeam"))
+
+
 def _fetch_and_normalize_matches(
     client: FootballDataClient,
     factory: sessionmaker[Session],
@@ -298,6 +304,9 @@ def _fetch_and_normalize_matches(
                     raise UpstreamError("upstream matches response is missing its list")
                 with session_scope(factory) as session:
                     for match in matches:
+                        if not _has_both_teams(match):
+                            report.matches_skipped += 1
+                            continue
                         upsert_match(session, match, counter)
                 page_count += 1
                 result_set = payload.get("resultSet") or {}

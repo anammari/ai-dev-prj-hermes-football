@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
@@ -131,7 +131,17 @@ class StubClient:
                             "fullTime": {"home": 2, "away": 1},
                             "halfTime": {"home": 1, "away": 0},
                         },
-                    }
+                    },
+                    {
+                        "id": 31,
+                        "competition": {"code": "TST"},
+                        "season": {"year": 2026},
+                        "status": "TIMED",
+                        "utcDate": "2027-05-01T12:00:00Z",
+                        "homeTeam": {"id": None, "name": None},
+                        "awayTeam": {"id": None, "name": None},
+                        "score": {"fullTime": {"home": None, "away": None}},
+                    },
                 ],
             }
         raise AssertionError(f"unexpected endpoint: {endpoint} {params}")
@@ -160,6 +170,7 @@ def test_run_is_idempotent_and_persists_bronze_and_serving_rows(settings, engine
 
     assert first.status == "succeeded"
     assert first.rows_inserted > 0
+    assert first.matches_skipped == 1
     assert second.status == "succeeded"
     assert second.rows_inserted == 0
     assert second.rows_unchanged > 0
