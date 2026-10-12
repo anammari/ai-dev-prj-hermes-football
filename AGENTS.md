@@ -97,6 +97,28 @@ make score-delay [MATCH_ID=…] # poll a finished match while its full-time scor
 make logs      # tail logs for a service
 ```
 
+## Working copy and branches (read before touching git)
+
+- This project has **exactly one working copy**: `/Users/ahmadammari/GitHub/ai-dev-prj-hermes-football`. Every
+  milestone branch is created and checked out **there**.
+- **Do not create or use `git worktree` copies** of this repo (not under `~/GitHub/copilot-worktrees/…`, not
+  anywhere else). If a worktree for this project exists, remove the worktree directory (never the branch), then
+  `git checkout` the branch at the root.
+- **The active branch is the milestone branch** (currently `anammari-m2-ingest-pipeline`), not `main`. `main`
+  receives merged milestone work only.
+
+```bash
+# where am I? Must print the root path, a milestone branch (not main), and a single worktree line.
+pwd && git rev-parse --abbrev-ref HEAD && git worktree list
+# get back
+cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout anammari-m2-ingest-pipeline
+```
+
+**Why:** two checkouts of the same repo shared the Compose project name `hermes-football` and one Postgres volume
+while carrying different `.env` passwords, which broke `make up` and `make itest` with
+`FATAL: password authentication failed for user "hermes"`. (Compose's project name is now overridable through
+`COMPOSE_PROJECT_NAME`; the default stays `hermes-football` so the existing `hermes-football_pgdata` is kept.)
+
 ## Hard rules
 
 1. **Grounding over fluency.** Never invent scores, fixtures, standings, dates, or player facts. Every factual
