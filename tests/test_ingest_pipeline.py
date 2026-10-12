@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 import ingest.__main__ as ingest_cli
 from db.models import Competition, IngestRun, Match, Player, RawPayload, Season, Standing, Team, TopScorer
-from ingest.client import ClientStats, DataNotAvailable
+from ingest.client import ClientStats, DataNotAvailable, ResourceNotFound, UpstreamError
 from ingest.pipeline import run_ingestion
 
 
@@ -16,25 +16,41 @@ from ingest.pipeline import run_ingestion
 class StubClient:
     calls: int = 0
     unavailable: set[str] | None = None
+    not_found: set[str] | None = None
+    broken: set[str] | None = None
+    second_competition: bool = False
     match_sent: bool = False
 
     def __post_init__(self) -> None:
         self.stats = ClientStats()
         self.unavailable = self.unavailable or set()
+        self.not_found = self.not_found or set()
+        self.broken = self.broken or set()
+        self.requested: list[str] = []
 
     def get_json(self, endpoint: str, params: dict | None = None) -> dict:
         self.calls += 1
         self.stats.calls_used += 1
+        self.requested.append(endpoint)
+        if endpoint == "/matches" and params:
+            span = (date.fromisoformat(params["dateTo"]) - date.fromisoformat(params["dateFrom"])).days + 1
+            if span > 10:
+                raise UpstreamError("upstream returned HTTP 400 for /matches", status_code=400)
         if endpoint in self.unavailable:
             raise DataNotAvailable(f"upstream resource unavailable: {endpoint}", status_code=403)
+        if endpoint in self.not_found:
+            raise ResourceNotFound(f"upstream resource not found: {endpoint}", status_code=404)
+        if endpoint in self.broken:
+            raise UpstreamError(f"upstream returned HTTP 500 for {endpoint}", status_code=500)
         if endpoint == "/competitions":
             self.match_sent = False
+            codes = ["TST", "TS2"] if self.second_competition else ["TST"]
             return {
                 "competitions": [
                     {
-                        "id": 1,
-                        "code": "TST",
-                        "name": "Test League",
+                        "id": index,
+                        "code": code,
+                        "name": f"Test League {code}",
                         "type": "LEAGUE",
                         "area": {"name": "Testland"},
                         "currentSeason": {
@@ -43,6 +59,7 @@ class StubClient:
                             "endDate": "2027-06-30",
                         },
                     }
+                    for index, code in enumerate(codes, start=1)
                 ]
             }
         if endpoint.endswith("/teams"):
@@ -175,6 +192,67 @@ def test_forbidden_competition_resource_is_recorded_as_partial(settings, engine,
     assert report.rows_inserted > 0
 
 
+def test_missing_standings_is_partial_and_other_competitions_still_load(settings, engine, embedder) -> None:
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient(not_found={"/competitions/TST/standings"}, second_competition=True)
+
+    report = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+
+    assert report.status == "partial"
+    assert [error["resource"] for error in report.errors] == ["standings:TST"]
+    assert "/competitions/TS2/standings" in client.requested
+    assert "/matches" in client.requested
+    assert report.rows_inserted > 0
+
+
+def test_upstream_error_in_one_competition_does_not_abort_the_run(settings, engine, embedder) -> None:
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient(broken={"/competitions/TST/scorers"}, second_competition=True)
+
+    report = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+
+    assert report.status == "partial"
+    assert [error["resource"] for error in report.errors] == ["competition:TST"]
+    assert "/competitions/TS2/scorers" in client.requested
+    assert "/matches" in client.requested
+    with factory() as session:
+        run = session.get(IngestRun, report.run_id)
+        assert run is not None and run.status == "partial"
+
+
+def test_catalog_failure_fails_the_run(settings, engine, embedder) -> None:
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient(broken={"/competitions"})
+
+    report = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+
+    assert report.status == "failed"
+    assert [error["resource"] for error in report.errors] == ["run"]
+    assert client.requested == ["/competitions"]
+
+
+def test_bronze_payloads_are_pruned_after_retention_and_repeats_are_flagged(settings, engine, embedder) -> None:
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient()
+
+    first = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+    second = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+    assert first.payloads_unchanged < first.calls_used
+    assert second.payloads_unchanged == second.calls_used
+
+    later = run_ingestion(
+        settings, factory, client, embedder, raw_retention_days=1, now=lambda: _fixed_now() + timedelta(days=30)
+    )
+    assert later.payloads_pruned == first.calls_used + second.calls_used
+    with factory() as session:
+        remaining = session.scalars(select(RawPayload.run_id)).all()
+        assert set(remaining) == {later.run_id}
+
+
+def _fixed_now() -> datetime:
+    return datetime(2026, 10, 10, tzinfo=UTC)
+
+
 def test_score_delay_poll_persists_responses_and_run_ledger(settings, engine, monkeypatch) -> None:
     factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
@@ -199,9 +277,10 @@ def test_score_delay_poll_persists_responses_and_run_ledger(settings, engine, mo
             return next(self.responses)
 
     monkeypatch.setattr(ingest_cli, "FootballDataClient", PollingClient)
-    monkeypatch.setattr(ingest_cli.time, "sleep", lambda _seconds: None)
 
-    result = ingest_cli.measure_score_delay(settings, factory, 1234, poll_seconds=1, timeout_seconds=10)
+    result = ingest_cli.measure_score_delay(
+        settings, factory, 1234, poll_seconds=1, timeout_seconds=10, sleep=lambda _seconds: None
+    )
 
     assert result["match_id"] == 1234
     assert result["home_score"] == 2

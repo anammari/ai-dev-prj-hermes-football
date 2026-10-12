@@ -99,10 +99,22 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   competition.
 - **R-F1.2** All upstream traffic passes through one client that paces on the upstream `x-requests-available-minute`
   and `X-RequestCounter-Reset` headers and enforces **<= 10 requests/minute** as a hard ceiling, with backoff on
-  429/5xx, a retry ceiling, and upstream 403 treated as `data_not_available`.
+  429/5xx, a retry ceiling, upstream 403 treated as `data_not_available` and upstream 404 as `resource_not_found`.
+  An exhausted quota (`x-requests-available-minute` of 0) with no reset header waits a full 60-second window.
+  **Fault isolation:** a 403/404 on an optional sub-resource (`teams`, `standings`, `scorers`, `/teams/{id}`) is
+  recorded in `ingest_runs.errors` and the run continues; any `UpstreamError` inside one competition skips that
+  competition only, and a failed `/matches` window skips that window only. Such runs end `partial`. `failed` is
+  reserved for a failing `/competitions` catalog or a database error. Example: EC (the 2024 European Championship)
+  has no standings or scorers on the free tier and returns 404 every day.
 - **R-F1.3** Runs are **idempotent**: re-running the same day does not duplicate rows.
-- **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver).
+- **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver). Bronze is **pruned after
+  `RAW_PAYLOAD_RETENTION_DAYS` (default 30)** at the end of each run, never including the run that just wrote it;
+  `content_hash` is a change-detection fingerprint (a payload identical to an earlier one for the same endpoint is
+  counted as `payloads_unchanged` in the run report). The normalized tables are the durable record.
 - **R-F1.5** Each run writes a ledger row: start/end, status, upstream calls used, rows upserted, errors.
+- **R-F1.6** Expected cost of a full run: about 250-350 upstream calls, i.e. roughly **30 minutes** at 10 requests/minute,
+  which is the whole free-tier budget for that half hour. The run logs progress per competition. The scheduler
+  validates `UPSTREAM_API_KEY` at startup so a bad token fails `make up` instead of a once-a-day log line.
 - **AC** `make ingest` twice in a row -> second run reports 0 inserted / N unchanged, ledger shows both runs, and no
   API call exceeds the rate limit (asserted in a unit test with a fake clock).
 

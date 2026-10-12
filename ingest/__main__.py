@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -19,7 +21,7 @@ from db.session import create_db_engine, create_session_factory, session_scope
 from db.settings import Settings
 from ingest.client import FootballDataClient
 from ingest.knowledge.embedding import OllamaEmbedder
-from ingest.pipeline import _safe_error, run_ingestion
+from ingest.pipeline import DEFAULT_RAW_RETENTION_DAYS, _safe_error, run_ingestion
 from ingest.scheduler import run_daily
 
 
@@ -33,9 +35,12 @@ def main() -> None:
     delay.add_argument("--poll-seconds", type=int, default=60)
     delay.add_argument("--timeout-seconds", type=int, default=86400)
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = Settings.from_env()
     engine = create_db_engine(settings)
     factory = create_session_factory(engine)
+
+    raw_retention_days = int(os.environ.get("RAW_PAYLOAD_RETENTION_DAYS", DEFAULT_RAW_RETENTION_DAYS))
 
     def action(trigger: str = "manual") -> dict[str, Any]:
         with FootballDataClient(
@@ -46,13 +51,22 @@ def main() -> None:
             model=settings.embedding_model,
             dim=settings.embedding_dim,
         ) as embedder:
-            report = run_ingestion(settings, factory, client, embedder, trigger=trigger)
+            report = run_ingestion(
+                settings,
+                factory,
+                client,
+                embedder,
+                trigger=trigger,
+                raw_retention_days=raw_retention_days,
+            )
         return asdict(report)
 
     try:
         if args.command == "run":
             print(json.dumps(action(), sort_keys=True))
         elif args.command == "schedule":
+            # Fail at startup, not at the first scheduled run, when the token is missing or a placeholder.
+            FootballDataClient(base_url=settings.upstream_base_url, api_key=settings.upstream_api_key).close()
             run_daily(
                 lambda: print(json.dumps(action("schedule"), sort_keys=True), flush=True),
                 hour=int(os.environ.get("INGEST_SCHEDULE_HOUR", "2")),
@@ -78,6 +92,7 @@ def measure_score_delay(
     *,
     poll_seconds: int,
     timeout_seconds: int,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     if poll_seconds <= 0 or timeout_seconds <= 0:
         raise ValueError("poll and timeout values must be positive")
@@ -151,7 +166,7 @@ def measure_score_delay(
                     raise TimeoutError(
                         f"match {match_id} full-time score was not published within {timeout_seconds} seconds"
                     )
-                time.sleep(min(poll_seconds, remaining))
+                sleep(min(poll_seconds, remaining))
     except Exception as exc:
         _finish_measurement(
             factory,

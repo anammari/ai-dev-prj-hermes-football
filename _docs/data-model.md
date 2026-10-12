@@ -37,7 +37,7 @@ retained as JSON; only normalized rows feed serving tools.
 | Table | Holds | Notes |
 | --- | --- | --- |
 | `ingest_runs` | `IngestRun`: the ledger of every collection run | `competitions` and `errors` are JSON: both are published as arrays of values, not as relations worth joining |
-| `raw_payloads` | bronze copy of each successful upstream response | Stores endpoint, request parameters, JSON payload, SHA-256 content hash, fetch time, and run id; never exposed to the agent |
+| `raw_payloads` | bronze copy of each successful upstream response | Stores endpoint, request parameters, JSON payload, SHA-256 content hash, fetch time, and run id; never exposed to the agent. **Retention:** rows older than `RAW_PAYLOAD_RETENTION_DAYS` (default 30) are deleted at the end of each run (the current run is exempt), bounding it to roughly 30 days of runs instead of ~110k rows a year. `content_hash` is used for change detection: the run report counts payloads identical to an earlier one for the same endpoint |
 | `agent_turns` | `AgentTurn`: what was asked, what was answered, how it was routed | `chat_id_hash` is salted; the raw Telegram id never reaches the database (`AGENTS.md` rule 6) |
 | `knowledge_chunks` | the derived index of the notes corpus | `embedding vector(768)` on Postgres, `embedding_model`/`embedding_dim` per chunk, `content_hash` of the whole source file |
 

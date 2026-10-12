@@ -10,7 +10,7 @@
 # The M2 scheduler joins `db` and `ollama`; the later application services arrive with their own
 # milestones.
 
-name: hermes-football
+name: ${COMPOSE_PROJECT_NAME:-hermes-football}
 
 x-app-env: &app-env
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - run `make setup`}@db:5432/${POSTGRES_DB:-hermes}
@@ -69,6 +69,7 @@ services:
       INGEST_SCHEDULE_HOUR: ${INGEST_SCHEDULE_HOUR:-2}
       INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
       INGEST_TIMEZONE: ${INGEST_TIMEZONE:-UTC}
+      RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-30}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["python", "-m", "ingest", "schedule"]

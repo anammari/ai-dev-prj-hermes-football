@@ -3,7 +3,14 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from ingest.client import DataNotAvailable, FootballDataClient, RateLimiter, TokenBucket, UpstreamError
+from ingest.client import (
+    DataNotAvailable,
+    FootballDataClient,
+    RateLimiter,
+    ResourceNotFound,
+    TokenBucket,
+    UpstreamError,
+)
 
 
 class FakeClock:
@@ -110,3 +117,33 @@ def test_non_retryable_errors_and_missing_credentials_are_explicit() -> None:
         client.close()
     with pytest.raises(ValueError, match="UPSTREAM_API_KEY"):
         FootballDataClient(base_url="https://example.test", api_key="replace-with-token")
+
+
+def test_exhausted_quota_without_reset_header_waits_a_full_window() -> None:
+    clock = FakeClock()
+    limiter = RateLimiter(bucket=TokenBucket(clock=clock.now, sleep=clock.sleep), clock=clock.now)
+
+    assert limiter.observe({"x-requests-available-minute": "0"})
+    limiter.before_request()
+    assert clock.value == pytest.approx(60)
+
+
+def test_missing_resource_is_reported_without_retries() -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(404, json={"message": "not found"})
+
+    client = FootballDataClient(
+        base_url="https://example.test/v4",
+        api_key="token",
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _seconds: None,
+    )
+
+    with pytest.raises(ResourceNotFound) as caught:
+        client.get_json("/competitions/EC/standings")
+
+    assert caught.value.status_code == 404
+    assert len(calls) == 1

@@ -10,7 +10,7 @@ SWAGGER_PORT ?= 8081
 SWAGGER_NAME ?= hermes-football-swagger
 Q ?=
 
-.PHONY: help setup build up down db-port migrate models test itest lint check-notes index-notes search ingest score-delay \
+.PHONY: help setup build up down db-port migrate models test itest itest-isolated lint check-notes index-notes search ingest score-delay \
         logs swagger swagger-stop validate-spec
 
 help: ## Show available targets
@@ -30,6 +30,10 @@ up: ## Start the stack and apply migrations
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory migrate
 	$(COMPOSE) up -d ingest
+	@sleep 5
+	@if [ -z "$$($(COMPOSE) ps --status running --services ingest)" ]; then \
+	  echo "ingest scheduler exited at startup (usually a missing UPSTREAM_API_KEY):"; \
+	  $(COMPOSE) logs --tail=10 ingest; exit 1; fi
 	@echo "stack up: db, ollama, ingest scheduler."
 
 down: ## Stop everything, keep the volumes
@@ -50,6 +54,16 @@ test: ## Unit tests: fast, no network, no stack
 
 itest: ## Integration tests against the running stack (Postgres + pgvector + Ollama)
 	$(TOOLS) run --rm tests pytest -q -m integration
+
+# Own Compose project, own volumes, throwaway passwords: never touches the retained stack's data.
+ISOLATED := COMPOSE_PROJECT_NAME=hermes-football-itest POSTGRES_PASSWORD=itest-only AGENT_DB_PASSWORD=itest-only-agent
+
+itest-isolated: ## Integration tests against a throwaway Postgres + Ollama (own project, volumes removed after)
+	@set -e; trap '$(ISOLATED) docker compose --profile tools down -v' EXIT; \
+	  $(ISOLATED) docker compose up -d db ollama; \
+	  $(ISOLATED) docker compose --profile tools run --rm models; \
+	  $(ISOLATED) docker compose --profile tools run --rm migrate; \
+	  $(ISOLATED) docker compose --profile tools run --rm tests pytest -q -m integration
 
 lint: ## Ruff over the repository
 	$(TOOLS) run --rm tests ruff check .

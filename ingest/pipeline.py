@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from db.models import Competition, IngestRun, RawPayload, new_id
 from db.session import session_scope
 from db.settings import Settings
-from ingest.client import DataNotAvailable, FootballDataClient, UpstreamError
+from ingest.client import DataNotAvailable, FootballDataClient, ResourceNotFound, UpstreamError
 from ingest.knowledge.embedding import Embedder
 from ingest.knowledge.indexer import index_corpus
 from ingest.normalize import (
@@ -25,6 +27,16 @@ from ingest.normalize import (
     upsert_standings,
     upsert_team,
 )
+
+logger = logging.getLogger(__name__)
+
+# Bronze payloads older than this are pruned at the end of each run; None keeps them forever.
+DEFAULT_RAW_RETENTION_DAYS = 30
+# Upstream rejects /matches ranges longer than 10 days with HTTP 400.
+MATCH_WINDOW_DAYS = 10
+
+# Optional sub-resources the free plan may withhold (403) or not publish at all (404).
+_UNAVAILABLE = (DataNotAvailable, ResourceNotFound)
 
 
 @dataclass(slots=True)
@@ -39,6 +51,8 @@ class RunReport:
     rows_unchanged: int = 0
     errors: list[dict[str, str]] = field(default_factory=list)
     duration_seconds: float = 0.0
+    payloads_unchanged: int = 0
+    payloads_pruned: int = 0
     notes_index: dict[str, Any] = field(default_factory=dict)
 
 
@@ -49,6 +63,7 @@ def run_ingestion(
     embedder: Embedder,
     *,
     trigger: str = "manual",
+    raw_retention_days: int | None = DEFAULT_RAW_RETENTION_DAYS,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> RunReport:
     if trigger not in {"manual", "schedule"}:
@@ -80,47 +95,25 @@ def run_ingestion(
         ]
         team_details_seen: set[int] = set()
 
-        for competition in snapshots:
+        for position, competition in enumerate(snapshots, start=1):
             code = competition["code"]
-            season = _season_year(competition.get("currentSeason") or {})
-            assert season is not None
-            params = {"season": season}
+            logger.info("ingesting competition %s (%d/%d)", code, position, len(snapshots))
             try:
-                teams_params = {**params, "limit": 500}
-                teams = _fetch(client, factory, run_id, f"/competitions/{code}/teams", teams_params, report)
-                _normalize_teams(factory, teams, code, counter)
-                for team in teams.get("teams", []):
-                    team_id = team.get("id")
-                    if "squad" in team or not team_id or team_id in team_details_seen:
-                        continue
-                    team_details_seen.add(team_id)
-                    try:
-                        detail = _fetch(client, factory, run_id, f"/teams/{team_id}", {}, report)
-                        _normalize_team_detail(factory, detail, code, counter)
-                    except DataNotAvailable as exc:
-                        _add_unavailable(report, "squad", str(team_id), exc)
-            except DataNotAvailable as exc:
-                _add_unavailable(report, "teams", code, exc)
-
-            for resource, normalizer in (
-                ("standings", upsert_standings),
-                ("scorers", upsert_scorers),
-            ):
-                try:
-                    resource_params = {**params, **({"limit": 500} if resource == "scorers" else {})}
-                    payload = _fetch(
-                        client, factory, run_id, f"/competitions/{code}/{resource}", resource_params, report
-                    )
-                    with session_scope(factory) as session:
-                        normalizer(session, payload, _utc(now()).date(), counter)
-                        if resource == "scorers":
-                            row = session.get(Competition, code)
-                            if row is not None and not row.coverage_scorers:
-                                row.coverage_scorers = True
-                                if code not in inserted_competitions:
-                                    counter["updated"] += 1
-                except DataNotAvailable as exc:
-                    _add_unavailable(report, resource, code, exc)
+                _collect_competition(
+                    client,
+                    factory,
+                    run_id,
+                    competition,
+                    report,
+                    counter,
+                    inserted_competitions,
+                    team_details_seen,
+                    _utc(now()).date(),
+                )
+            except UpstreamError as exc:
+                # One competition degrading must not stop the others.
+                _add_unavailable(report, "competition", code, exc)
+                logger.warning("competition %s skipped: %s", code, exc)
 
         _fetch_and_normalize_matches(client, factory, run_id, competitions, report, counter, _utc(now()).date())
         try:
@@ -134,6 +127,10 @@ def run_ingestion(
             }
         except Exception as exc:
             report.errors.append({"resource": "knowledge-index", "message": _safe_error(exc)})
+        if raw_retention_days is not None:
+            report.payloads_pruned = prune_raw_payloads(
+                factory, retention_days=raw_retention_days, keep_run_id=run_id, now=_utc(now())
+            )
     except Exception as exc:
         report.errors.append({"resource": "run", "message": _safe_error(exc)})
     report.calls_used = client.stats.calls_used - calls_before
@@ -163,6 +160,57 @@ def run_ingestion(
     return report
 
 
+def _collect_competition(
+    client: FootballDataClient,
+    factory: sessionmaker[Session],
+    run_id: str,
+    competition: dict[str, Any],
+    report: RunReport,
+    counter: dict[str, int],
+    inserted_competitions: set[str | None],
+    team_details_seen: set[int],
+    snapshot_date: date,
+) -> None:
+    code = competition["code"]
+    season = _season_year(competition.get("currentSeason") or {})
+    assert season is not None
+    params = {"season": season}
+    try:
+        teams_params = {**params, "limit": 500}
+        teams = _fetch(client, factory, run_id, f"/competitions/{code}/teams", teams_params, report)
+        _normalize_teams(factory, teams, code, counter)
+        for team in teams.get("teams", []):
+            team_id = team.get("id")
+            if "squad" in team or not team_id or team_id in team_details_seen:
+                continue
+            team_details_seen.add(team_id)
+            try:
+                detail = _fetch(client, factory, run_id, f"/teams/{team_id}", {}, report)
+                _normalize_team_detail(factory, detail, code, counter)
+            except _UNAVAILABLE as exc:
+                _add_unavailable(report, "squad", str(team_id), exc)
+    except _UNAVAILABLE as exc:
+        _add_unavailable(report, "teams", code, exc)
+
+    for resource, normalizer in (
+        ("standings", upsert_standings),
+        ("scorers", upsert_scorers),
+    ):
+        try:
+            resource_params = {**params, **({"limit": 500} if resource == "scorers" else {})}
+            payload = _fetch(client, factory, run_id, f"/competitions/{code}/{resource}", resource_params, report)
+            with session_scope(factory) as session:
+                normalizer(session, payload, snapshot_date, counter)
+                if resource == "scorers":
+                    row = session.get(Competition, code)
+                    if row is not None and not row.coverage_scorers:
+                        row.coverage_scorers = True
+                        if code not in inserted_competitions:
+                            counter["updated"] += 1
+        except _UNAVAILABLE as exc:
+            _add_unavailable(report, resource, code, exc)
+
+
 def _fetch(
     client: FootballDataClient,
     factory: sessionmaker[Session],
@@ -173,18 +221,42 @@ def _fetch(
 ) -> dict[str, Any]:
     payload = client.get_json(endpoint, params)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     with session_scope(factory) as session:
+        # The hash is a change-detection fingerprint: a payload byte-identical to an earlier one
+        # means the upstream resource did not change between runs.
+        seen_before = session.scalar(
+            select(RawPayload.id)
+            .where(RawPayload.endpoint == endpoint, RawPayload.content_hash == content_hash)
+            .limit(1)
+        )
+        if seen_before is not None:
+            report.payloads_unchanged += 1
         session.add(
             RawPayload(
                 run_id=run_id,
                 endpoint=endpoint,
                 request_params=dict(params),
                 payload=payload,
-                content_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+                content_hash=content_hash,
                 fetched_at=datetime.now(UTC),
             )
         )
     return payload
+
+
+def prune_raw_payloads(
+    factory: sessionmaker[Session], *, retention_days: int, keep_run_id: str, now: datetime
+) -> int:
+    """Delete bronze payloads older than the retention window; the current run is never pruned."""
+    if retention_days < 1:
+        raise ValueError("raw payload retention must be at least one day")
+    cutoff = now - timedelta(days=retention_days)
+    with session_scope(factory) as session:
+        result = session.execute(
+            delete(RawPayload).where(RawPayload.fetched_at < cutoff, RawPayload.run_id != keep_run_id)
+        )
+        return int(result.rowcount or 0)
 
 
 def _fetch_and_normalize_matches(
@@ -208,32 +280,38 @@ def _fetch_and_normalize_matches(
     codes = sorted(item["code"] for item in competitions if item.get("code"))
     window_start = start
     while window_start <= end:
-        window_end = min(window_start + timedelta(days=89), end)
-        offset = 0
-        page_count = 0
-        while True:
-            params = {
-                "competitions": ",".join(codes),
-                "dateFrom": window_start.isoformat(),
-                "dateTo": window_end.isoformat(),
-                "limit": 500,
-                "offset": offset,
-            }
-            payload = _fetch(client, factory, run_id, "/matches", params, report)
-            matches = payload.get("matches")
-            if not isinstance(matches, list):
-                raise UpstreamError("upstream matches response is missing its list")
-            with session_scope(factory) as session:
-                for match in matches:
-                    upsert_match(session, match, counter)
-            page_count += 1
-            result_set = payload.get("resultSet") or {}
-            total = result_set.get("count")
-            offset += len(matches)
-            if not matches or len(matches) < 500 or (isinstance(total, int) and offset >= total):
-                break
-            if page_count >= 100:
-                raise UpstreamError(f"upstream pagination did not terminate for {window_start} to {window_end}")
+        window_end = min(window_start + timedelta(days=MATCH_WINDOW_DAYS - 1), end)
+        try:
+            offset = 0
+            page_count = 0
+            while True:
+                params = {
+                    "competitions": ",".join(codes),
+                    "dateFrom": window_start.isoformat(),
+                    "dateTo": window_end.isoformat(),
+                    "limit": 500,
+                    "offset": offset,
+                }
+                payload = _fetch(client, factory, run_id, "/matches", params, report)
+                matches = payload.get("matches")
+                if not isinstance(matches, list):
+                    raise UpstreamError("upstream matches response is missing its list")
+                with session_scope(factory) as session:
+                    for match in matches:
+                        upsert_match(session, match, counter)
+                page_count += 1
+                result_set = payload.get("resultSet") or {}
+                total = result_set.get("count")
+                offset += len(matches)
+                if not matches or len(matches) < 500 or (isinstance(total, int) and offset >= total):
+                    break
+                if page_count >= 100:
+                    raise UpstreamError(f"upstream pagination did not terminate for {window_start} to {window_end}")
+        except UpstreamError as exc:
+            report.errors.append(
+                {"resource": f"matches:{window_start}..{window_end}", "message": _safe_error(exc)}
+            )
+            logger.warning("matches window %s..%s skipped: %s", window_start, window_end, exc)
         window_start = window_end + timedelta(days=1)
 
 

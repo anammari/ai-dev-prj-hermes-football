@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import sessionmaker
 
-from db.models import Competition, IngestRun, Match, RawPayload, Standing, Team, TopScorer
+from db.models import Competition, IngestRun, Match, Player, RawPayload, Standing, Team, TopScorer
 from db.session import create_db_engine
 from db.settings import Settings
-from ingest.client import ClientStats
+from ingest.client import ClientStats, ResourceNotFound
 from ingest.knowledge.embedding import OllamaEmbedder
 from ingest.pipeline import run_ingestion
 
@@ -32,13 +32,35 @@ def stack_engine(stack_settings: Settings):
     engine.dispose()
 
 
+FIXTURE_IDS = range(987654300, 987654400)
+
+
+@pytest.fixture(autouse=True)
+def remove_fixture_rows(stack_engine):
+    """Keep the synthetic competition out of the retained database once a test is done."""
+    yield
+    factory = sessionmaker(bind=stack_engine, expire_on_commit=False, future=True)
+    with factory.begin() as session:
+        for model in (TopScorer, Standing, Match):
+            session.execute(delete(model).where(model.competition_code == "M2T"))
+        session.execute(delete(Player).where(Player.id.in_(FIXTURE_IDS)))
+        session.execute(delete(Team).where(Team.id.in_(FIXTURE_IDS)))
+        session.execute(delete(Competition).where(Competition.code == "M2T"))
+        for run in session.scalars(select(IngestRun)):
+            if run.competitions == ["M2T"]:
+                session.delete(run)
+
+
 class FixtureClient:
-    def __init__(self) -> None:
+    def __init__(self, not_found: frozenset[str] = frozenset()) -> None:
         self.stats = ClientStats()
         self.match_sent = False
+        self.not_found = not_found
 
     def get_json(self, endpoint: str, _params: dict | None = None) -> dict:
         self.stats.calls_used += 1
+        if endpoint in self.not_found:
+            raise ResourceNotFound(f"upstream resource not found: {endpoint}", status_code=404)
         if endpoint == "/competitions":
             self.match_sent = False
             return {
@@ -176,3 +198,19 @@ def test_ingestion_writes_idempotent_rows_and_bronze_payloads(stack_settings: Se
             == first.calls_used + second.calls_used
         )
         assert session.scalar(select(func.count()).select_from(IngestRun).where(IngestRun.status == "succeeded")) >= 2
+
+
+def test_missing_optional_resource_leaves_a_partial_run_with_matches(
+    stack_settings: Settings, stack_engine, stack_embedder
+):
+    factory = sessionmaker(bind=stack_engine, expire_on_commit=False, future=True)
+    client = FixtureClient(not_found=frozenset({"/competitions/M2T/standings"}))
+
+    report = run_ingestion(stack_settings, factory, client, stack_embedder)
+
+    assert report.status == "partial"
+    assert [error["resource"] for error in report.errors] == ["standings:M2T"]
+    with factory() as session:
+        assert session.get(Match, 987654324) is not None
+        run = session.get(IngestRun, report.run_id)
+        assert run is not None and run.status == "partial"

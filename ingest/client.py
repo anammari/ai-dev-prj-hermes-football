@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 MAX_REQUESTS_PER_MINUTE = 10
+QUOTA_WINDOW_SECONDS = 60.0
 
 
 class UpstreamError(RuntimeError):
@@ -21,6 +22,10 @@ class UpstreamError(RuntimeError):
 
 class DataNotAvailable(UpstreamError):
     """The account cannot read this upstream resource (commonly HTTP 403)."""
+
+
+class ResourceNotFound(UpstreamError):
+    """The upstream resource does not exist for this plan or season (HTTP 404)."""
 
 
 @dataclass(slots=True)
@@ -93,8 +98,9 @@ class RateLimiter:
             reset_seconds = max(0.0, float(reset)) if reset is not None else 0.0
         except ValueError:
             return False
-        if remaining is not None and remaining <= 0 and reset_seconds > 0:
-            self.bucket.block_for(reset_seconds)
+        if remaining is not None and remaining <= 0:
+            # Without a reset header, wait out a whole quota window rather than guess a shorter one.
+            self.bucket.block_for(reset_seconds if reset_seconds > 0 else QUOTA_WINDOW_SECONDS)
             return True
         if remaining is not None and reset_seconds > 0:
             self.bucket.block_for(reset_seconds / (remaining + 1))
@@ -158,6 +164,8 @@ class FootballDataClient:
                 self.stats.rate_limit_hits += 1
             if response.status_code == 403:
                 raise DataNotAvailable(f"upstream resource unavailable: {path}", status_code=403)
+            if response.status_code == 404:
+                raise ResourceNotFound(f"upstream returned HTTP 404 (resource not found) for {path}", status_code=404)
             if response.status_code == 429 or response.status_code >= 500:
                 if response.status_code == 429 and not quota_blocked:
                     self.stats.rate_limit_hits += 1
