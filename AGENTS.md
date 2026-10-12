@@ -16,7 +16,7 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **M1 done; M2 implementation in progress**. The M2 client, bronze store, normalized ingestion pipeline,
+Status: **M1–M2 done; M3 next**. The M2 client, bronze store, normalized ingestion pipeline,
 run ledger, daily scheduler and score-delay polling command are implemented. Unit tests and lint pass; integration
 tests pass against disposable Postgres 16/pgvector and the local embedding model. The retained Postgres volume and a
 real upstream run still need the matching local `.env` password and a valid `UPSTREAM_API_KEY`; never put either

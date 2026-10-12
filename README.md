@@ -4,7 +4,7 @@ A Telegram agent that answers football questions **accurately** — grounded in 
 football-data.org, with a read-only tool layer, an evaluation harness, and a dashboard that shows whether any of it is
 actually working. Everything runs locally in Docker Compose; there is no server to rent.
 
-Status: **M1 done; M2 in progress** (see the [milestone tracker](#milestone-tracker)).
+Status: **M1–M2 done** (see the [milestone tracker](#milestone-tracker)).
 
 ## Problem description
 
@@ -51,8 +51,8 @@ than on the host. Schema, corpus, chunker and indexer checks live in [`tests/`](
 | --- | --- | --- |
 | M0 | Empty repo, scope, product spec, API contract (v0.1.0, lint clean) | Done |
 | M1 | Database schema and the first migration, matching the contract: notes table with `vector(768)`, the corpus `manifest.yaml` and the local embedding provider | Done |
-| M2 | Daily ingestion from football-data.org: run ledger, idempotent loads, re-indexing changed notes, measured score delay | In progress |
-| M3 | Backend API against `openapi.yaml` | Not started |
+| M2 | Daily ingestion from football-data.org: run ledger, idempotent loads, re-indexing changed notes, measured score delay | Done |
+| M3 | Backend API against `openapi.yaml` | Next |
 | M3b | Router spike: deterministic-first vs model-first, judged against hand-checked expectations, before M4 | Not started |
 | M4 | Telegram agent: `SOUL.md`, first notes authored and reviewed, routing, refusal and freshness behaviour | Not started |
 | M5 | Dashboard and eval scoreboard, including routing accuracy | Not started |
