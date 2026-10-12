@@ -216,6 +216,8 @@ LOCAL_TABLES: dict[str, str] = {
     "seasons": "the contract carries `season` as an integer; this table is the local catalog of them",
     "team_competitions": "the join behind TeamDetail.competitions",
     "players": "the contract exposes only squad_available/squad_size, never a player list",
+    "top_scorers": "normalized provider scorer snapshots; M2 data not yet exposed by an API schema",
+    "raw_payloads": "bronze retention of upstream responses, not served to the agent",
     "alembic_version": "Alembic's own bookkeeping",
 }
 
@@ -235,6 +237,8 @@ LOCAL_ONLY: dict[str, dict[str, str]] = {
         "updated_at": "when our ingestion last wrote the row",
     },
     "ingest_runs": {"created_at": "when our ingestion created the row"},
+    "top_scorers": {"*": "see LOCAL_TABLES['top_scorers']"},
+    "raw_payloads": {"*": "see LOCAL_TABLES['raw_payloads']"},
     "knowledge_chunks": {
         "id": "surrogate uuid; the contract calls it chunk_id",
         "ordinal": "position of the passage inside its file, so chunks stay ordered and unique",

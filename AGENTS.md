@@ -16,9 +16,11 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **M1**. The database schema and its first migration, the notes corpus with `manifest.yaml`, and the local
-embedding provider in Compose exist and are tested (`make test`, `make itest`); `_docs/data-model.md` describes the
-tables and how they map onto the contract. No API or agent code yet.
+Status: **M1 done; M2 implementation in progress**. The M2 client, bronze store, normalized ingestion pipeline,
+run ledger, daily scheduler and score-delay polling command are implemented. Unit tests and lint pass; integration
+tests pass against disposable Postgres 16/pgvector and the local embedding model. The retained Postgres volume and a
+real upstream run still need the matching local `.env` password and a valid `UPSTREAM_API_KEY`; never put either
+value in the repo or a prompt.
 
 ## Architecture (target)
 
@@ -84,13 +86,14 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # docker compose up -d (db, ingest, backend, mcp-server, hermes, frontend, ollama)
+make up        # start db, ollama and the ingest scheduler; apply migrations
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the Compose stack
 make e2e       # Playwright end-to-end
 make eval      # golden-question eval run against the agent
 make ingest    # trigger one ingestion run manually
+make score-delay [MATCH_ID=…] # poll a finished match while its full-time score is unpublished
 make logs      # tail logs for a service
 ```
 
@@ -135,16 +138,18 @@ make logs      # tail logs for a service
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`), decision records in `_docs/decisions/`
-(0001 notes corpus + manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the
-container). M1 is done: `db/models.py` plus migration `0001_init` matching the contract, the corpus with
-`hermes/agent-knowledge/manifest.yaml`, the chunker and embedding client, and one note indexed and retrieved end to
-end in Postgres (`_docs/data-model.md`, `make test`, `make itest`).
+API contract v0.1.0 reviewed (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes corpus +
+manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the container). M1 is done:
+schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
+client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
+rate-limited collection, bronze payloads, scorer snapshots, the run ledger, schedule/manual entry points, and delay
+polling. Unit and disposable-Postgres integration verification pass; the retained Postgres volume rejects the
+current local `.env` password, and the API key is still a template placeholder, so live M2 acceptance remains pending.
 
 Next, in order:
-1. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
-   results in `_docs/scoping.md` §3 (squads, scorers and players ARE available; h2h aggregates and odds are not
-   trustworthy; fixtures fetch in batch across competitions).
+1. Finish M2 verification after setting the existing database password and valid API token locally: `make up`,
+   `make models`, `make test`, `make itest`, `make ingest`, and `make score-delay`; write the measured delay into the
+   project docs. The free-tier capability spike is **done** — results are in `_docs/scoping.md` §3.
 2. `backend/` endpoints against the contract + unit/integration tests. This is also where `agent_turns.route`,
    `route_source` and `route_confidence` join `openapi.yaml` — they exist in the schema today (`_docs/data-model.md`,
    open items).

@@ -10,7 +10,7 @@ SWAGGER_PORT ?= 8081
 SWAGGER_NAME ?= hermes-football-swagger
 Q ?=
 
-.PHONY: help setup build up down db-port migrate models test itest lint check-notes index-notes search \
+.PHONY: help setup build up down db-port migrate models test itest lint check-notes index-notes search ingest score-delay \
         logs swagger swagger-stop validate-spec
 
 help: ## Show available targets
@@ -24,12 +24,13 @@ setup: ## Create .env from .env.example and build the app image
 # If buildx cannot write its state directory (a locked-down or sandboxed machine), prefix
 # DOCKER_BUILDKIT=0.
 build: ## Build the app image used by the migrate and tests services
-	$(COMPOSE) build
+	$(TOOLS) build
 
 up: ## Start the stack and apply migrations
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory migrate
-	@echo "stack up: db, ollama. backend, mcp-server, ingest, hermes, frontend and obs arrive with their own milestones."
+	$(COMPOSE) up -d ingest
+	@echo "stack up: db, ollama, ingest scheduler."
 
 down: ## Stop everything, keep the volumes
 	$(COMPOSE) --profile tools down
@@ -61,6 +62,12 @@ index-notes: ## Index changed notes into knowledge_chunks
 
 search: ## Ask the corpus a question: make search Q="how does the playoff work"
 	$(TOOLS) run --rm tests python -m ingest.knowledge search "$(Q)"
+
+ingest: ## Trigger one manual upstream collection run
+	$(COMPOSE) run --rm ingest python -m ingest run
+
+score-delay: ## Poll a finished scoreless match; optionally set MATCH_ID
+	$(COMPOSE) run --rm ingest python -m ingest measure-score-delay $(if $(MATCH_ID),--match-id $(MATCH_ID),)
 
 logs: ## Tail logs: make logs S=db
 	$(COMPOSE) logs -f --tail=100 $(S)

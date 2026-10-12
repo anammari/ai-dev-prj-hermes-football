@@ -53,13 +53,15 @@ MATCH_STATUSES = (
     "TIMED",
     "IN_PLAY",
     "PAUSED",
+    "EXTRA_TIME",
+    "PENALTY_SHOOTOUT",
     "FINISHED",
     "SUSPENDED",
     "POSTPONED",
     "CANCELLED",
     "AWARDED",
 )
-COMPETITION_TYPES = ("LEAGUE", "CUP", "PLAYOFFS", "SUPER_CUP")
+COMPETITION_TYPES = ("LEAGUE", "LEAGUE_CUP", "CUP", "PLAYOFFS", "SUPER_CUP")
 STANDINGS_TYPES = ("TOTAL", "HOME", "AWAY")
 INGEST_STATUSES = ("running", "succeeded", "partial", "failed")
 INGEST_TRIGGERS = ("schedule", "manual")
@@ -259,6 +261,34 @@ class Standing(Base, Timestamped):
     )
 
 
+class TopScorer(Base):
+    """One scorer row per competition, season, and daily snapshot."""
+
+    __tablename__ = "top_scorers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    competition_code: Mapped[str] = mapped_column(ForeignKey("competitions.code"), nullable=False)
+    season: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), nullable=False)
+    played_matches: Mapped[int | None] = mapped_column(Integer)
+    goals: Mapped[int | None] = mapped_column(Integer)
+    assists: Mapped[int | None] = mapped_column(Integer)
+    penalties: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "competition_code",
+            "season",
+            "snapshot_date",
+            "player_id",
+            name="uq_top_scorer_snapshot_player",
+        ),
+        Index("ix_top_scorers_competition_season", "competition_code", "season"),
+    )
+
+
 # ---------------------------------------------------------------------------------------------
 # Operations: ingestion ledger, knowledge index, agent turns
 # ---------------------------------------------------------------------------------------------
@@ -290,6 +320,22 @@ class IngestRun(Base):
         _enum_check("trigger", INGEST_TRIGGERS, "trigger_valid"),
         Index("ix_ingest_runs_started_at", "started_at"),
     )
+
+
+class RawPayload(Base):
+    """Bronze copy of each successful upstream response, retained per run."""
+
+    __tablename__ = "raw_payloads"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(ForeignKey("ingest_runs.id", ondelete="CASCADE"), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(255), nullable=False)
+    request_params: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("ix_raw_payloads_run_id", "run_id"),)
 
 
 class KnowledgeChunk(Base, Timestamped):

@@ -10,8 +10,9 @@ property asks for.
 
 ## Tables
 
-Eleven tables, one Alembic revision (`0001_init`, which is also the `schema_revision` that `HealthCheck` reports).
-Everything is derived from the contract; nothing is scraped.
+Thirteen tables across two Alembic revisions. `0001_init` established the M1 schema; `0002_ingestion_storage`
+adds the M2 bronze store and scorer snapshots. The active revision is `0002_ingestion_storage`. Bronze payloads are
+retained as JSON; only normalized rows feed serving tools.
 
 ### Catalog
 
@@ -29,12 +30,14 @@ Everything is derived from the contract; nothing is scraped.
 | --- | --- | --- |
 | `matches` | `Match` | `score` is flattened (`score_full_time_home`, …), `referees` stays JSON because it is published as a list of objects with no key of its own and is never queried by field |
 | `standings` | `StandingRow`s of one `StandingsTable` snapshot | `group` becomes `group_label` (SQL keyword) and `type` becomes `table_type`; `snapshot_date` keeps old snapshots queryable |
+| `top_scorers` | normalized scorer rows per competition, season, and daily snapshot | Local serving data for the M2 requirement; each row links to a player and team |
 
 ### Operations
 
 | Table | Holds | Notes |
 | --- | --- | --- |
 | `ingest_runs` | `IngestRun`: the ledger of every collection run | `competitions` and `errors` are JSON: both are published as arrays of values, not as relations worth joining |
+| `raw_payloads` | bronze copy of each successful upstream response | Stores endpoint, request parameters, JSON payload, SHA-256 content hash, fetch time, and run id; never exposed to the agent |
 | `agent_turns` | `AgentTurn`: what was asked, what was answered, how it was routed | `chat_id_hash` is salted; the raw Telegram id never reaches the database (`AGENTS.md` rule 6) |
 | `knowledge_chunks` | the derived index of the notes corpus | `embedding vector(768)` on Postgres, `embedding_model`/`embedding_dim` per chunk, `content_hash` of the whole source file |
 
@@ -64,6 +67,8 @@ names the same concept.
 | `Match` (+ `Score`, `ScoreLine`) | `matches` |
 | `StandingRow`, `StandingsTable` | `standings` |
 | `IngestRun` (+ inlined rows object) | `ingest_runs` |
+| M2 scorer snapshot | `top_scorers` |
+| M2 upstream response | `raw_payloads` |
 | `KnowledgeHit` | `knowledge_chunks` |
 | `AgentTurn` | `agent_turns` |
 

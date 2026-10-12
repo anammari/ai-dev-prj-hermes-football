@@ -7,11 +7,19 @@
 #   * secrets arrive from `.env` at run time; nothing is baked into an image layer
 #   * container limits live here, not in Hermes `container_*` settings
 #
-# M1 defines `db` and `ollama` plus the on-demand tools. `backend`, `mcp-server`, the ingest
-# scheduler, `hermes`, `frontend` and `obs` arrive with their own milestones; `make up` starts
-# whatever exists at the time.
+# The M2 scheduler joins `db` and `ollama`; the later application services arrive with their own
+# milestones.
 
 name: hermes-football
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - run `make setup`}@db:5432/${POSTGRES_DB:-hermes}
+  AGENT_DB_ROLE: ${AGENT_DB_ROLE:-agent_readonly}
+  AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-}
+  OLLAMA_HOST: http://ollama:11434
+  OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-embeddinggemma:300m}
+  OLLAMA_EMBED_DIM: ${OLLAMA_EMBED_DIM:-768}
+  KNOWLEDGE_DIR: /corpus
 
 services:
   db:
@@ -45,6 +53,28 @@ services:
     cpus: 4
     restart: unless-stopped
 
+  ingest:
+    build:
+      context: .
+      target: app
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.football-data.org/v4}
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+      INGEST_SCHEDULE_HOUR: ${INGEST_SCHEDULE_HOUR:-2}
+      INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
+      INGEST_TIMEZONE: ${INGEST_TIMEZONE:-UTC}
+    volumes:
+      - ./hermes/agent-knowledge:/corpus:ro
+    command: ["python", "-m", "ingest", "schedule"]
+    mem_limit: 512m
+    cpus: 1
+
   # ---------------------------------------------------------------------------------------------
   # Tools. On demand, never started by `make up`: `make models`, `make migrate`, `make test`, ...
   # ---------------------------------------------------------------------------------------------
@@ -68,14 +98,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment: &app-env
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - run `make setup`}@db:5432/${POSTGRES_DB:-hermes}
-      AGENT_DB_ROLE: ${AGENT_DB_ROLE:-agent_readonly}
-      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-}
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-embeddinggemma:300m}
-      OLLAMA_EMBED_DIM: ${OLLAMA_EMBED_DIM:-768}
-      KNOWLEDGE_DIR: /corpus
+    environment:
+      <<: *app-env
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["alembic", "upgrade", "head"]

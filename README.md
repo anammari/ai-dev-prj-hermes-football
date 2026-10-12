@@ -4,7 +4,7 @@ A Telegram agent that answers football questions **accurately** — grounded in 
 football-data.org, with a read-only tool layer, an evaluation harness, and a dashboard that shows whether any of it is
 actually working. Everything runs locally in Docker Compose; there is no server to rent.
 
-Status: **M1** done of M0–M6 (see the [milestone tracker](#milestone-tracker)).
+Status: **M1 done; M2 in progress** (see the [milestone tracker](#milestone-tracker)).
 
 ## Problem description
 
@@ -29,11 +29,12 @@ fields on `AgentTurn` — is recorded in [`_docs/data-model.md`](_docs/data-mode
 ## Database schema
 
 PostgreSQL 16 with pgvector in the stack, SQLite in development, on one code path, with Alembic migrations applied on
-startup. Eleven tables mirror the contract, including the notes index with `vector(768)` and an HNSW index for
-similarity search, plus a read-only database role for the agent's data path.
+startup. The schema includes the notes index with `vector(768)` and an HNSW index for similarity search, plus bronze
+upstream payloads and normalized scorer snapshots.
 
-- Tables: [`db/models.py`](db/models.py), and the migration that creates them:
-  [`db/migrations/versions/0001_init.py`](db/migrations/versions/0001_init.py)
+- Tables: [`db/models.py`](db/models.py), created by
+  [`db/migrations/versions/0001_init.py`](db/migrations/versions/0001_init.py) and
+  [`db/migrations/versions/0002_ingestion_storage.py`](db/migrations/versions/0002_ingestion_storage.py)
 - Table by table, with the mapping onto the contract and the open items: [`_docs/data-model.md`](_docs/data-model.md)
 - Notes corpus the index is built from: [`hermes/agent-knowledge/manifest.yaml`](hermes/agent-knowledge/manifest.yaml)
 
@@ -50,7 +51,7 @@ than on the host. Schema, corpus, chunker and indexer checks live in [`tests/`](
 | --- | --- | --- |
 | M0 | Empty repo, scope, product spec, API contract (v0.1.0, lint clean) | Done |
 | M1 | Database schema and the first migration, matching the contract: notes table with `vector(768)`, the corpus `manifest.yaml` and the local embedding provider | Done |
-| M2 | Daily ingestion from football-data.org: run ledger, idempotent loads, re-indexing changed notes, measured score delay | Next |
+| M2 | Daily ingestion from football-data.org: run ledger, idempotent loads, re-indexing changed notes, measured score delay | In progress |
 | M3 | Backend API against `openapi.yaml` | Not started |
 | M3b | Router spike: deterministic-first vs model-first, judged against hand-checked expectations, before M4 | Not started |
 | M4 | Telegram agent: `SOUL.md`, first notes authored and reviewed, routing, refusal and freshness behaviour | Not started |
@@ -68,10 +69,12 @@ Everything runs in containers: apart from Docker, this repository and a `.env`, 
 | --- | --- |
 | `make setup` | Create `.env` from `.env.example`, build the app image |
 | `make build` | Rebuild the image after changing `db/`, `ingest/` or `tests/` |
-| `make up` / `make down` | Start the stack (`db`, `ollama`) and apply migrations / stop everything |
+| `make up` / `make down` | Start `db`, `ollama` and the daily ingest scheduler, apply migrations / stop everything |
 | `make migrate` | Apply the Alembic migrations |
 | `make models` | Pull the pinned embedding model into the `ollama` volume |
 | `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack |
+| `make ingest` | Trigger a manual upstream collection run (requires `UPSTREAM_API_KEY` in `.env`) |
+| `make score-delay [MATCH_ID=…]` | Poll a finished scoreless match and record score-availability delay |
 | `make lint` | Ruff over the repository |
 | `make check-notes` / `make index-notes` | Validate the notes corpus against its manifest / index the changed notes |
 | `make search Q="…"` | Ask the corpus a question and see the passages it would retrieve |

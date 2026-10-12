@@ -108,8 +108,8 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 ### F2 — Database (`db/`, Postgres + Alembic)
 
-- **R-F2.1** Schema covers competitions, seasons, teams, players, matches, standings, and the knowledge corpus
-  (pgvector embeddings).
+- **R-F2.1** Schema covers competitions, seasons, teams, players, matches, standings, normalized top-scorer snapshots,
+  bronze raw upstream payloads, and the knowledge corpus (pgvector embeddings).
 - **R-F2.2** All schema changes are Alembic migrations; `alembic upgrade head` is part of container start.
 - **R-F2.3** The same code path runs on SQLite (dev) and Postgres (compose) via `DATABASE_URL`.
 - **R-F2.4** The agent-facing role is **read-only**.
