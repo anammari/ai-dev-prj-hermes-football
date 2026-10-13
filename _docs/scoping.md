@@ -60,7 +60,7 @@ use before writing any code):
 | How many competitions? | **13, not the 12 advertised** — the extra one is the Copa Libertadores |
 | A competition we're not allowed? | The API refuses with "not within your permissions" — we must show "no data", never an empty table |
 | Several competitions in one call? | Yes — which is how we stay comfortably under 10 calls a minute |
-| How delayed are the scores? | **Still unknown.** Every match that day was still upcoming, so we couldn't watch a delay happen. We measure it in M2 by watching one match until its score appears |
+| How delayed are the scores? | **About 1.5-3 minutes, measured in M2** (match 555033, 2026-10-12/13): the score is published during play and the final score arrives with the `FINISHED` status, so there is no scoreless-finished window. The status can briefly flip back to `TIMED` while a match is in play |
 
 One more helpful detail: the API tells us how many calls we have left in the current minute, so we pace ourselves on
 its own numbers instead of guessing.

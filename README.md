@@ -4,7 +4,7 @@ A Telegram agent that answers football questions **accurately** — grounded in 
 football-data.org, with a read-only tool layer, an evaluation harness, and a dashboard that shows whether any of it is
 actually working. Everything runs locally in Docker Compose; there is no server to rent.
 
-Status: **M1–M2 done** (see the [milestone tracker](#milestone-tracker)).
+Status: **M1–M2 done, M3 next** (see the [milestone tracker](#milestone-tracker)).
 
 ## Problem description
 
@@ -73,6 +73,7 @@ Everything runs in containers: apart from Docker, this repository and a `.env`, 
 | `make migrate` | Apply the Alembic migrations |
 | `make models` | Pull the pinned embedding model into the `ollama` volume |
 | `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack |
+| `make itest-isolated` | Integration tests against a throwaway Compose project (own db, ollama, passwords), torn down afterwards |
 | `make ingest` | Trigger a manual upstream collection run (requires `UPSTREAM_API_KEY` in `.env`) |
 | `make score-delay [MATCH_ID=…]` | Poll a finished scoreless match and record score-availability delay |
 | `make lint` | Ruff over the repository |

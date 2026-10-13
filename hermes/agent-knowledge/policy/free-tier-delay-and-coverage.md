@@ -41,11 +41,12 @@ empty table looks like a real answer.
 
 ## How old the data is
 
-Scores and schedules from the free plan are **delayed**. The exact delay is measured in M2 by
-watching one finished match until its score appears, and the measured number is then quoted in
-every answer that carries a score or a table, alongside the timestamp the data describes. Until that
-measurement exists, the delay is described as unknown rather than as zero: nobody should read a
-score here and assume it is live.
+Scores and schedules are collected once a day, so an answer is as old as the last ingestion run, which is
+always stamped on it. Measured on 2026-10-12/13 by polling one match (id 555033) from kick-off to full time: the
+provider published the score while the match was still in play, and the final score arrived together with the
+`FINISHED` status, about **1.5 to 3 minutes** after the provider's own `lastUpdated`. There was no window with
+a finished match and no score. The status also flipped back to `TIMED` for a poll or two while the match was in
+play, so a single reading of a status can be wrong. Quote the data timestamp with every score and never call it live.
 
 ## Why we count head-to-head records ourselves
 

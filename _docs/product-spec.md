@@ -112,7 +112,7 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   `content_hash` is a change-detection fingerprint (a payload identical to an earlier one for the same endpoint is
   counted as `payloads_unchanged` in the run report). The normalized tables are the durable record.
 - **R-F1.5** Each run writes a ledger row: start/end, status, upstream calls used, rows upserted, errors.
-- **R-F1.6** Expected cost of a full run: about 250-350 upstream calls, i.e. roughly **30 minutes** at 10 requests/minute,
+- **R-F1.6** Expected cost of a full run: about 130-160 upstream calls measured live (`/matches` is paged in 10-day windows, the upstream cap), i.e. roughly **15-20 minutes** at 10 requests/minute,
   which is the whole free-tier budget for that half hour. The run logs progress per competition. The scheduler
   validates `UPSTREAM_API_KEY` at startup so a bad token fails `make up` instead of a once-a-day log line.
 - **AC** `make ingest` twice in a row -> second run reports 0 inserted / N unchanged, ledger shows both runs, and no
@@ -288,7 +288,7 @@ model and the router are recorded in `_docs/decisions/` (0001, 0002, 0003).
 | Risk | Mitigation |
 | --- | --- |
 | Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §3; a re-runnable probe in CI reports a change instead of failing at answer time |
-| The score delay is unmeasured, so "delayed" could be mistaken for "live" | M2 measures it by polling one finished match until its score appears; the freshness stamp then carries the measured number |
+| "Delayed" could be mistaken for "live" | Measured in M2 (match 555033): scores lag the provider by about 1.5-3 minutes and arrive with `FINISHED`; the status can flap to `TIMED` during play. Daily ingestion makes the stamp the real age, so every answer carries it |
 | Delayed data mistaken for live data | Freshness stamping enforced in the API layer, not only in the prompt |
 | Agent hallucinating scores under pressure | Grounding policy in `SOUL.md` + eval cases with unanswerable questions + retrieval of facts only via tools |
 | Rate limit exhaustion from retries or dev usage | Token bucket, cache table for repeated windows, dev environment reads from the local DB only |

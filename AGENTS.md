@@ -89,7 +89,8 @@ make setup     # create .env from .env.example, install deps
 make up        # start db, ollama and the ingest scheduler; apply migrations
 make down      # stop everything
 make test      # unit tests (fast, no network)
-make itest     # integration tests against the Compose stack
+make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)
+make itest-isolated # same tests against a throwaway Compose project; use when the volume must stay untouched
 make e2e       # Playwright end-to-end
 make eval      # golden-question eval run against the agent
 make ingest    # trigger one ingestion run manually
@@ -165,13 +166,14 @@ manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that r
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
 rate-limited collection, bronze payloads, scorer snapshots, the run ledger, schedule/manual entry points, and delay
-polling. Unit and disposable-Postgres integration verification pass; the retained Postgres volume rejects the
-current local `.env` password, and the API key is still a template placeholder, so live M2 acceptance remains pending.
+polling. M2 is verified live on the retained volume: 50 unit and 9 integration tests pass, and a real run loaded
+13 competitions, ~9.9k matches and standings in about 20 minutes and 162 upstream calls, ending `partial` because EC
+has no standings on the free tier. A full run costs roughly 130-350 calls (about 15-30 minutes at 10 req/min); upstream
+caps `/matches` at 10 days per request. Rebuild images (`DOCKER_BUILDKIT=0 make build`) after changing code: the
+containers bake it in.
 
 Next, in order:
-1. Finish M2 verification after setting the existing database password and valid API token locally: `make up`,
-   `make models`, `make test`, `make itest`, `make ingest`, and `make score-delay`; write the measured delay into the
-   project docs. The free-tier capability spike is **done** — results are in `_docs/scoping.md` §3.
+1. Nothing left for M2 except re-running `make score-delay` when a finished match has no score yet (see `_docs/scoping.md` §3).
 2. `backend/` endpoints against the contract + unit/integration tests. This is also where `agent_turns.route`,
    `route_source` and `route_confidence` join `openapi.yaml` — they exist in the schema today (`_docs/data-model.md`,
    open items).

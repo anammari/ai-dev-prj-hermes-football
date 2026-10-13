@@ -102,26 +102,22 @@ checked and work that merely looked right.
     `route_confidence` are required by `AGENTS.md` rule 10 but absent from contract v0.1.0. M3 owns the fix; it is
     written down in `_docs/data-model.md` rather than silently allowed.
 
-### S5 — M2 ingestion pipeline (verification pending)
+### S5 — M2 ingestion pipeline and its review fixes (verified live)
 
-- **Delegated:** no sub-agent was used. This coding session implemented M2 as scoped by
-  `_docs/scoping.md` §8 and R-F1.1–R-F1.5.
-- **Reviewed:** 44 unit tests pass, including fake-clock rate limiting, retry/403 handling, SQLite migration drift,
-  idempotent silver loads, bronze retention, and score-delay run logging. All 8 integration tests pass against a
-  disposable Postgres 16/pgvector container and the Compose Ollama model; both Alembic revisions apply there. Ruff
-  passes across the repository, Compose configuration validates, and `make models` pulled the pinned local model.
-  Independent human review and execution against the retained Postgres volume are still pending.
-- **Rejected or revised:** no fixed competition list was introduced; competition discovery uses the authenticated
-  provider list. Since the existing schema had neither scorer snapshots nor bronze payload storage, migration
-  `0002_ingestion_storage` adds both rather than dropping required data. The `agent_turns.route*` gap remains owned by
-  M3. The score-delay result is not documented as a number because no real upstream observation has been made.
-- **Evidence / blocker:** `make test` reports 44 passed, 8 integration tests deselected; the isolated Postgres run
-  reports 8 integration tests passed, 44 deselected; `ruff check .` and `docker compose config --quiet` pass.
-  `make models` succeeds. `make up` on the retained volume could not apply the migration because the password in this
-  worktree's local `.env` does not match the already-initialized Postgres volume. The upstream key in `.env` is still
-  the template placeholder. No secret was printed or added to git. To complete M2, restore the correct local database
-  password, set a valid provider token locally, then run `make up`, `make itest`, `make ingest` and `make score-delay`;
-  record the real result in `_docs/scoping.md` §3 and the product's delay policy.
+- **Delegated:** the M2 build and the fixes in `_docs/handoff-m2-fixes.md` were done in coding sessions; a task agent
+  was used only for a shell chore.
+- **Reviewed:** human review found that live acceptance had never run. Running it exposed three defects that every
+  stubbed test missed: (1) a 404 on EC standings/scorers aborted every run, (2) upstream rejects `/matches` ranges
+  over 10 days with HTTP 400, so 90-day windows loaded no fixtures, (3) upcoming knockout fixtures with undecided
+  teams crashed normalization. All three are fixed with regression tests (the stub client now enforces the 10-day
+  cap). 50 unit and 9 integration tests pass, ruff is clean, and `make itest-isolated` provides a throwaway DB.
+- **Rejected or revised:** no hardcoded competition list; a failing optional resource now yields `partial`, not
+  `failed`; bronze is pruned after 30 days; "one working copy, no worktrees" was added to `AGENTS.md` after two
+  worktrees on one Compose volume broke `make up`.
+- **Evidence:** a live run on the retained volume loaded 13 competitions and 9,895 matches (162 calls, ~19 minutes,
+  `partial` because EC has no standings). The measured score delay is about 1.5-3 minutes (match 555033), recorded in
+  `_docs/scoping.md` §3 and the delay policy note. Lesson: stubbed providers cannot find provider rules; only a real
+  run did.
 
 ## Sessions that predate this log (backfill needed)
 
