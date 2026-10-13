@@ -16,7 +16,7 @@ bottom. The numbers below are **criterion numbers, not milestones** — the mile
 Where a criterion is not built yet its section says so plainly and names the milestone that delivers it, rather than
 reading as if it were finished.
 
-## 1. Problem description
+## 1. Problem Description
 
 Football answers are easy to find and often wrong: scores are delayed, tables are stale, and a confident model will
 invent both. This bot answers questions about fixtures, results, standings and competition rules from the free
@@ -28,7 +28,7 @@ non-goals.
 In plain language: [`_docs/scoping.md`](_docs/scoping.md). As requirements:
 [`_docs/product-spec.md`](_docs/product-spec.md).
 
-## 2. How AI was used
+## 2. AI-Assisted Development Workflow
 
 Three artefacts, all kept in the repository rather than thrown away:
 
@@ -41,7 +41,7 @@ Three artefacts, all kept in the repository rather than thrown away:
   human reviewed, what was rejected, and which tests prove it. Session S5 covers the M2 build and, in particular, the
   three defects that only a live upstream run exposed.
 
-## 3. Technologies and architecture
+## 3. Technologies and System Architecture
 
 The target component diagram (Telegram → `hermes` → `mcp-server` → `backend` → `ingest` → PostgreSQL + `ollama`) and
 the stack are in [`AGENTS.md`](AGENTS.md) §Architecture. The plain-language version is
@@ -54,14 +54,14 @@ the container.
 A dedicated `_docs/architecture.md` is scheduled with **M6**; until then `AGENTS.md` is the source of truth for the
 architecture.
 
-## 4. Front end
+## 4. Frontend Implementation
 
 **Not built — arrives with M5.** The dashboard (data freshness, fixtures and standings, the agent log, eval results,
 admin controls) is specified in [`_docs/product-spec.md`](_docs/product-spec.md). It will be a Next.js/TypeScript app
 with a single typed API client, Vitest + Testing Library unit tests and Playwright end-to-end tests. Neither
 `frontend/` nor `tests/e2e/` exists yet.
 
-## 5. API contract
+## 5. API Contract
 
 Written down before it is implemented: [`openapi.yaml`](openapi.yaml) (v0.1.0) is the source of truth for what the API
 serves. `make validate-spec` lints it, `make swagger` serves it, and
@@ -69,13 +69,13 @@ serves. `make validate-spec` lints it, `make swagger` serves it, and
 drift apart in either direction. The backend that implements it arrives with M3; the gap already known — the route
 fields on `AgentTurn` — is recorded in [`_docs/data-model.md`](_docs/data-model.md).
 
-## 6. Back end
+## 6. Backend Implementation
 
 **Not built — arrives with M3.** The layered FastAPI service that implements the contract does not exist yet;
 `backend/` is scheduled for M3. The contract-first discipline is already enforced in the meantime, because
 [`tests/test_contract_coverage.py`](tests/test_contract_coverage.py) fails when the schema and the contract diverge.
 
-## 7. Database
+## 7. Database Integration
 
 PostgreSQL 16 with pgvector in the stack, SQLite in development, on one code path, with Alembic migrations applied on
 startup. The schema includes the notes index with `vector(768)` and an HNSW index for similarity search, plus bronze
@@ -87,7 +87,7 @@ upstream payloads and normalized scorer snapshots.
 - Table by table, with the mapping onto the contract and the open items: [`_docs/data-model.md`](_docs/data-model.md)
 - Notes corpus the index is built from: [`hermes/agent-knowledge/manifest.yaml`](hermes/agent-knowledge/manifest.yaml)
 
-## 8. Containerisation
+## 8. Containerization
 
 Everything runs in containers. [`docker-compose.yml`](docker-compose.yml) defines the services, the volumes and the
 health checks; the [`Makefile`](Makefile) is the only entry point; and secrets arrive from `.env` at run time rather
@@ -104,7 +104,7 @@ deletes them and flattens the result into a single layer — a `RUN rm` on its o
 bytes stay in the layer below. The stack runs the same Ollama version (0.40.2) at **637 MB**. The reasoning, including
 what a GPU host would have to change, is [decision 0005](_docs/decisions/0005-ollama-image.md).
 
-## 9. Integration testing
+## 9. Integration Testing
 
 [`tests/integration/`](tests/integration) holds the tests that need the real stack — PostgreSQL + pgvector, the
 embedding model in the `ollama` container, the read-only role — and they are kept out of the fast unit run.
@@ -121,13 +121,13 @@ ports, and the dashboard is exposed through a Cloudflare tunnel. `_docs/deployme
 the post-deploy check. There is deliberately no VPS and no cloud host; the reasoning is in
 [`_docs/scoping.md`](_docs/scoping.md) §6.
 
-## 11. CI/CD
+## 11. CI/CD Pipeline
 
 **Not built — arrives with M6.** `.github/workflows/` will run lint, the unit and integration tests and the
 answer-quality scoreboard on every pull request; merging to `main` will deploy, verify and be able to roll back.
 Until then the same checks run locally and are documented under [criterion 14](#14-reproducibility).
 
-## 12. Agent extension pack
+## 12. Agent Extension Pack
 
 **Partially in place.** The agent's durable instructions live in [`AGENTS.md`](AGENTS.md), and the first hand-written
 notes are in [`hermes/agent-knowledge/`](hermes/agent-knowledge/manifest.yaml) — competition formats, tiebreakers, a
@@ -136,7 +136,7 @@ server, the hooks and the guardrails arrive with **M4–M6**: `skills/`, `subage
 exist yet. Every capability will be declared in `docs/permissions.md` before it ships (rule 8) — an undocumented
 capability is not shippable.
 
-## 13. Security, audit and ops
+## 13. Security, Audit, and DevOps Hardening
 
 **Partially in place.** The data policy is written and indexed as a note —
 [`free-tier-delay-and-coverage.md`](hermes/agent-knowledge/policy/free-tier-delay-and-coverage.md) — so the bot can
