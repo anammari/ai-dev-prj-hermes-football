@@ -131,6 +131,9 @@ FORBIDDEN = (
     "alter table matches add column sneaky integer",
     "drop table knowledge_chunks",
     "create extension if not exists hstore",
+    "insert into top_scorers default values",
+    "update raw_payloads set endpoint = 'x' where false",
+    "delete from top_scorers where false",
 )
 
 
@@ -144,6 +147,8 @@ def test_the_agent_role_may_read_but_not_write(agent_engine: Engine, stack_setti
         assert connection.execute(text("select current_user")).scalar_one() == stack_settings.agent_db_role
         assert connection.execute(text("select count(*) from knowledge_chunks")).scalar() is not None
         assert connection.execute(text("select count(*) from matches")).scalar() is not None
+        assert connection.execute(text("select count(*) from top_scorers")).scalar() is not None
+        assert connection.execute(text("select count(*) from raw_payloads")).scalar() is not None
 
     for statement in FORBIDDEN:
         with agent_engine.connect() as connection, pytest.raises(ProgrammingError):

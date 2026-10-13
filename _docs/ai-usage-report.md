@@ -102,6 +102,91 @@ checked and work that merely looked right.
     `route_confidence` are required by `AGENTS.md` rule 10 but absent from contract v0.1.0. M3 owns the fix; it is
     written down in `_docs/data-model.md` rather than silently allowed.
 
+### S5 — M2 ingestion pipeline and its review fixes (verified live)
+
+- **Delegated:** the M2 build and the fixes in `_docs/handoff-m2-fixes.md` were done in coding sessions; a task agent
+  was used only for a shell chore.
+- **Reviewed:** human review found that live acceptance had never run. Running it exposed three defects that every
+  stubbed test missed: (1) a 404 on EC standings/scorers aborted every run, (2) upstream rejects `/matches` ranges
+  over 10 days with HTTP 400, so 90-day windows loaded no fixtures, (3) upcoming knockout fixtures with undecided
+  teams crashed normalization. All three are fixed with regression tests (the stub client now enforces the 10-day
+  cap). 50 unit and 9 integration tests pass, ruff is clean, and `make itest-isolated` provides a throwaway DB.
+- **Rejected or revised:** no hardcoded competition list; a failing optional resource now yields `partial`, not
+  `failed`; bronze is pruned after 30 days; "one working copy, no worktrees" was added to `AGENTS.md` after two
+  worktrees on one Compose volume broke `make up`.
+- **Evidence:** a live run on the retained volume loaded 13 competitions and 9,895 matches (162 calls, ~19 minutes,
+  `partial` because EC has no standings). The measured score delay is about 1.5-3 minutes (match 555033), recorded in
+  `_docs/scoping.md` §3 and the delay policy note — but that figure was read by hand out of the stored poll payloads,
+  because `make score-delay` itself ended `failed`: it waited for a finished match with no score, a state the provider
+  never produces. The tool is repaired in S6. Lesson: stubbed providers cannot find provider rules; only a real run
+  did.
+
+### S6 — M2 close-out: the review, the README index, the score-delay tool and the Ollama image
+
+- **Delegated:** none. A human asked an agent to review the M2 fixes, sync the README with the course criteria, delete
+  the completed handoff and repair `make score-delay`; the agent made those edits under review, and the container work
+  was done directly.
+- **Reviewed:** every claim on the branch was checked against the live database and the stored payloads rather than
+  against the docs. Two did not survive: `make score-delay` could only ever exit non-zero, and its documented figure
+  had been read by hand out of the poll payloads. Both are now fixed and disclosed in S5 above. The review also
+  confirmed what was sound — 9,895 matches loaded live, EC's 404 isolating to `partial`, and the branch a clean
+  fast-forward on `main` with no secrets in its diff.
+- **Rejected or revised:** the score-delay command's premise was rejected outright — the provider publishes the score
+  while the match is `IN_PLAY`, so there is no scoreless-finished window to wait for; it now measures the provider
+  `lastUpdated` to fetch gap. A first attempt at its default match selector was itself wrong, picking a fixture
+  scheduled for 2027, and a human caught it in a live run, so it is now bounded to matches that have kicked off. On
+  the container side, a thin `RUN rm -rf` over the Ollama image was rejected because it reclaims nothing; the image is
+  flattened instead. Keeping the duplicate `ollama/ollama:latest` tag was also rejected, being a floating tag that
+  would silently pull a second 7 GB image later.
+- **Evidence:** 54 unit and 9 integration tests pass, ruff is clean. A bounded live run against match 555032, still in
+  play, gave `statuses_seen: {"IN_PLAY": 10}`, `score_published_before_full_time: true` and a median observation lag
+  of **104 seconds** over ten polls — the 1.5-3 minute claim re-derived from a live match rather than by hand — and the
+  ledger's first `succeeded` score-delay run. The Ollama image went from 7.05 GB to 637 MB with the model server
+  verified by the two integration tests named in [decision 0005](decisions/0005-ollama-image.md); Docker's disk image
+  went from 13 GB to 6.9 GB.
+
+### S7 — The Copilot pull-request review of M2: sixteen findings, fourteen applied (commit that lands this entry, 2026-10-13)
+
+- **Delegated:** a second opinion on the M2 branch, asked of Copilot's pull-request review on PR #1 after the human
+  review in S6. It raised sixteen findings. Each was reproduced against the retained volume, or against a scratch
+  database, before any code was touched — the point of a second reviewer is to disagree usefully, not to be obeyed.
+- **Reviewed and applied, with the reproduction that justified each one:**
+  - *Preserve omitted team metadata during summary upserts* (High). Real, and the damage was already in the data:
+    `/matches` and `/standings` embed only `id, name, tla, crest`, so writing the absent keys as `None` had blanked
+    `area` on **all 360** teams. Only the fields a payload actually carries are written now.
+  - *A malformed provider row aborts the whole day.* Reproduced with a standings row missing its points total: the
+    `ValueError` reached the outer handler, failed the run and skipped every remaining competition and match window.
+    `ValueError` and `UpstreamError` are caught at the two boundaries; a database fault still aborts the run.
+  - *Retention never runs when collection fails.* The prune sat inside the main `try`, so a run of failed days would
+    let bronze outlive its window.
+  - *Coverage flags keep their default on a withheld table.* `coverage_standings` defaults to true, so EC's 403 was
+    logged but the flag still claimed the table was served.
+  - *A stale `is_current` season flag is never retired.* Latent rather than visible today — no competition has rolled
+    over yet — but the first rollover would leave two seasons marked current and every such query returning both.
+  - *`make ingest` exits 0 on a failed run*, which tells CI the day landed when it did not.
+  - *Bronze written by score-delay measurements is never pruned*, because nothing else prunes those rows.
+  - *The `0002` downgrade cannot run once a new enum value is stored.* Reproduced on a scratch database, not the
+    retained one: it failed with a `CheckViolation` on `ck_competitions_type_valid`, and passes now.
+  - *The README promises a working stack in three commands* from a clean checkout, while `.env.example` ships a
+    placeholder token that both the scheduler and the CLI reject, and a fresh `ollama` volume holds no embedding
+    model. The prerequisite is stated, and `make up` now pulls the model when the volume is empty.
+  - Three stale `AGENTS.md` lines: the score-delay description, the unit-test count, and a next step naming a
+    provider state that cannot occur.
+- **Rejected, and why:**
+  - *Serialize ingestion and coordinate shared rate limits across all clients* (High). Real only in the narrow sense
+    that two clients hold separate token buckets — but those buckets are the safety net, not the mechanism. The
+    primary pacing reads `x-requests-available-minute`, which is account-wide, so a second process does not get a
+    second quota; the exposure is a one- or two-request transient that the client already answers with a paced
+    retry. A shared limiter or a cross-process lock is an architectural change that does not belong in this pull
+    request, and declining it keeps the PR reviewable.
+  - *Add a restart policy to the ingest scheduler.* Fair about an out-of-memory kill, but `make up` proves the
+    scheduler is alive five seconds after start-up precisely so that an invalid token fails loudly. An automatic
+    restart makes that probe sample a sometimes-up, sometimes-down container. The two changes have to land together,
+    so this is left as its own task rather than applied here.
+- **Evidence:** 64 unit and 9 integration tests pass, ruff is clean. Ten tests were added; reverting only the source
+  files and re-running them shows **seven failing against the pre-fix code**, which is what makes them regression
+  tests rather than decoration. The migration was exercised in both directions on throwaway databases.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

@@ -60,7 +60,7 @@ use before writing any code):
 | How many competitions? | **13, not the 12 advertised** — the extra one is the Copa Libertadores |
 | A competition we're not allowed? | The API refuses with "not within your permissions" — we must show "no data", never an empty table |
 | Several competitions in one call? | Yes — which is how we stay comfortably under 10 calls a minute |
-| How delayed are the scores? | **Still unknown.** Every match that day was still upcoming, so we couldn't watch a delay happen. We measure it in M2 by watching one match until its score appears |
+| How delayed are the scores? | **About 1.5-3 minutes**, measured on 2026-10-12/13 (match 555033) and re-measured live on 2026-10-13 (match 555032, median lag 104s over 10 polls): the score is published during play and the final score arrives with the `FINISHED` status, so there is no scoreless-finished window. The status can briefly flip back to `TIMED` while a match is in play. `make score-delay` reproduces the measurement; run it while a match is on |
 
 One more helpful detail: the API tells us how many calls we have left in the current minute, so we pace ourselves on
 its own numbers instead of guessing.
@@ -149,19 +149,19 @@ Each row is a requirement from the course's draft project criteria and the thing
 
 | # | Course requirement | How this project meets it | Where to look |
 | --- | --- | --- | --- |
-| 1 | Problem description | README and spec explain what the bot answers, what the free data allows, and what it says when it doesn't know | `README.md`, `_docs/product-spec.md` |
-| 2 | How AI was used | A versioned collection of the prompts used, written project instructions for AI helpers, and a log of what was delegated, reviewed and rejected | `prompts/`, `AGENTS.md`, `_docs/ai-usage-report.md` |
-| 3 | Technologies and architecture | A diagram and a short explanation of every part, and why it is there | `_docs/architecture.md` |
-| 4 | Front end | The dashboard, with its own tests and clear instructions to run them | `frontend/`, `tests/e2e/` |
-| 5 | API contract | The API is written down first in `openapi.yaml`, the backend follows it, and a test fails if they drift apart | `openapi.yaml` |
-| 6 | Back end | Layered FastAPI code with tests on the important endpoints | `backend/` |
-| 7 | Database | Works with a simple file database in development and Postgres in the full stack, with migrations and a documented schema | `db/`, `_docs/data-model.md` |
-| 8 | Containerisation | One `make up` starts everything; health checks included | `docker-compose.yml`, `Makefile` |
-| 9 | Integration testing | Tests that run against the real stack, from collection to a bot reply — kept separate from the unit tests | `tests/integration/` |
+| 1 | Problem Description | README and spec explain what the bot answers, what the free data allows, and what it says when it doesn't know | `README.md`, `_docs/product-spec.md` |
+| 2 | AI-Assisted Development Workflow | A versioned collection of the prompts used, written project instructions for AI helpers, and a log of what was delegated, reviewed and rejected | `prompts/`, `AGENTS.md`, `_docs/ai-usage-report.md` |
+| 3 | Technologies and System Architecture | A diagram and a short explanation of every part, and why it is there | `_docs/architecture.md` |
+| 4 | Frontend Implementation | The dashboard, with its own tests and clear instructions to run them | `frontend/`, `tests/e2e/` |
+| 5 | API Contract | The API is written down first in `openapi.yaml`, the backend follows it, and a test fails if they drift apart | `openapi.yaml` |
+| 6 | Backend Implementation | Layered FastAPI code with tests on the important endpoints | `backend/` |
+| 7 | Database Integration | Works with a simple file database in development and Postgres in the full stack, with migrations and a documented schema | `db/`, `_docs/data-model.md` |
+| 8 | Containerization | One `make up` starts everything; health checks included | `docker-compose.yml`, `Makefile` |
+| 9 | Integration Testing | Tests that run against the real stack, from collection to a bot reply — kept separate from the unit tests | `tests/integration/` |
 | 10 | Deployment | A public Telegram bot plus a public dashboard address, with a check after each deploy | `_docs/deployment.md` |
-| 11 | CI/CD | Every pull request runs lint, tests and the answer-quality scoreboard; merging to main deploys, verifies and can roll back | `.github/workflows/` |
-| 12 | Agent extension pack | Project instructions, a reusable routine, a checker helper, our own tool server, a guardrail, and a written list of what the bot may do | `skills/`, `subagents/`, `mcp-server/`, `hooks/`, `docs/permissions.md` |
-| 13 | Security, audit and ops | An AI code-review on pull requests, scanner findings, a capability list for the bot, an incident rehearsal, and a written data policy | `security/`, `ops/`, `observability/` |
+| 11 | CI/CD Pipeline | Every pull request runs lint, tests and the answer-quality scoreboard; merging to main deploys, verifies and can roll back | `.github/workflows/` |
+| 12 | Agent Extension Pack | Project instructions, a reusable routine, a checker helper, our own tool server, a guardrail, and a written list of what the bot may do | `skills/`, `subagents/`, `mcp-server/`, `hooks/`, `docs/permissions.md` |
+| 13 | Security, Audit, and DevOps Hardening | An AI code-review on pull requests, scanner findings, a capability list for the bot, an incident rehearsal, and a written data policy | `security/`, `ops/`, `observability/` |
 | 14 | Reproducibility | Three commands from a clean machine: set up, start, test end to end | `README.md`, `Makefile` |
 
 ## 8. The plan

@@ -16,9 +16,11 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **M1**. The database schema and its first migration, the notes corpus with `manifest.yaml`, and the local
-embedding provider in Compose exist and are tested (`make test`, `make itest`); `_docs/data-model.md` describes the
-tables and how they map onto the contract. No API or agent code yet.
+Status: **M1–M2 done; M3 next**. The M2 client, bronze store, normalized ingestion pipeline,
+run ledger, daily scheduler and score-delay polling command are implemented. Unit tests and lint pass; integration
+tests pass against disposable Postgres 16/pgvector and the local embedding model. The retained Postgres volume and a
+real upstream run still need the matching local `.env` password and a valid `UPSTREAM_API_KEY`; never put either
+value in the repo or a prompt.
 
 ## Architecture (target)
 
@@ -76,6 +78,10 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
 - Ollama for the two small local models: `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres)
   and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
+  `laya` is **not pulled and not used today** — nothing depends on it until M3b decides.
+- The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
+  container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
+  and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
 - Hermes Agent in Docker, data volume at `/opt/data`; MCP over HTTP; skills as `SKILL.md`
 - Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
@@ -84,15 +90,39 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # docker compose up -d (db, ingest, backend, mcp-server, hermes, frontend, ollama)
+make up        # start db, ollama and the ingest scheduler; apply migrations
 make down      # stop everything
 make test      # unit tests (fast, no network)
-make itest     # integration tests against the Compose stack
+make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)
+make itest-isolated # same tests against a throwaway Compose project; use when the volume must stay untouched
 make e2e       # Playwright end-to-end
 make eval      # golden-question eval run against the agent
 make ingest    # trigger one ingestion run manually
+make score-delay [MATCH_ID=…] # poll a live or recent match and report how old the provider's data is
 make logs      # tail logs for a service
 ```
+
+## Working copy and branches (read before touching git)
+
+- This project has **exactly one working copy**: `/Users/ahmadammari/GitHub/ai-dev-prj-hermes-football`. Every
+  milestone branch is created and checked out **there**.
+- **Do not create or use `git worktree` copies** of this repo (not under `~/GitHub/copilot-worktrees/…`, not
+  anywhere else). If a worktree for this project exists, remove the worktree directory (never the branch), then
+  `git checkout` the branch at the root.
+- **The active branch is the milestone branch** (currently `anammari-m2-ingest-pipeline`), not `main`. `main`
+  receives merged milestone work only.
+
+```bash
+# where am I? Must print the root path, a milestone branch (not main), and a single worktree line.
+pwd && git rev-parse --abbrev-ref HEAD && git worktree list
+# get back
+cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout anammari-m2-ingest-pipeline
+```
+
+**Why:** two checkouts of the same repo shared the Compose project name `hermes-football` and one Postgres volume
+while carrying different `.env` passwords, which broke `make up` and `make itest` with
+`FATAL: password authentication failed for user "hermes"`. (Compose's project name is now overridable through
+`COMPOSE_PROJECT_NAME`; the default stays `hermes-football` so the existing `hermes-football_pgdata` is kept.)
 
 ## Hard rules
 
@@ -135,16 +165,21 @@ make logs      # tail logs for a service
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-API contract v0.1.0 reviewed and lint clean (`openapi.yaml`, `make swagger`), decision records in `_docs/decisions/`
-(0001 notes corpus + manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the
-container). M1 is done: `db/models.py` plus migration `0001_init` matching the contract, the corpus with
-`hermes/agent-knowledge/manifest.yaml`, the chunker and embedding client, and one note indexed and retrieved end to
-end in Postgres (`_docs/data-model.md`, `make test`, `make itest`).
+API contract v0.1.0 reviewed (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes corpus +
+manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the container). M1 is done:
+schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
+client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
+rate-limited collection, bronze payloads, scorer snapshots, the run ledger, schedule/manual entry points, and delay
+polling. M2 is verified live on the retained volume: 54 unit and 9 integration tests pass, and a real run loaded
+13 competitions, ~9.9k matches and standings in about 20 minutes and 162 upstream calls, ending `partial` because EC
+has no standings on the free tier. A full run costs roughly 130-350 calls (about 15-30 minutes at 10 req/min); upstream
+caps `/matches` at 10 days per request. Rebuild images (`DOCKER_BUILDKIT=0 make build`) after changing code: the
+containers bake it in.
 
 Next, in order:
-1. `ingest/` client with header-driven pacing and the run ledger. The free-tier capability spike is **done** —
-   results in `_docs/scoping.md` §3 (squads, scorers and players ARE available; h2h aggregates and odds are not
-   trustworthy; fixtures fetch in batch across competitions).
+1. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
+   reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
+   freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
 2. `backend/` endpoints against the contract + unit/integration tests. This is also where `agent_turns.route`,
    `route_source` and `route_confidence` join `openapi.yaml` — they exist in the schema today (`_docs/data-model.md`,
    open items).

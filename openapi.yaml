@@ -998,7 +998,7 @@ components:
           example: England
         type:
           type: string
-          enum: [LEAGUE, CUP, PLAYOFFS, SUPER_CUP]
+          enum: [LEAGUE, LEAGUE_CUP, CUP, PLAYOFFS, SUPER_CUP]
         current_season:
           type: integer
           nullable: true
@@ -1172,7 +1172,7 @@ components:
     MatchStatus:
       type: string
       description: Provider lifecycle status
-      enum: [SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED, SUSPENDED, POSTPONED, CANCELLED, AWARDED]
+      enum: [SCHEDULED, TIMED, IN_PLAY, PAUSED, EXTRA_TIME, PENALTY_SHOOTOUT, FINISHED, SUSPENDED, POSTPONED, CANCELLED, AWARDED]
 
     Score:
       type: object

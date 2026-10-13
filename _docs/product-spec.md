@@ -99,17 +99,29 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   competition.
 - **R-F1.2** All upstream traffic passes through one client that paces on the upstream `x-requests-available-minute`
   and `X-RequestCounter-Reset` headers and enforces **<= 10 requests/minute** as a hard ceiling, with backoff on
-  429/5xx, a retry ceiling, and upstream 403 treated as `data_not_available`.
+  429/5xx, a retry ceiling, upstream 403 treated as `data_not_available` and upstream 404 as `resource_not_found`.
+  An exhausted quota (`x-requests-available-minute` of 0) with no reset header waits a full 60-second window.
+  **Fault isolation:** a 403/404 on an optional sub-resource (`teams`, `standings`, `scorers`, `/teams/{id}`) is
+  recorded in `ingest_runs.errors` and the run continues; any `UpstreamError` inside one competition skips that
+  competition only, and a failed `/matches` window skips that window only. Such runs end `partial`. `failed` is
+  reserved for a failing `/competitions` catalog or a database error. Example: EC (the 2024 European Championship)
+  has no standings or scorers on the free tier and returns 404 every day.
 - **R-F1.3** Runs are **idempotent**: re-running the same day does not duplicate rows.
-- **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver).
+- **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver). Bronze is **pruned after
+  `RAW_PAYLOAD_RETENTION_DAYS` (default 30)** at the end of each run, never including the run that just wrote it;
+  `content_hash` is a change-detection fingerprint (a payload identical to an earlier one for the same endpoint is
+  counted as `payloads_unchanged` in the run report). The normalized tables are the durable record.
 - **R-F1.5** Each run writes a ledger row: start/end, status, upstream calls used, rows upserted, errors.
+- **R-F1.6** Expected cost of a full run: about 130-160 upstream calls measured live (`/matches` is paged in 10-day windows, the upstream cap), i.e. roughly **15-20 minutes** at 10 requests/minute,
+  which is the whole free-tier budget for that half hour. The run logs progress per competition. The scheduler
+  validates `UPSTREAM_API_KEY` at startup so a bad token fails `make up` instead of a once-a-day log line.
 - **AC** `make ingest` twice in a row -> second run reports 0 inserted / N unchanged, ledger shows both runs, and no
   API call exceeds the rate limit (asserted in a unit test with a fake clock).
 
 ### F2 — Database (`db/`, Postgres + Alembic)
 
-- **R-F2.1** Schema covers competitions, seasons, teams, players, matches, standings, and the knowledge corpus
-  (pgvector embeddings).
+- **R-F2.1** Schema covers competitions, seasons, teams, players, matches, standings, normalized top-scorer snapshots,
+  bronze raw upstream payloads, and the knowledge corpus (pgvector embeddings).
 - **R-F2.2** All schema changes are Alembic migrations; `alembic upgrade head` is part of container start.
 - **R-F2.3** The same code path runs on SQLite (dev) and Postgres (compose) via `DATABASE_URL`.
 - **R-F2.4** The agent-facing role is **read-only**.
@@ -276,7 +288,7 @@ model and the router are recorded in `_docs/decisions/` (0001, 0002, 0003).
 | Risk | Mitigation |
 | --- | --- |
 | Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §3; a re-runnable probe in CI reports a change instead of failing at answer time |
-| The score delay is unmeasured, so "delayed" could be mistaken for "live" | M2 measures it by polling one finished match until its score appears; the freshness stamp then carries the measured number |
+| "Delayed" could be mistaken for "live" | Measured in M2 (match 555033): scores lag the provider by about 1.5-3 minutes and arrive with `FINISHED`; the status can flap to `TIMED` during play. Daily ingestion makes the stamp the real age, so every answer carries it |
 | Delayed data mistaken for live data | Freshness stamping enforced in the API layer, not only in the prompt |
 | Agent hallucinating scores under pressure | Grounding policy in `SOUL.md` + eval cases with unanswerable questions + retrieval of facts only via tools |
 | Rate limit exhaustion from retries or dev usage | Token bucket, cache table for repeated windows, dev environment reads from the local DB only |
