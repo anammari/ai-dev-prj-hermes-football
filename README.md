@@ -98,6 +98,12 @@ the migrations. `backend`, `mcp-server`, `hermes`, `frontend` and the observabil
 land. Dependencies are gated on health (`db` and `ollama` are both `service_healthy`), and the Compose project name is
 overridable through `COMPOSE_PROJECT_NAME` so a second checkout cannot collide with this one on the same volume.
 
+The model server is a derived image rather than the stock upstream one. `ollama/ollama:0.40.2` is 7.05 GB, about
+3.6 GB of which is four CUDA trees that a container on Apple Silicon can never load, so [`Dockerfile.ollama`](Dockerfile.ollama)
+deletes them and flattens the result into a single layer — a `RUN rm` on its own would reclaim nothing, because the
+bytes stay in the layer below. The stack runs the same Ollama version (0.40.2) at **637 MB**. The reasoning, including
+what a GPU host would have to change, is [decision 0005](_docs/decisions/0005-ollama-image.md).
+
 ## 9. Integration testing
 
 [`tests/integration/`](tests/integration) holds the tests that need the real stack — PostgreSQL + pgvector, the

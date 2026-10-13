@@ -1,0 +1,40 @@
+# A CPU-only Ollama for this stack.
+#
+# The upstream `ollama/ollama` image ships every GPU backend Ollama supports — four CUDA trees
+# (`cuda_v12`, `cuda_v13`, `cuda_jetpack5`, `cuda_jetpack6`) totalling about 3.6 GB. This project
+# runs in Docker Desktop on Apple Silicon, where a container cannot reach an NVIDIA GPU, so none of
+# that can ever load and the CPU/ARM runners are what actually execute.
+#
+# Two things make this work, and the second is the one that matters:
+#
+#   1. Delete the CUDA trees from the upstream filesystem. Ollama discovers its runners at startup
+#      and falls back to CPU when none match, so removing them changes nothing it does here.
+#   2. Flatten into `FROM scratch` rather than layering a delete on top. Deleting a file in a later
+#      layer removes it from the *filesystem* but leaves the bytes in the layer below, so a plain
+#      `RUN rm -rf` would shrink nothing. Copying the cleaned filesystem into a single new layer is
+#      what actually returns the space.
+#
+# `FROM scratch` also discards the upstream metadata, so the ENV, EXPOSE, ENTRYPOINT and CMD below
+# re-declare it exactly as the pinned image has it, minus the NVIDIA variables that only mean
+# something with the NVIDIA container toolkit present.
+#
+# To go back to stock upstream, point the `ollama` and `models` services in `docker-compose.yml` at
+# `ollama/ollama:0.40.2` again and delete this file.
+FROM ollama/ollama:0.40.2 AS upstream
+
+RUN rm -rf /usr/lib/ollama/cuda_v12 \
+           /usr/lib/ollama/cuda_v13 \
+           /usr/lib/ollama/cuda_jetpack5 \
+           /usr/lib/ollama/cuda_jetpack6
+
+FROM scratch
+
+COPY --from=upstream / /
+
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    OLLAMA_HOST=0.0.0.0:11434
+
+EXPOSE 11434
+
+ENTRYPOINT ["/bin/ollama"]
+CMD ["serve"]

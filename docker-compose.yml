@@ -21,6 +21,16 @@ x-app-env: &app-env
   OLLAMA_EMBED_DIM: ${OLLAMA_EMBED_DIM:-768}
   KNOWLEDGE_DIR: /corpus
 
+x-ollama-image: &ollama-image
+  # A CPU-only build of the pinned Ollama. `Dockerfile.ollama` explains it: upstream ships ~3.6 GB
+  # of CUDA trees that a container on Apple Silicon can never load, and flattening them away is
+  # what returns the space. To go back to stock upstream, replace this block with
+  # `image: ollama/ollama:0.40.2`.
+  build:
+    context: .
+    dockerfile: Dockerfile.ollama
+  image: hermes-football-ollama:local
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -40,7 +50,7 @@ services:
     restart: unless-stopped
 
   ollama:
-    image: ollama/ollama:0.40.2
+    <<: *ollama-image
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:
@@ -81,7 +91,7 @@ services:
   # ---------------------------------------------------------------------------------------------
 
   models:
-    image: ollama/ollama:0.40.2
+    <<: *ollama-image
     profiles: [tools]
     depends_on:
       ollama:

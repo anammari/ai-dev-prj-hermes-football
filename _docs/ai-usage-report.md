@@ -121,6 +121,30 @@ checked and work that merely looked right.
   never produces. The tool is repaired in S6. Lesson: stubbed providers cannot find provider rules; only a real run
   did.
 
+### S6 — M2 close-out: the review, the README index, the score-delay tool and the Ollama image
+
+- **Delegated:** none. A human asked an agent to review the M2 fixes, sync the README with the course criteria, delete
+  the completed handoff and repair `make score-delay`; the agent made those edits under review, and the container work
+  was done directly.
+- **Reviewed:** every claim on the branch was checked against the live database and the stored payloads rather than
+  against the docs. Two did not survive: `make score-delay` could only ever exit non-zero, and its documented figure
+  had been read by hand out of the poll payloads. Both are now fixed and disclosed in S5 above. The review also
+  confirmed what was sound — 9,895 matches loaded live, EC's 404 isolating to `partial`, and the branch a clean
+  fast-forward on `main` with no secrets in its diff.
+- **Rejected or revised:** the score-delay command's premise was rejected outright — the provider publishes the score
+  while the match is `IN_PLAY`, so there is no scoreless-finished window to wait for; it now measures the provider
+  `lastUpdated` to fetch gap. A first attempt at its default match selector was itself wrong, picking a fixture
+  scheduled for 2027, and a human caught it in a live run, so it is now bounded to matches that have kicked off. On
+  the container side, a thin `RUN rm -rf` over the Ollama image was rejected because it reclaims nothing; the image is
+  flattened instead. Keeping the duplicate `ollama/ollama:latest` tag was also rejected, being a floating tag that
+  would silently pull a second 7 GB image later.
+- **Evidence:** 54 unit and 9 integration tests pass, ruff is clean. A bounded live run against match 555032, still in
+  play, gave `statuses_seen: {"IN_PLAY": 10}`, `score_published_before_full_time: true` and a median observation lag
+  of **104 seconds** over ten polls — the 1.5-3 minute claim re-derived from a live match rather than by hand — and the
+  ledger's first `succeeded` score-delay run. The Ollama image went from 7.05 GB to 637 MB with the model server
+  verified by the two integration tests named in [decision 0005](decisions/0005-ollama-image.md); Docker's disk image
+  went from 13 GB to 6.9 GB.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

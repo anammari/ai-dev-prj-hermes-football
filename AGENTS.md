@@ -78,6 +78,10 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
 - Ollama for the two small local models: `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres)
   and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
+  `laya` is **not pulled and not used today** — nothing depends on it until M3b decides.
+- The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
+  container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
+  and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
 - Hermes Agent in Docker, data volume at `/opt/data`; MCP over HTTP; skills as `SKILL.md`
 - Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
