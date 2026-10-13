@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import statistics
+import sys
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -23,8 +24,10 @@ from db.session import create_db_engine, create_session_factory, session_scope
 from db.settings import Settings
 from ingest.client import FootballDataClient
 from ingest.knowledge.embedding import OllamaEmbedder
-from ingest.pipeline import DEFAULT_RAW_RETENTION_DAYS, _safe_error, run_ingestion
+from ingest.pipeline import DEFAULT_RAW_RETENTION_DAYS, _safe_error, prune_raw_payloads, run_ingestion
 from ingest.scheduler import run_daily
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -69,7 +72,12 @@ def main() -> None:
 
     try:
         if args.command == "run":
-            print(json.dumps(action(), sort_keys=True))
+            report = action()
+            print(json.dumps(report, sort_keys=True))
+            # A run that failed collected nothing, so a zero exit would tell a caller — CI, or a cron
+            # entry of its own — that the day landed when it did not.
+            if report["status"] == "failed":
+                sys.exit(1)
         elif args.command == "schedule":
             # Fail at startup, not at the first scheduled run, when the token is missing or a placeholder.
             FootballDataClient(base_url=settings.upstream_base_url, api_key=settings.upstream_api_key).close()
@@ -87,6 +95,7 @@ def main() -> None:
                 poll_seconds=args.poll_seconds,
                 timeout_seconds=args.timeout_seconds,
                 recent_hours=args.recent_hours,
+                raw_retention_days=raw_retention_days,
             )
     finally:
         engine.dispose()
@@ -108,6 +117,7 @@ def measure_score_delay(
     poll_seconds: int,
     timeout_seconds: int,
     recent_hours: int = 6,
+    raw_retention_days: int | None = DEFAULT_RAW_RETENTION_DAYS,
     sleep: Callable[[float], None] = time.sleep,
     now: Callable[[], datetime] = _utc_now,
 ) -> dict[str, Any]:
@@ -196,7 +206,11 @@ def measure_score_delay(
                     break
                 sleep(min(poll_seconds, remaining))
 
+            # A measurement writes one bronze payload per poll and nothing else would ever prune
+            # them: apply the same retention a full run applies, keeping this measurement's own rows.
+            pruned = _prune_measurement_bronze(factory, raw_retention_days, run_id)
             result = _summarise_measurement(match_id, observations, client.stats)
+            result["payloads_pruned"] = pruned
             _finish_measurement(factory, run_id, client.stats.calls_used, client.stats.rate_limit_hits)
             print(json.dumps(result, sort_keys=True))
             return result
@@ -266,6 +280,22 @@ def _summarise_measurement(
         "calls_used": stats.calls_used,
         "rate_limit_hits": stats.rate_limit_hits,
     }
+
+
+def _prune_measurement_bronze(
+    factory: sessionmaker[Session], raw_retention_days: int | None, run_id: str
+) -> int:
+    """Apply bronze retention after a measurement; None keeps payloads forever."""
+    if raw_retention_days is None:
+        return 0
+    try:
+        return prune_raw_payloads(
+            factory, retention_days=raw_retention_days, keep_run_id=run_id, now=datetime.now(UTC)
+        )
+    except Exception as exc:
+        # Housekeeping must not turn a completed measurement into a failed one.
+        logger.warning("bronze retention after the score-delay measurement failed: %s", _safe_error(exc))
+        return 0
 
 
 def _finish_measurement(

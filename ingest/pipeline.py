@@ -111,8 +111,10 @@ def run_ingestion(
                     team_details_seen,
                     _utc(now()).date(),
                 )
-            except UpstreamError as exc:
-                # One competition degrading must not stop the others.
+            except (UpstreamError, ValueError) as exc:
+                # One competition degrading, or publishing a record the normalizer rejects, must not
+                # stop the others. Only these two are caught: a database fault still aborts the run,
+                # because that is a problem on our side rather than bad provider data.
                 _add_unavailable(report, "competition", code, exc)
                 logger.warning("competition %s skipped: %s", code, exc)
 
@@ -128,12 +130,19 @@ def run_ingestion(
             }
         except Exception as exc:
             report.errors.append({"resource": "knowledge-index", "message": _safe_error(exc)})
-        if raw_retention_days is not None:
+    except Exception as exc:
+        report.errors.append({"resource": "run", "message": _safe_error(exc)})
+    # Retention runs even when collection failed. A run that dies early has still written bronze, and
+    # if cleanup only happened on the happy path then a stretch of failed days would let old payloads
+    # outlive the window. A cleanup failure is reported as `partial` rather than `failed`: the day's
+    # data did land, only the housekeeping did not.
+    if raw_retention_days is not None:
+        try:
             report.payloads_pruned = prune_raw_payloads(
                 factory, retention_days=raw_retention_days, keep_run_id=run_id, now=_utc(now())
             )
-    except Exception as exc:
-        report.errors.append({"resource": "run", "message": _safe_error(exc)})
+        except Exception as exc:
+            report.errors.append({"resource": "prune", "message": _safe_error(exc)})
     report.calls_used = client.stats.calls_used - calls_before
     report.rate_limit_hits = client.stats.rate_limit_hits - rate_limit_hits_before
     report.rows_inserted = counter["inserted"]
@@ -193,23 +202,25 @@ def _collect_competition(
     except _UNAVAILABLE as exc:
         _add_unavailable(report, "teams", code, exc)
 
-    for resource, normalizer in (
-        ("standings", upsert_standings),
-        ("scorers", upsert_scorers),
+    for resource, column, normalizer in (
+        ("standings", "coverage_standings", upsert_standings),
+        ("scorers", "coverage_scorers", upsert_scorers),
     ):
         try:
             resource_params = {**params, **({"limit": 500} if resource == "scorers" else {})}
             payload = _fetch(client, factory, run_id, f"/competitions/{code}/{resource}", resource_params, report)
             with session_scope(factory) as session:
                 normalizer(session, payload, snapshot_date, counter)
-                if resource == "scorers":
-                    row = session.get(Competition, code)
-                    if row is not None and not row.coverage_scorers:
-                        row.coverage_scorers = True
-                        if code not in inserted_competitions:
-                            counter["updated"] += 1
+                _set_coverage(session, code, column, True, inserted_competitions=inserted_competitions, counter=counter)
         except _UNAVAILABLE as exc:
+            # A 403 or 404 is the provider saying it will not serve this table. Record that in the
+            # flag as well as the run log, or the API presents an unavailable table as an empty one
+            # that still looks valid. Flipping it back on success covers access returning later.
             _add_unavailable(report, resource, code, exc)
+            with session_scope(factory) as session:
+                _set_coverage(
+                    session, code, column, False, inserted_competitions=inserted_competitions, counter=counter
+                )
 
 
 def _fetch(
@@ -316,7 +327,9 @@ def _fetch_and_normalize_matches(
                     break
                 if page_count >= 100:
                     raise UpstreamError(f"upstream pagination did not terminate for {window_start} to {window_end}")
-        except UpstreamError as exc:
+        except (UpstreamError, ValueError) as exc:
+            # Same rule as the competition loop: one malformed fixture skips its window, and a
+            # database fault is not swallowed here either.
             report.errors.append(
                 {"resource": f"matches:{window_start}..{window_end}", "message": _safe_error(exc)}
             )
@@ -362,6 +375,24 @@ def _season_year(season: dict[str, Any]) -> int | None:
         return year
     start = parse_date(season.get("startDate"))
     return start.year if start else None
+
+
+def _set_coverage(
+    session: Session,
+    code: str,
+    column: str,
+    value: bool,
+    *,
+    inserted_competitions: set[str | None],
+    counter: dict[str, int],
+) -> None:
+    """Record whether the provider served an optional sub-resource for this competition."""
+    row = session.get(Competition, code)
+    if row is None or getattr(row, column) == value:
+        return
+    setattr(row, column, value)
+    if code not in inserted_competitions:
+        counter["updated"] += 1
 
 
 def _add_unavailable(report: RunReport, resource: str, code: str, error: Exception) -> None:

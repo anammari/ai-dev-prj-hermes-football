@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select
@@ -9,8 +11,10 @@ from sqlalchemy.orm import sessionmaker
 
 import ingest.__main__ as ingest_cli
 from db.models import Competition, IngestRun, Match, Player, RawPayload, Season, Standing, Team, TopScorer
+from db.session import session_scope
 from ingest.client import ClientStats, DataNotAvailable, ResourceNotFound, UpstreamError
-from ingest.pipeline import run_ingestion
+from ingest.normalize import upsert_competition, upsert_scorers, upsert_team
+from ingest.pipeline import RunReport, run_ingestion
 
 
 @dataclass
@@ -21,6 +25,7 @@ class StubClient:
     broken: set[str] | None = None
     second_competition: bool = False
     match_sent: bool = False
+    malformed_standings: bool = False
 
     def __post_init__(self) -> None:
         self.stats = ClientStats()
@@ -70,6 +75,18 @@ class StubClient:
         if endpoint.startswith("/teams/"):
             return {"team": self._team(with_squad=True)}
         if endpoint.endswith("/standings"):
+            row = {
+                "position": 1,
+                "team": self._team(),
+                "playedGames": 0,
+                "won": 0,
+                "draw": 0,
+                "lost": 0,
+                "points": 0,
+            }
+            if self.malformed_standings:
+                # A provider row the normalizer rejects: the required total is missing.
+                del row["points"]
             return {
                 "competition": {"code": "TST"},
                 "season": {"year": 2026},
@@ -77,17 +94,7 @@ class StubClient:
                     {
                         "type": "TOTAL",
                         "stage": "REGULAR_SEASON",
-                        "table": [
-                            {
-                                "position": 1,
-                                "team": self._team(),
-                                "playedGames": 0,
-                                "won": 0,
-                                "draw": 0,
-                                "lost": 0,
-                                "points": 0,
-                            }
-                        ],
+                        "table": [row],
                     }
                 ],
             }
@@ -505,3 +512,212 @@ def test_score_delay_default_picks_a_match_that_has_kicked_off(settings, engine,
 
     assert result["match_id"] == 9001
     assert polled == ["/matches/9001"]
+
+
+# ---------------------------------------------------------------------------------------------------
+# Copilot PR #1 review: the data-integrity findings, each with the failure it is there to catch.
+# ---------------------------------------------------------------------------------------------------
+
+
+def test_summary_team_upsert_keeps_metadata_the_summary_omits(engine) -> None:
+    """`/matches` and `/standings` embed a reduced team object holding only id, name, tla and crest.
+
+    Writing the fields such a payload omits as None erased the area, founding year, venue and colours
+    that `/teams/{id}` had stored, so whichever resource ran last decided what a team looked like.
+    The retained volume showed the damage: `area` was NULL for all 360 teams.
+    """
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    counter = {"inserted": 0, "updated": 0, "unchanged": 0}
+    detail = {
+        "id": 10,
+        "name": "Test FC",
+        "tla": "TST",
+        "area": {"name": "Testland"},
+        "founded": 1886,
+        "venue": "Test Park",
+        "clubColors": "Red / White",
+    }
+    summary = {"id": 10, "name": "Test FC", "tla": "TST", "crest": "https://crests.test/10.png"}
+
+    with session_scope(factory) as session:
+        upsert_competition(session, {"code": "TST", "name": "Test League", "type": "LEAGUE"}, counter)
+        upsert_team(session, detail, "TST", counter)
+    with session_scope(factory) as session:
+        upsert_team(session, summary, "TST", counter)
+
+    with factory() as session:
+        team = session.get(Team, 10)
+        assert team is not None
+        assert (team.area, team.founded, team.venue, team.club_colors) == (
+            "Testland",
+            1886,
+            "Test Park",
+            "Red / White",
+        )
+        # The summary did carry a crest, so that one is taken.
+        assert team.crest == "https://crests.test/10.png"
+
+
+def test_scorer_refresh_keeps_squad_detail_the_scorer_payload_omits(engine) -> None:
+    """A squad row and a scorer row are not the same shape; the scorer must not blank the difference."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    counter = {"inserted": 0, "updated": 0, "unchanged": 0}
+    with session_scope(factory) as session:
+        upsert_competition(session, {"code": "TST", "name": "Test League", "type": "LEAGUE"}, counter)
+        upsert_team(session, {"id": 10, "name": "Test FC"}, "TST", counter)
+        session.add(Player(id=20, team_id=10, name="Test Player", position="Forward", nationality="Testland"))
+
+    with session_scope(factory) as session:
+        upsert_scorers(
+            session,
+            {
+                "competition": {"code": "TST"},
+                "season": {"year": 2026},
+                "scorers": [
+                    {
+                        "player": {"id": 20, "name": "Test Player"},
+                        "team": {"id": 10, "name": "Test FC"},
+                        "goals": 3,
+                        "playedMatches": 5,
+                    }
+                ],
+            },
+            date(2026, 10, 10),
+            counter,
+        )
+
+    with factory() as session:
+        player = session.get(Player, 20)
+        assert player is not None
+        assert (player.position, player.nationality) == ("Forward", "Testland")
+        assert session.scalar(select(func.count()).select_from(TopScorer)) == 1
+
+
+def test_rolling_to_a_new_season_retires_the_previous_current_flag(engine) -> None:
+    """A competition has one current season; the rollover used to leave two rows flagged."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    counter = {"inserted": 0, "updated": 0, "unchanged": 0}
+    base = {"code": "TST", "name": "Test League", "type": "LEAGUE"}
+    season_2025 = {"year": 2025, "startDate": "2025-08-01", "endDate": "2026-05-31"}
+    season_2026 = {"year": 2026, "startDate": "2026-08-01", "endDate": "2027-05-31"}
+
+    with session_scope(factory) as session:
+        upsert_competition(session, {**base, "currentSeason": season_2025}, counter)
+    with session_scope(factory) as session:
+        upsert_competition(session, {**base, "currentSeason": season_2026}, counter)
+
+    with factory() as session:
+        current = list(session.scalars(select(Season).where(Season.is_current)))
+        assert [season.year for season in current] == [2026]
+        # The old season is retired, not deleted: its history stays.
+        assert session.scalar(select(func.count()).select_from(Season)) == 2
+
+
+def test_a_malformed_provider_row_is_isolated_to_its_competition(settings, engine, embedder) -> None:
+    """A record the normalizer rejects used to reach the outer handler, failing the whole day and
+    skipping every competition and match window still to come."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient(malformed_standings=True, second_competition=True)
+
+    report = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+
+    assert report.status == "partial"
+    assert "competition:TST" in [error["resource"] for error in report.errors]
+    assert "/competitions/TS2/standings" in client.requested
+    assert "/matches" in client.requested
+
+
+def test_retention_runs_even_when_the_collection_fails(settings, engine, embedder) -> None:
+    """Cleanup used to sit inside the main try, so a failed day skipped it and a run of failed days
+    let old bronze outlive its window."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    old_run = "11111111-1111-1111-1111-111111111111"
+    with session_scope(factory) as session:
+        session.add(
+            IngestRun(
+                id=old_run,
+                started_at=_fixed_now() - timedelta(days=40),
+                status="succeeded",
+                trigger="manual",
+            )
+        )
+        session.add(
+            RawPayload(
+                run_id=old_run,
+                endpoint="/competitions",
+                request_params={},
+                payload={"competitions": []},
+                content_hash="0" * 64,
+                fetched_at=_fixed_now() - timedelta(days=40),
+            )
+        )
+    client = StubClient(broken={"/competitions"})
+
+    report = run_ingestion(settings, factory, client, embedder, raw_retention_days=30, now=_fixed_now)
+
+    assert report.status == "failed"
+    assert [error["resource"] for error in report.errors] == ["run"]
+    assert report.payloads_pruned == 1
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(RawPayload)) == 0
+
+
+def test_a_withheld_standings_table_is_not_reported_as_covered(settings, engine, embedder) -> None:
+    """A 403 or 404 is the provider refusing a table. The coverage flag has to follow, or the API
+    serves an unavailable table as an empty one that still looks valid."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    client = StubClient(not_found={"/competitions/TST/standings"})
+
+    report = run_ingestion(settings, factory, client, embedder, now=_fixed_now)
+
+    assert report.status == "partial"
+    with factory() as session:
+        competition = session.get(Competition, "TST")
+        assert competition is not None
+        assert competition.coverage_standings is False
+        assert competition.coverage_scorers is True
+
+
+def test_a_served_standings_table_is_marked_covered(settings, engine, embedder) -> None:
+    """The other half of the flag: access returning on a later run flips it back."""
+    factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+    run_ingestion(settings, factory, StubClient(), embedder, now=_fixed_now)
+
+    with factory() as session:
+        competition = session.get(Competition, "TST")
+        assert competition is not None
+        assert competition.coverage_standings is True
+
+
+@pytest.mark.parametrize(("status", "exit_code"), [("succeeded", 0), ("partial", 0), ("failed", 1)])
+def test_the_run_command_exit_code_follows_the_run_status(monkeypatch, settings, status, exit_code) -> None:
+    """A run that collected nothing must not report success to whatever called it."""
+
+    class _NullClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc_info):
+            return None
+
+    engine = SimpleNamespace(dispose=lambda: None)
+    monkeypatch.setattr(ingest_cli, "Settings", SimpleNamespace(from_env=lambda: settings))
+    monkeypatch.setattr(ingest_cli, "create_db_engine", lambda _settings: engine)
+    monkeypatch.setattr(ingest_cli, "create_session_factory", lambda _engine: None)
+    monkeypatch.setattr(ingest_cli, "FootballDataClient", _NullClient)
+    monkeypatch.setattr(ingest_cli, "OllamaEmbedder", _NullClient)
+    monkeypatch.setattr(
+        ingest_cli, "run_ingestion", lambda *_args, **_kwargs: RunReport(run_id="run-1", status=status)
+    )
+    monkeypatch.setattr(sys, "argv", ["ingest", "run"])
+
+    if exit_code:
+        with pytest.raises(SystemExit) as exit_info:
+            ingest_cli.main()
+        assert exit_info.value.code == exit_code
+    else:
+        ingest_cli.main()

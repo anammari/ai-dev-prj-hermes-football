@@ -41,6 +41,22 @@ def _count(counter: dict[str, int], result: str) -> None:
     counter[result] += 1
 
 
+def _player_values(team_id: int, player: dict[str, Any]) -> dict[str, Any]:
+    """Build a player upsert from the fields this payload carries, and only those.
+
+    A squad row and a scorer row are not the same shape. Writing a missing key as None is how a
+    scorer refresh would blank the position, birth date or nationality a squad load had stored.
+    """
+    values: dict[str, Any] = {"team_id": team_id, "name": player["name"]}
+    if "position" in player:
+        values["position"] = player["position"]
+    if "dateOfBirth" in player:
+        values["date_of_birth"] = parse_date(player["dateOfBirth"])
+    if "nationality" in player:
+        values["nationality"] = player["nationality"]
+    return values
+
+
 def upsert_competition(session: Session, item: dict[str, Any], counter: dict[str, int]) -> None:
     code = item.get("code")
     if not code:
@@ -63,6 +79,18 @@ def upsert_competition(session: Session, item: dict[str, Any], counter: dict[str
     existing = session.scalar(
         select(Season).where(Season.competition_code == code, Season.year == year)
     )
+    # A competition has exactly one current season. Retire any other row still flagged before
+    # writing this one, or the first rollover to a new season leaves two rows marked current and
+    # every `Season.is_current` query starts returning both.
+    for stale in session.scalars(
+        select(Season).where(
+            Season.competition_code == code,
+            Season.year != year,
+            Season.is_current.is_(True),
+        )
+    ).all():
+        stale.is_current = False
+        counter["updated"] += 1
     season_values = {
         "competition_code": code,
         "year": year,
@@ -93,15 +121,23 @@ def upsert_team(
         raise ValueError(f"upstream team for {competition_code} is missing its id")
     if not team.get("name"):
         raise ValueError(f"upstream team {team_id} is missing its name")
-    values = {
-        "name": team["name"],
-        "tla": team.get("tla"),
-        "crest": team.get("crest"),
-        "area": (team.get("area") or {}).get("name"),
-        "founded": team.get("founded"),
-        "venue": team.get("venue"),
-        "club_colors": team.get("clubColors"),
-    }
+    # The summary resources embed a reduced team object: a `/matches` row carries only id, name,
+    # tla and crest, and `/standings` is the same. Writing the fields those payloads omit as None
+    # would erase the area, founding year, venue and colours that `/teams/{id}` already stored —
+    # whichever resource happened to run last would decide what the team looked like. Only the
+    # fields the payload actually contains are written; the rest keep their stored value.
+    values: dict[str, Any] = {"name": team["name"]}
+    for column, key in (
+        ("tla", "tla"),
+        ("crest", "crest"),
+        ("founded", "founded"),
+        ("venue", "venue"),
+        ("club_colors", "clubColors"),
+    ):
+        if key in team:
+            values[column] = team[key]
+    if "area" in team:
+        values["area"] = (team.get("area") or {}).get("name")
     _count(counter, _upsert(session, Team, team_id, values))
     relation_key = (team_id, competition_code)
     if session.get(TeamCompetition, relation_key) is None:
@@ -113,13 +149,7 @@ def upsert_team(
             raise ValueError(f"upstream squad entry for team {team_id} is missing its id")
         if not player.get("name"):
             raise ValueError(f"upstream player {player_id} is missing its name")
-        player_values = {
-            "team_id": team_id,
-            "name": player["name"],
-            "position": player.get("position"),
-            "date_of_birth": parse_date(player.get("dateOfBirth")),
-            "nationality": player.get("nationality"),
-        }
+        player_values = _player_values(team_id, player)
         _count(counter, _upsert(session, Player, player_id, player_values))
 
 
@@ -236,14 +266,7 @@ def upsert_scorers(
         if not player.get("name"):
             raise ValueError(f"upstream scorer player {player['id']} is missing its name")
         upsert_team(session, team, competition_code, counter)
-        player_values = {
-            "team_id": team["id"],
-            "name": player["name"],
-            "position": player.get("position"),
-            "date_of_birth": parse_date(player.get("dateOfBirth")),
-            "nationality": player.get("nationality"),
-        }
-        _count(counter, _upsert(session, Player, player["id"], player_values))
+        _count(counter, _upsert(session, Player, player["id"], _player_values(team["id"], player)))
         identity = select(TopScorer).where(
             TopScorer.competition_code == competition_code,
             TopScorer.season == season_year,

@@ -10,7 +10,7 @@ SWAGGER_PORT ?= 8081
 SWAGGER_NAME ?= hermes-football-swagger
 Q ?=
 
-.PHONY: help setup build up down db-port migrate models test itest itest-isolated lint check-notes index-notes search ingest score-delay \
+.PHONY: help setup build up down db-port migrate models model-ready test itest itest-isolated lint check-notes index-notes search ingest score-delay \
         logs swagger swagger-stop validate-spec
 
 help: ## Show available targets
@@ -28,6 +28,7 @@ build: ## Build the app image used by the migrate and tests services
 
 up: ## Start the stack and apply migrations
 	$(COMPOSE) up -d db ollama
+	@$(MAKE) --no-print-directory model-ready
 	@$(MAKE) --no-print-directory migrate
 	$(COMPOSE) up -d ingest
 	@sleep 5
@@ -48,6 +49,17 @@ migrate: ## Apply the Alembic migrations to the Compose database
 
 models: ## Pull the pinned embedding model into the ollama volume
 	$(TOOLS) run --rm models
+
+# A fresh ollama volume holds no model, so knowledge indexing would fail and every daily run would end
+# `partial` until someone ran `make models` by hand. `make up` calls this first. It is a no-op once the
+# volume has a model, so it costs nothing on the runs after the first.
+model-ready: ## Pull the embedding model if the ollama volume has none yet
+	@if $(COMPOSE) exec -T ollama ollama list | tail -n +2 | grep -q .; then \
+	  echo "ollama volume already holds a model"; \
+	else \
+	  echo "no model in the ollama volume: pulling the embedding model (first run only)"; \
+	  $(MAKE) --no-print-directory models; \
+	fi
 
 test: ## Unit tests: fast, no network, no stack
 	$(TOOLS) run --rm tests pytest -q -m "not integration"

@@ -152,13 +152,20 @@ real user impact), and the AI code-review on pull requests.
 
 ## 14. Reproducibility
 
-Three commands take a clean machine to a working stack — which is the criterion's own test:
+Three commands take a clean machine to a working stack — which is the criterion's own test — after one edit:
 
 ```bash
 make setup     # create .env from .env.example, build the app image
-make up        # start db, ollama and the ingest scheduler; apply migrations
+# put a football-data.org token in UPSTREAM_API_KEY inside .env (free signup)
+make up        # start db and ollama, pull the embedding model, migrate, start the scheduler
 make test      # unit tests
 ```
+
+`make setup` copies `.env.example` verbatim, and its `UPSTREAM_API_KEY` is a placeholder. The scheduler and every
+manual collection refuse to start on a placeholder rather than fail at the first scheduled run, so until a real token
+is in `.env`, `make up` stops with `ingest scheduler exited at startup`. On a fresh `ollama` volume `make up` also
+pulls the pinned embedding model, so indexing works on the first scheduled run instead of ending `partial` until
+someone runs `make models` by hand.
 
 `make itest` then adds the real-stack tests. Apart from Docker, this repository and a `.env`, nothing is installed on
 the host.

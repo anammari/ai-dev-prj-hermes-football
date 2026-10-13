@@ -78,6 +78,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # The constraints this revision replaces cannot express the values it added, so fold the stored
+    # data back to the nearest value the previous schema allows. Without this the ALTER fails on any
+    # row already ingested with a new value — a knockout tie that went to extra time, or a league cup
+    # — which makes the downgrade unusable exactly once the data matters.
+    op.execute("UPDATE matches SET status = 'FINISHED' WHERE status IN ('EXTRA_TIME', 'PENALTY_SHOOTOUT')")
+    op.execute("UPDATE competitions SET type = 'CUP' WHERE type = 'LEAGUE_CUP'")
     op.drop_index("ix_top_scorers_competition_season", table_name="top_scorers")
     op.drop_table("top_scorers")
     op.drop_index("ix_raw_payloads_run_id", table_name="raw_payloads")
