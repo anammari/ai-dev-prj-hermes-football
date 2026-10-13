@@ -167,7 +167,7 @@ the host.
 | `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack |
 | `make itest-isolated` | Integration tests against a throwaway Compose project (own db, ollama, passwords), torn down afterwards |
 | `make ingest` | Trigger a manual upstream collection run (requires `UPSTREAM_API_KEY` in `.env`) |
-| `make score-delay [MATCH_ID=…]` | Poll a finished scoreless match and record score-availability delay |
+| `make score-delay [MATCH_ID=…]` | Poll a live or recent match and report how old the provider's data is (the `lastUpdated` to fetch gap) |
 | `make lint` | Ruff over the repository |
 | `make check-notes` / `make index-notes` | Validate the notes corpus against its manifest / index the changed notes |
 | `make search Q="…"` | Ask the corpus a question and see the passages it would retrieve |

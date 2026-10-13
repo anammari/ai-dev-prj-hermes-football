@@ -116,8 +116,10 @@ checked and work that merely looked right.
   worktrees on one Compose volume broke `make up`.
 - **Evidence:** a live run on the retained volume loaded 13 competitions and 9,895 matches (162 calls, ~19 minutes,
   `partial` because EC has no standings). The measured score delay is about 1.5-3 minutes (match 555033), recorded in
-  `_docs/scoping.md` §3 and the delay policy note. Lesson: stubbed providers cannot find provider rules; only a real
-  run did.
+  `_docs/scoping.md` §3 and the delay policy note — but that figure was read by hand out of the stored poll payloads,
+  because `make score-delay` itself ended `failed`: it waited for a finished match with no score, a state the provider
+  never produces. The tool is repaired in S6. Lesson: stubbed providers cannot find provider rules; only a real run
+  did.
 
 ## Sessions that predate this log (backfill needed)
 

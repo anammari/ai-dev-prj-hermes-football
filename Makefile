@@ -80,7 +80,7 @@ search: ## Ask the corpus a question: make search Q="how does the playoff work"
 ingest: ## Trigger one manual upstream collection run
 	$(COMPOSE) run --rm ingest python -m ingest run
 
-score-delay: ## Poll a finished scoreless match; optionally set MATCH_ID
+score-delay: ## Poll a live or recent match and report how old the provider's data is
 	$(COMPOSE) run --rm ingest python -m ingest measure-score-delay $(if $(MATCH_ID),--match-id $(MATCH_ID),)
 
 logs: ## Tail logs: make logs S=db

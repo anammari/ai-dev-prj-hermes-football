@@ -46,7 +46,13 @@ always stamped on it. Measured on 2026-10-12/13 by polling one match (id 555033)
 provider published the score while the match was still in play, and the final score arrived together with the
 `FINISHED` status, about **1.5 to 3 minutes** after the provider's own `lastUpdated`. There was no window with
 a finished match and no score. The status also flipped back to `TIMED` for a poll or two while the match was in
-play, so a single reading of a status can be wrong. Quote the data timestamp with every score and never call it live.
+play, so a single reading of a status can be wrong.
+
+Re-measured live a day later on a different match (id 555032, still in play): ten polls gave a median gap of
+**104 seconds** between the provider's `lastUpdated` and the moment the data was fetched, and the score was again
+already present while the match was `IN_PLAY`. `make score-delay` reproduces this — run it during a match and it
+reports the gap on every poll, and says so when the match it was given stopped being updated long ago. Quote the
+data timestamp with every score and never call it live.
 
 ## Why we count head-to-head records ourselves
 
