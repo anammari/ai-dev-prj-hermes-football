@@ -187,6 +187,109 @@ checked and work that merely looked right.
   files and re-running them shows **seven failing against the pre-fix code**, which is what makes them regression
   tests rather than decoration. The migration was exercised in both directions on throwaway databases.
 
+### S8 — M3: the backend API against `openapi.yaml` (branch `anammari-m3-backend-api`, 2026-10-13)
+
+- **Delegated:** the whole of M3 to the DeepSeek Harness coding agent, in the root checkout on a branch off `main`,
+  after a plan was approved: read `AGENTS.md`, `_docs/scoping.md` §7–8, `_docs/product-spec.md` §F3, `openapi.yaml`,
+  `_docs/data-model.md` and the model layer; then build `backend/` (FastAPI) against the contract, with unit tests,
+  one integration test and the Compose wiring. The plan named the files, the error semantics and the acceptance
+  criteria before any code was written, and the prompt is versioned in
+  [`prompts/0001-m3-backend-api.md`](../prompts/0001-m3-backend-api.md).
+- **Decided by the human, and binding on the agent:**
+  - **Admin scope: read-only.** All `GET` operations are implemented; the two write operations answer a declared
+    404 naming M5. No write path and no write credential exist in the API, which keeps `AGENTS.md` rule 4 true by
+    construction rather than by discipline.
+  - **Leave the router alone.** The plan had a routing stub; `_docs/decisions/0003` needs the M3b spike's numbers first,
+    so the turn log *records* `route`/`route_source`/`route_confidence` (rule 10) but nothing chooses them yet.
+  - **The contract changes with the behaviour that needs it, in the same commit** — which is how `AgentTurn` gained
+    the three route fields in v0.2.0, and how the corrections below landed rather than being filed as issues.
+  - **Criterion 5 and 6 are worth points and are graded on evidence**, so the drift test is a deliverable, not a
+    by-product: it reads `openapi.yaml`, and the validator it uses is itself tested to fail on a renamed field.
+- **Rejected or revised during the build, and what made each one visible:**
+  - *A generated OpenAPI document served at `/openapi.yaml`,* and separately *comparing routes via FastAPI's internals*
+    (`app.routes` holds `_IncludedRouter` objects in 0.143, with no `.path`). Rejected: the contract file is served
+    verbatim, and the comparison uses the public `app.openapi()`. Serving a generated document would have made the
+    drift test self-confirming: the API would have agreed with itself.
+  - *The agent's first freshness rule treated any `succeeded` run as a refresh.* The retained ledger contains nine runs
+    with a `NULL` competition scope (the score-delay polls), so that rule would have reported every competition fresh
+    after a single match poll. A test built on the real ledger shape now pins "a run with no scope refreshes nothing".
+  - *`TeamForm.matches[].score` was duplicated verbatim from `ScoreLine`* instead of referenced; the human's review of
+    the diff turned it into `allOf: [$ref ScoreLine]`, with a description that the scoreline is as published and not
+    rotated by `home` — the mistake a model would have made when reading it.
+  - *`KnowledgeHit.source_file` and `Match.last_updated` were both described in a way the data contradicts* (repo-relative
+    example, and "our ingestion write time" for the provider's own stamp). Corrected in the contract, because both
+    would have made an agent mis-cite a source or overstate an age.
+  - *A `minScore=0` search returned nothing.* Cosine can be negative on the SQLite path and the score was clamped after
+    the threshold instead of before, so the one value that means "keep everything" dropped everything. Found by a test,
+    not by reading.
+  - *The API's first response shape for a competition with no table was 404.* The contract's own words distinguish
+    "not in the database **yet**" (503, "no data") from "no such resource" (404), and the code now implements that
+    distinction literally, including the contract's example sentence.
+  - *The agent's first test seed failed on `FOREIGN KEY constraint failed` and, after that, on insertion order.* Two
+    real causes: `Standing.id` is an autoincrement integer and was being given a UUID, and SQLAlchemy does not order
+    inserts across mappers by a plain `ForeignKey` — the fixture now flushes per dependency group, with the reason in
+    a comment. The ingestion pipeline never hit the second one because it opens a session per row.
+  - *The routers were written with `Depends()` in argument defaults,* which ruff rejects 28 times (`B008`). Rewritten
+    as `Annotated[...]`, which is FastAPI's own recommendation and keeps the lint rule meaningful instead of muted.
+  - *`.env` needed a new required setting* (`API_AGENT_TOKEN`). It fails closed rather than open: with no token, every
+    agent-facing request is 401 and the startup log says why, so a forgotten token is a closed door.
+- **Sent to an adversarial reviewer before the branch was offered for merge** (a second agent, told to falsify the
+  suite's claims rather than read it sympathetically, with the milestone frozen and every probe reverted afterwards).
+  Eight findings came back, four of them merge-blocking; all eight are now either fixed with a regression test or
+  written down. What the reviewer found is the part of this milestone the author's own tests could not find:
+  - *The drift test could not see a route hidden from the generated document.* It built "what the app serves" from
+    `app.openapi()`, and FastAPI leaves `include_in_schema=False` routes out of that document, so the reviewer added an
+    **unauthenticated** route and the whole suite passed. Routes are now read from the router tree, which also catches a
+    second route reusing a documented `operationId` (the reviewer's second probe: it shadowed `/competitions` and
+    answered without a token).
+  - *Parameter schemas were compared by name and requiredness only.* `limit: Query(ge=1, le=100) = 20` against a
+    contract saying `maximum: 200, default: 50` passed while rejecting a documented-legal request. Bounds, format,
+    pattern and default are compared now, with two narrow exemptions documented in the test.
+  - *The validator dropped `minItems`/`maxItems`,* so the contract's "exactly two teams" was unenforced; a meta-test now
+    walks the file and fails on any constraint keyword the translator would silently ignore.
+  - *The rule 3 and rule 4 scans were blacklists an AST can walk around* (`from ingest import client`,
+    `session.execute(text("DELETE FROM matches"))`, a second engine from owner credentials). They are now a whitelist of
+    what `backend/` may borrow from `ingest`, a transitive walk proving those modules never import the upstream client,
+    a check that every hand-written statement starts with `SELECT`, and one engine-building module in the package.
+    Compose is asserted too: no provider key on the `backend` service, no Docker socket, read-only mounts, one port.
+  - *A client could reach a 500* by sending an id or an `offset` past 64 bits (`OverflowError` in the driver). The
+    contract now declares `format: int64` where the columns and driver binds impose it, the routers enforce that range,
+    and the request answers `400 invalid_parameter`. The contract changed in this commit because the behaviour did.
+  - *Freshness said `fresh` for a competition the ledger only listed.* `ingest_runs.competitions` is the plan the run was
+    *given*, so a run that collected nothing still refreshed its codes — while `/competitions/{code}/matches` answered
+    `data_not_available` for the same code. A competition with no stored rows is now `unknown`, never `fresh`, and a run
+    stamped in the future (container clock skew) is ignored instead of printing a negative age.
+  - Two further findings were **dismissed with reasons** rather than fixed: an out-of-enum `last_status: "running"` and a
+    `succeeded` run with a `NULL` `finished_at` are both unreachable from the shipped ingestion (the writers set scope,
+    status and `finished_at` together at finalization). The first is nonetheless now impossible by construction — only
+    finished runs are read — and the second has a test. Query-boolean leniency (`?grounded=yes`) is left as FastAPI's
+    standard parsing, with a comment saying so.
+- **Three more findings came from running the suite where the reviewer could not: against the retained volume.** The
+  integration run is what caught them, and two are the kind of thing a review of the source cannot see:
+  - *An injected embedder was closed by the app on shutdown.* The stack suite shares one module-scoped `OllamaEmbedder`
+    across several apps; the first app to stop closed the HTTP client, and every later embedding call raised "Cannot
+    send a request, as the client has been closed" - which surfaced as one 500 in the middle of the contract sweep. The
+    app now closes only what it built (the engine guard already did), and a unit test holds both halves of that rule.
+    The unit suite had missed it because the deterministic embedder has no `close` to call.
+  - *The sweep sent the contract's example match id (`/matches/419823`) to a volume whose ids start at 560912,* because
+    ids were patched into the finished URL. `matchId` and `code` are path parameters and the helper had already
+    substituted the examples, so the fix was to pass real ids as overrides. A test that only ever runs against fixtures
+    cannot notice this.
+  - *The ledger column is `json`, not `jsonb`,* and unscoped runs are stored as SQL NULL rather than an empty array. The
+    API serves both as `[]`; the test now asserts that property instead of one spelling of the type.
+- **Evidence:** `make test` is 231 unit tests green (64 before M3, 199 when the review started) and `make lint` is clean;
+  13 integration tests were added for this milestone (22 collected in total). `tests/test_api_contract.py` covers route
+  and operation coverage in both directions — read from the router tree — parameter name, requiredness, bounds, format
+  and default, the `operationId` uniqueness of the app as well as the contract, a behavioural check that every enum
+  parameter rejects an unlisted value, every implemented `GET` response against its schema, the error envelope, the
+  unimplemented-operation list, version equality and the verbatim contract file — plus
+  `test_the_validator_fails_on_a_drifted_response`, which proves the check can go red. The stack suite repeats the sweep
+  on Postgres and asserts that the engine the request path holds is `agent_readonly` and cannot write.
+- **Still open, and written down rather than papered over:** the two admin writes need a claimable queue before they
+  can be real (M5), `standings.group_label` and `standings.matchday` are contract fields the live data never fills,
+  and the drift test's Postgres half is skipped on a throwaway volume that has no ingested rows
+  ([`_docs/data-model.md`](data-model.md) open items).
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;
@@ -203,6 +306,8 @@ the humans involved should add the delegation, review and rejection detail, or m
 
 ## Where the prompts live
 
-`prompts/` is the versioned prompt bank (see its README). It is empty today: no prompt has yet shaped product
-behaviour, because no application code exists. The first entry will be the router spike's LLM-as-judge prompt, which
-`_docs/decisions/0003` requires to be versioned before its numbers are reported.
+`prompts/` is the versioned prompt bank (see its README). It now holds
+[`0001-m3-backend-api.md`](../prompts/0001-m3-backend-api.md), the task that produced `backend/`, with the plan the human
+approved, the constraints that were binding, and the acceptance criteria the work was checked against. The next entry
+will be the router spike's LLM-as-judge prompt, which [`_docs/decisions/0003`](decisions/0003-router-spike.md) requires
+to be versioned before its numbers are reported.

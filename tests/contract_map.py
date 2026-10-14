@@ -160,6 +160,9 @@ SCHEMAS: dict[str, dict] = {
             "latency_ms": "column:latency_ms",
             "review_status": "column:review_status",
             "review_note": "column:review_note",
+            "route": "column:route",
+            "route_source": "column:route_source",
+            "route_confidence": "column:route_confidence",
             "created_at": "column:created_at",
         },
     },
@@ -248,9 +251,5 @@ LOCAL_ONLY: dict[str, dict[str, str]] = {
         "content_hash": "hash of the source file, which is how staleness is decided without a model",
         "updated_at": "when the chunk was last written",
     },
-    "agent_turns": {
-        "route": "required by AGENTS.md rule 10 and product-spec §7; not in openapi.yaml v0.1.0 yet",
-        "route_source": "same as route: recorded, not yet in the contract",
-        "route_confidence": "same as route: recorded, not yet in the contract",
-    },
+    "agent_turns": {},
 }

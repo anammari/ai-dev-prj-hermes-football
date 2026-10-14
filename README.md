@@ -4,7 +4,7 @@ A Telegram agent that answers football questions **accurately** — grounded in 
 football-data.org, with a read-only tool layer, an evaluation harness, and a dashboard that shows whether any of it is
 actually working. Everything runs locally in Docker Compose; there is no server to rent.
 
-Status: **M1–M2 done, M3 next** (see the [milestone tracker](#milestone-tracker)).
+Status: **M1–M3 done** (see the [milestone tracker](#milestone-tracker)); next is the M3b router spike.
 
 ## How this README maps to the course criteria
 
@@ -63,17 +63,80 @@ with a single typed API client, Vitest + Testing Library unit tests and Playwrig
 
 ## 5. API Contract
 
-Written down before it is implemented: [`openapi.yaml`](openapi.yaml) (v0.1.0) is the source of truth for what the API
-serves. `make validate-spec` lints it, `make swagger` serves it, and
-[`tests/test_contract_coverage.py`](tests/test_contract_coverage.py) fails when the contract and the database schema
-drift apart in either direction. The backend that implements it arrives with M3; the gap already known — the route
-fields on `AgentTurn` — is recorded in [`_docs/data-model.md`](_docs/data-model.md).
+Written down before it is implemented: [`openapi.yaml`](openapi.yaml) is the source of truth for what the API serves.
+`make validate-spec` lints it, `make swagger` serves it, and it is checked in both directions by tests that read the
+file rather than a copy of it:
+
+| Test | What it would catch |
+| --- | --- |
+| [`tests/test_contract_coverage.py`](tests/test_contract_coverage.py) | A contract field with nowhere to live in `db/models.py`, or a column no contract property asks for |
+| [`tests/test_api_contract.py`](tests/test_api_contract.py) | **Drift between the code and the contract.** A route the contract does not declare, a documented operation with no route, a renamed or removed response field, a changed parameter name, requiredness *or bound*, an `operationId` reused by a second route, a version bump on one side only. The validator itself is tested, so the check cannot silently pass by accepting everything |
+| [`tests/integration/test_backend_stack.py`](tests/integration/test_backend_stack.py) | The same sweep on real Postgres, where `JSON`, `numeric` and `vector(768)` behave differently from SQLite — with the ids read from the volume rather than taken from the contract's examples, so the path parameters are exercised too |
+
+Five details are worth naming, because each closes a way the suite could have passed while the API drifted:
+
+- **Routes are read from the router tree, not from the generated document.** FastAPI leaves a route registered with
+  `include_in_schema=False` out of `app.openapi()`, so a route that is served but undocumented used to be invisible to
+  the whole suite — an adversarial review added one to the unauthenticated router and everything passed. The coverage
+  test now walks `app.router` and compares operation *and* path template, and it fails on a repeated `operationId`
+  (which would otherwise shadow a route in every mapping keyed by operation id).
+- **Parameter schemas are compared, not just their names.** `limit: Query(ge=1, le=100) = 20` against a contract saying
+  `maximum: 200, default: 50` used to pass while rejecting a request the contract allows; the test now compares type,
+  bounds, format, pattern and default. The only exemptions are narrow and one-directional: the app may spell a declared
+  `format: int64` as its range, and OpenAPI's `format: float` on a number is not a constraint any validator enforces.
+- **The validator carries every constraint the contract uses.** `minItems` was missing from the translation, so the
+  contract's "exactly two teams" went unchecked; a meta-test now walks the file and fails on any constraint keyword the
+  translator would drop.
+- **Enums are checked as behaviour.** The app does not restate the contract's enum lists in Python — it reads them from
+  the file at request time — so the test that matters sends a value the file does not list to every enum parameter and
+  expects a `400` naming the parameter.
+- **The check that the API cannot reach upstream reads the deployment too.** `docker-compose.yml` is asserted to give the
+  `backend` service no provider key, no Docker socket, read-only corpus mounts, and the only published port.
+
+The contract is also *served*, verbatim, at `/openapi.yaml`, and Swagger UI at `/docs` renders that file — so a
+reviewer can diff the deployed API against this repository, and the app cannot serve a shape it does not implement.
+FastAPI's own generated document is switched off (`/openapi.json` answers 404); it is used only *inside* the tests, as
+the app's honest statement of what it registers. Contract changes that need behaviour stay in the same commit:
+v0.2.0 added the three routing fields to `AgentTurn` (`AGENTS.md` rule 10) together with the columns that fill them, and
+declared `format: int64` on the provider ids and `offset` in the same commit that turned an out-of-range id from a
+client-reachable `500` into the documented `400`.
 
 ## 6. Backend Implementation
 
-**Not built — arrives with M3.** The layered FastAPI service that implements the contract does not exist yet;
-`backend/` is scheduled for M3. The contract-first discipline is already enforced in the meantime, because
-[`tests/test_contract_coverage.py`](tests/test_contract_coverage.py) fails when the schema and the contract diverge.
+[`backend/`](backend) is a FastAPI service built against that contract, reading PostgreSQL through a session that
+logs in as the read-only role. Fourteen `GET` operations are implemented; the two `POST`/`PATCH` admin operations are
+declared and *intentionally* answer a contract-shaped 404 naming the milestone that implements them, so the contract
+has no silent holes (`backend/routers/admin.py`). The layering is one directory per concern:
+
+```text
+backend/app.py            create_app(): routers, lifespan, error handlers, request ids
+backend/routers/          one module per tag; validate, call a service, attach meta - no SQL, no logic
+backend/services/         the queries and the arithmetic (records, form, freshness)
+backend/schemas.py        row -> contract shape, and the pruning rules that keep nulls out
+backend/contract.py       the loaded contract, used to reject values its own enums do not allow
+backend/db.py             the read-only engine (rule 4); no write engine exists in M3
+backend/errors.py         the contract's error envelope: 400/401/404/500/503
+```
+
+Things worth knowing before reading the code:
+
+- **Freshness is a first-class answer** (rule 2): every response carries `meta.data_as_of`, the provider's own
+  `lastUpdated` for match data and the snapshot's write time for a table — never the row's write time pretending to be
+  the data's age. `/meta/freshness` derives the whole picture from the run ledger: a run with no competition scope
+  refreshes nothing, a competition the ledger merely *listed* is not fresh unless rows were actually stored for it,
+  and a run stamped in the future (container clock skew) is ignored rather than shown as a negative age.
+- **"Not covered" is not "not found".** A competition with nothing ingested answers `503 data_not_available`
+  ("no data"), a missing season or snapshot answers `404` ("no such resource"), and a filter that matches nothing
+  answers `200` with an empty list. The contract spells this out; the code follows it literally.
+- **No upstream access from a request** (rule 3): the API has no HTTP client and no provider credential, and
+  [`tests/test_api_security.py`](tests/test_api_security.py) enforces it three ways — it whitelists what `backend/` may
+  import from `ingest` (the corpus reader and one pure schedule function), follows those modules' own imports so the
+  upstream client cannot come back transitively, and checks the Compose service definition for a provider key.
+- **Nothing to leak**: one error envelope for every failure, no exception text in a 500, request ids on every
+  response, and the bearer token compared in constant time and never echoed.
+
+Run it against the stack with `make up` and read the contract at <http://localhost:8000/docs>, or
+`docker compose logs -f backend`. `make test` covers the API on SQLite; `make itest` repeats it on Postgres.
 
 ## 7. Database Integration
 
@@ -93,9 +156,8 @@ Everything runs in containers. [`docker-compose.yml`](docker-compose.yml) define
 health checks; the [`Makefile`](Makefile) is the only entry point; and secrets arrive from `.env` at run time rather
 than being baked into an image layer.
 
-`make up` starts the three services that exist today — `db`, `ollama` and the daily `ingest` scheduler — and applies
-the migrations. `backend`, `mcp-server`, `hermes`, `frontend` and the observability stack join as their milestones
-land. Dependencies are gated on health (`db` and `ollama` are both `service_healthy`), and the Compose project name is
+`make up` starts what exists today — `db`, `ollama`, the `backend` API and the daily `ingest` scheduler — and applies
+the migrations. `mcp-server`, `hermes`, `frontend` and the observability stack join as their milestones land. Dependencies are gated on health (`db` and `ollama` are both `service_healthy`), and the Compose project name is
 overridable through `COMPOSE_PROJECT_NAME` so a second checkout cannot collide with this one on the same volume.
 
 The model server is a derived image rather than the stock upstream one. `ollama/ollama:0.40.2` is 7.05 GB, about
@@ -157,9 +219,13 @@ Three commands take a clean machine to a working stack — which is the criterio
 ```bash
 make setup     # create .env from .env.example, build the app image
 # put a football-data.org token in UPSTREAM_API_KEY inside .env (free signup)
-make up        # start db and ollama, pull the embedding model, migrate, start the scheduler
+make up        # start db and ollama, pull the embedding model, migrate, start the API and the scheduler
 make test      # unit tests
 ```
+
+`make up` also serves the API on <http://localhost:8000> (`/docs` for the interactive contract). Its bearer token is
+`API_AGENT_TOKEN` in `.env`; an empty one is not an open door — the app refuses every agent-facing request and says
+so in the log.
 
 `make setup` copies `.env.example` verbatim, and its `UPSTREAM_API_KEY` is a placeholder. The scheduler and every
 manual collection refuse to start on a placeholder rather than fail at the first scheduled run, so until a real token
@@ -174,10 +240,10 @@ the host.
 | --- | --- |
 | `make setup` | Create `.env` from `.env.example`, build the app image |
 | `make build` | Rebuild the image after changing `db/`, `ingest/` or `tests/` |
-| `make up` / `make down` | Start `db`, `ollama` and the daily ingest scheduler, apply migrations / stop everything |
+| `make up` / `make down` | Start `db`, `ollama`, the `backend` API and the daily ingest scheduler, apply migrations / stop everything |
 | `make migrate` | Apply the Alembic migrations |
 | `make models` | Pull the pinned embedding model into the `ollama` volume |
-| `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack |
+| `make test` / `make itest` | Unit tests (fast, no stack) / integration tests against the running stack (the suite reads, never writes) |
 | `make itest-isolated` | Integration tests against a throwaway Compose project (own db, ollama, passwords), torn down afterwards |
 | `make ingest` | Trigger a manual upstream collection run (requires `UPSTREAM_API_KEY` in `.env`) |
 | `make score-delay [MATCH_ID=…]` | Poll a live or recent match and report how old the provider's data is (the `lastUpdated` to fetch gap) |
@@ -198,7 +264,7 @@ If buildx cannot write its state directory (a locked-down or sandboxed machine),
 | M0 | Empty repo, scope, product spec, API contract (v0.1.0, lint clean) | Done |
 | M1 | Database schema and the first migration, matching the contract: notes table with `vector(768)`, the corpus `manifest.yaml` and the local embedding provider | Done |
 | M2 | Daily ingestion from football-data.org: run ledger, idempotent loads, re-indexing changed notes, measured score delay | Done |
-| M3 | Backend API against `openapi.yaml` | Next |
+| M3 | Backend API against `openapi.yaml`: 14 operations, read-only role, freshness report, `/docs` and a drift test | Done |
 | M3b | Router spike: deterministic-first vs model-first, judged against hand-checked expectations, before M4 | Not started |
 | M4 | Telegram agent: `SOUL.md`, first notes authored and reviewed, routing, refusal and freshness behaviour | Not started |
 | M5 | Dashboard and eval scoreboard, including routing accuracy | Not started |

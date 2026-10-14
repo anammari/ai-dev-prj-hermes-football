@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: Hermes Football API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Read-mostly HTTP API that wraps the Hermes Football database: the single source of factual
     football data that the Telegram agent (Hermes) and the dashboard are allowed to state.
@@ -98,7 +98,7 @@ paths:
                 $ref: '#/components/schemas/HealthCheck'
               example:
                 status: ok
-                version: 0.1.0
+                version: 0.2.0
                 uptime_seconds: 1284
                 db:
                   status: ok
@@ -349,6 +349,7 @@ paths:
           description: Only matches involving this team
           schema:
             type: integer
+            format: int64
             example: 57
         - name: status
           in: query
@@ -417,12 +418,14 @@ paths:
           description: Team id (as used by the provider)
           schema:
             type: integer
+            format: int64
             example: 57
         - name: teamB
           in: query
           required: true
           schema:
             type: integer
+            format: int64
             example: 61
         - name: limit
           in: query
@@ -807,17 +810,23 @@ components:
       name: matchId
       in: path
       required: true
-      description: Provider match id
+      description: |
+        Provider match id. A signed 64-bit integer: a larger value cannot be stored or looked up, so
+        it is rejected as an invalid parameter rather than answered with a server error.
       schema:
         type: integer
+        format: int64
         example: 419823
     TeamId:
       name: teamId
       in: path
       required: true
-      description: Provider team id
+      description: |
+        Provider team id. A signed 64-bit integer, rejected outside that range for the same reason as
+        `matchId`.
       schema:
         type: integer
+        format: int64
         example: 57
     Season:
       name: season
@@ -842,9 +851,12 @@ components:
     Offset:
       name: offset
       in: query
-      description: Number of items to skip
+      description: |
+        Number of items to skip. Bounded to the signed 64-bit range, which is what a row offset can
+        be: a larger value is an invalid parameter, not a query that runs.
       schema:
         type: integer
+        format: int64
         minimum: 0
         default: 0
 
@@ -1259,7 +1271,12 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When this row was last written by the ingestion job
+          description: |
+            The provider's own 'lastUpdated' stamp for this match: the freshness number an answer
+            quotes ("as of <ts>, source: football-data.org"), and the one 'make score-delay'
+            measures the fetch gap against. Null when the provider has never stamped the match.
+            This is NOT when we wrote the row: our ingestion write time is deliberately not exposed
+            per match — /meta/freshness reports the age of the last successful run instead.
 
     MatchList:
       type: object
@@ -1338,15 +1355,25 @@ components:
               competition:
                 type: string
                 nullable: true
+                description: |
+                  Competition name, so a sentence about form can name the league without a second
+                  lookup. Null when the match is not attached to a known competition.
               opponent:
                 $ref: '#/components/schemas/TeamSummary'
               home:
                 type: boolean
+                description: Whether this team were at home. A form line has to say so.
               result:
                 type: string
                 enum: [W, D, L]
               score:
-                $ref: '#/components/schemas/ScoreLine'
+                # `allOf` rather than a `$ref` with a sibling description: OpenAPI 3.0 ignores
+                # anything next to a `$ref`, and the linter is right to.
+                allOf:
+                  - $ref: '#/components/schemas/ScoreLine'
+                description: |
+                  The match scoreline as it was published - home team first - NOT rotated to this
+                  team's point of view. 'home' is what says which end this team played.
 
     HeadToHead:
       type: object
@@ -1408,8 +1435,8 @@ components:
           type: string
         source_file:
           type: string
-          description: Path inside the knowledge corpus
-          example: hermes/agent-knowledge/competitions/championship.md
+          description: Path inside the knowledge corpus, as recorded in hermes/agent-knowledge/manifest.yaml
+          example: policy/free-tier-delay-and-coverage.md
         heading:
           type: string
           example: Promotion and the playoffs
@@ -1500,6 +1527,33 @@ components:
           example: pinned-model-id
         latency_ms:
           type: integer
+        route:
+          type: string
+          nullable: true
+          enum: [tool, knowledge, clarify, refuse]
+          description: |
+            Which road the answer took (AGENTS.md rule 10): 'tool' for a database-backed answer,
+            'knowledge' for a note-backed one, 'clarify' when the agent asked a question back, and
+            'refuse' when it declined. Recorded on every turn and scored as its own dimension in the
+            eval harness. Null only for a turn stored before routing was wired (M4); the harness
+            treats a null route as unscoreable, never as correct.
+        route_source:
+          type: string
+          nullable: true
+          enum: [rules, model, fallback]
+          description: |
+            How that route was chosen: 'rules' when deterministic code decided it, 'model' when the
+            small routing model broke a tie, 'fallback' when neither produced a route. The router
+            sees the user message and a fixed label set only - never retrieved text, never tool output.
+        route_confidence:
+          type: number
+          format: float
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: |
+            The router's own confidence when 'route_source' is 'model'; null for a deterministic or
+            fallback decision, which has no confidence to report.
         review_status:
           $ref: '#/components/schemas/ReviewStatus'
         review_note:

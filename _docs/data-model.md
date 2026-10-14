@@ -70,7 +70,7 @@ names the same concept.
 | M2 scorer snapshot | `top_scorers` |
 | M2 upstream response | `raw_payloads` |
 | `KnowledgeHit` | `knowledge_chunks` |
-| `AgentTurn` | `agent_turns` |
+| `AgentTurn` | `agent_turns` (including `route`, `route_source`, `route_confidence`, served since v0.2.0) |
 
 Renamed, because SQL would rather not: `group` → `group_label`, `type` → `table_type` (standings), `chunk_id` → `id`,
 `snippet` → `chunk_text`, `competition` → `competition_code`, `team`/`home_team`/`away_team` → `*_id`.
@@ -94,15 +94,23 @@ response envelopes (`ResponseMeta`, `Pagination`, `ErrorResponse`, the `*List` s
 
 ## Open items
 
-1. **`agent_turns.route`, `route_source`, `route_confidence` are not in `openapi.yaml` v0.1.0.** `AGENTS.md` rule 10 and
-   `_docs/product-spec.md` §7 require them, so the columns exist and the dashboard cannot see them yet. M3 adds them
-   to `AgentTurn` and bumps the contract.
-2. **`KnowledgeHit.source_file` path form.** The table stores corpus-relative paths (`policy/free-tier-delay-and-
-   coverage.md`), matching the manifest and the schema's description "path inside the knowledge corpus". The contract's
-   *example* is repo-relative (`hermes/agent-knowledge/competitions/championship.md`). One of the two should move;
-   M3 decides, and the description is treated as authoritative until then.
-3. **`matches.last_updated` vs `updated_at`.** `last_updated` holds the provider's own timestamp and `updated_at` when
-   our ingestion wrote the row. The contract describes `last_updated` as the ingestion write time; the wording should
-   be corrected when M3 exposes these fields.
-4. **Draft notes are indexed.** The manifest's `status: draft` keeps the pipeline exercisable before the corpus is
+1. **Draft notes are indexed.** The manifest's `status: draft` keeps the pipeline exercisable before the corpus is
    finished; M4 turns the seed note into a reviewed one, and `make check-notes` gates every change either way.
+2. **`standings.group_label` is dead weight today.** The API echoes a `group` only when every row of a table carries
+   the same label, and no stored row does: the 1 752 rows on the retained volume are all league tables, and the
+   provider's `group` field is absent from the free tier's standing rows. The column, the echo rule and its test stay
+   because the contract has the field and a cup table would need it — but nothing depends on it yet.
+3. **`standings.matchday` is always `NULL`.** The provider does not publish a matchday on standing rows, so
+   `/competitions/{code}/standings?matchday=N` can only ever answer 404 against real data. The parameter is in the
+   contract and implemented; when a real matchday source appears, the filter is already there.
+4. **`/competitions/{code}/standings` takes no `season` *required* and no competition-wide season default.** The
+   endpoint defaults to the competition's `current_season` from `competitions`, which is what ingestion last saw.
+   Between a season rollover and the next run, "current" is one season behind; every answer says which season it
+   served, so the agent can see it, but a stricter default would need the provider's calendar.
+5. **`ingest_runs.competitions` is a JSON array, not a join table.** It reads well for a ledger and the contract
+   exposes it as a list, but it cannot be joined or indexed by competition. If querying "when was PL last refreshed"
+   ever becomes hot, this is the table to normalise (`/meta/freshness` computes it in Python today, over nine rows).
+6. **The admin write operations have no queue behind them.** `POST /admin/ingest-runs` and
+   `PATCH /admin/agent-turns/{turnId}/review` answer a contract-shaped 404 naming M5. Making the first one real needs
+   a claimable queue the scheduler picks up; a request handler must not start an upstream run (`AGENTS.md` rule 3),
+   so the write path is a scheduler concern before it is an API concern.

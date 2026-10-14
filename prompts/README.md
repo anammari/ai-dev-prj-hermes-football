@@ -5,7 +5,7 @@ the change it makes, so a prompt can be diffed and blamed like code.
 
 ## Conventions
 
-- One file per prompt: `NNNN-<slug>.md` (for example `0001-router-spike-judge.md`).
+- One file per prompt: `NNNN-<slug>.md`, numbered in the order the prompts were written.
 - Each file opens with a header block: `version`, `used by`, `model`, `date`, `owner`, `status`.
 - A change is a new version in the same file plus a line in `_docs/ai-usage-report.md`. Never a silent edit: a prompt
   that changes what the product says is a behaviour change, and `_docs/product-spec.md` changes with it.
@@ -14,7 +14,9 @@ the change it makes, so a prompt can be diffed and blamed like code.
 - Secrets never appear in a prompt (`AGENTS.md` hard rule 6). User messages are never copied here; if a real
   conversation informs a prompt, it is paraphrased and the chat ID is dropped.
 
-## Planned first entry
+## Entries
 
-`0001-router-spike-judge.md` — the LLM-as-judge prompt for the M3b routing spike, required by
-`_docs/decisions/0003` before that spike's numbers may be reported.
+| File | Prompt | Status |
+| --- | --- | --- |
+| [`0001-m3-backend-api.md`](0001-m3-backend-api.md) | Build the M3 API against `openapi.yaml` | Reviewed, shipped |
+| `0002-router-spike-judge.md` | The LLM-as-judge prompt for the M3b routing spike, required by `_docs/decisions/0003` before that spike's numbers may be reported | Not written yet |

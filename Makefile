@@ -26,16 +26,19 @@ setup: ## Create .env from .env.example and build the app image
 build: ## Build the app image used by the migrate and tests services
 	$(TOOLS) build
 
-up: ## Start the stack and apply migrations
+up: ## Start the stack, apply migrations, serve the API
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory model-ready
 	@$(MAKE) --no-print-directory migrate
-	$(COMPOSE) up -d ingest
+	$(COMPOSE) up -d backend ingest
 	@sleep 5
 	@if [ -z "$$($(COMPOSE) ps --status running --services ingest)" ]; then \
 	  echo "ingest scheduler exited at startup (usually a missing UPSTREAM_API_KEY):"; \
 	  $(COMPOSE) logs --tail=10 ingest; exit 1; fi
-	@echo "stack up: db, ollama, ingest scheduler."
+	@if [ -z "$$($(COMPOSE) ps --status running --services backend)" ]; then \
+	  echo "backend exited at startup (usually a missing API_AGENT_TOKEN):"; \
+	  $(COMPOSE) logs --tail=10 backend; exit 1; fi
+	@echo "stack up: db, ollama, backend on http://localhost:$${BACKEND_PORT:-8000} (docs at /docs), ingest scheduler."
 
 down: ## Stop everything, keep the volumes
 	$(COMPOSE) --profile tools down
@@ -68,14 +71,18 @@ itest: ## Integration tests against the running stack (Postgres + pgvector + Oll
 	$(TOOLS) run --rm tests pytest -q -m integration
 
 # Own Compose project, own volumes, throwaway passwords: never touches the retained stack's data.
-ISOLATED := COMPOSE_PROJECT_NAME=hermes-football-itest POSTGRES_PASSWORD=itest-only AGENT_DB_PASSWORD=itest-only-agent
+# The backend gets its own host port so an isolated run can never fight the retained stack's for 8000.
+ISOLATED := COMPOSE_PROJECT_NAME=hermes-football-itest POSTGRES_PASSWORD=itest-only AGENT_DB_PASSWORD=itest-only-agent BACKEND_PORT=8010
 
 itest-isolated: ## Integration tests against a throwaway Postgres + Ollama (own project, volumes removed after)
 	@set -e; trap '$(ISOLATED) docker compose --profile tools down -v' EXIT; \
 	  $(ISOLATED) docker compose up -d db ollama; \
 	  $(ISOLATED) docker compose --profile tools run --rm models; \
 	  $(ISOLATED) docker compose --profile tools run --rm migrate; \
-	  $(ISOLATED) docker compose --profile tools run --rm tests pytest -q -m integration
+	  $(ISOLATED) docker compose up -d backend; \
+	  $(ISOLATED) docker compose --profile tools run --rm \
+	    -e BACKEND_BASE_URL=http://backend:8000 \
+	    tests pytest -q -m integration
 
 lint: ## Ruff over the repository
 	$(TOOLS) run --rm tests ruff check .

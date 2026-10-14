@@ -1,8 +1,10 @@
-# Application image: Python 3.12, the schema, the corpus tooling and the tests.
+# Application image: Python 3.12, the schema, the API, the corpus tooling and the tests.
 #
-# Deliberately one image for the tools for now. When `backend` and the ingest scheduler land they get
-# their own stages (or their own images) rather than their own copies of this one; what must not
-# change is that the image never contains a secret - everything arrives from `.env` at run time.
+# Deliberately one image for now, serving `backend`, the ingest scheduler and the tool targets from the
+# same layers. M3 keeps it that way because the API and the scheduler share `db/` and `ingest/`
+# wholesale; splitting a slim runtime image (no tests, no dev extras) is a follow-up, not something to
+# half-do here. What must not change is that the image never contains a secret - everything arrives
+# from `.env` at run time.
 
 FROM python:3.12-slim AS app
 
@@ -17,6 +19,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY db ./db
 COPY ingest ./ingest
+COPY backend ./backend
 RUN pip install --no-cache-dir ".[dev]"
 
 # Then everything else, so editing a test or a note does not rebuild the dependency layer.

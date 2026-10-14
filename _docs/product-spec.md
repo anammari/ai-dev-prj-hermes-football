@@ -131,12 +131,26 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 ### F3 — Backend API (`backend/`, FastAPI)
 
 - **R-F3.1** `openapi.yaml` is written before the code and describes every endpoint the frontend or agent uses.
-- **R-F3.2** Endpoints: `/health`, `/meta/freshness`, `/competitions`, `/competitions/{code}/standings`,
-  `/competitions/{code}/matches`, `/teams/{id}`, `/teams/{id}/form`, `/matches/{id}`, `/search/knowledge`.
+- **R-F3.2** Endpoints: `/health`, `/meta/freshness`, `/meta/ingest-runs`, `/competitions`,
+  `/competitions/{code}/standings`, `/competitions/{code}/matches`, `/teams/{id}`, `/teams/{id}/form`,
+  `/matches/{id}`, `/head-to-head`, `/search/knowledge`, `/agent/turns`, plus the contract itself at
+  `/openapi.yaml` and its Swagger UI at `/docs`. The two admin writes (`POST /admin/ingest-runs`,
+  `PATCH /admin/agent-turns/{turnId}/review`) are declared and answer a contract-shaped 404 naming M5 until the
+  dashboard can use them.
 - **R-F3.3** Every factual response carries `source` and `data_as_of` (upstream data timestamp), never just "now".
-- **R-F3.4** Responses are bounded (limit/pagination) and typed; errors use a documented error shape.
-- **AC** A contract test fails if a route's request/response shape drifts from `openapi.yaml`; integration tests hit
-  the running stack, not a mock.
+- **R-F3.4** Responses are bounded (limit/pagination) and typed; errors use a documented error shape. A value
+  outside a declared bound — including an id outside the signed 64-bit range the columns hold — is a `400
+  invalid_parameter`, never a server error.
+- **R-F3.5** Every endpoint except `/health`, `/openapi.yaml` and `/docs` requires a bearer token
+  (`API_AGENT_TOKEN`); with no token configured the API refuses every request instead of opening up.
+- **R-F3.6** The API never talks to the provider (`AGENTS.md` rule 3): it holds no upstream credential and no HTTP
+  client, and reads only through the read-only database role (rule 4).
+- **R-F3.7** Freshness is derived from the run ledger and reported per competition, and it never claims more than the
+  stored rows support: a run with no competition scope refreshes nothing, a competition that was merely *listed* (no
+  rows stored for it) is `unknown` rather than `fresh`, and a run stamped in the future is ignored.
+- **AC** A contract test fails if a route's request/response shape drifts from `openapi.yaml` — including a route hidden
+  from FastAPI's generated document, a reused `operationId`, a changed parameter bound, or a response that violates a
+  constraint the contract declares; integration tests hit the running stack, not a mock.
 
 ### F4 — MCP tool server (`mcp-server/`)
 
