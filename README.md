@@ -1,8 +1,9 @@
 # Hermes Football
 
 A Telegram bot that answers football questions **accurately** — from a local database refreshed every day from
-football-data.org, plus a small hand-written set of notes about the rules. When the data does not support an answer, it
-says so instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
+football-data.org, plus a small hand-written set of notes about the rules, which the bot searches rather than guesses
+from ([how that works, and how it is scored](_docs/rag.md)). When the data does not support an answer, it says so
+instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
 
 Status: **M1–M3 done.** The next milestone is **M3b**, the router spike — see the
 [milestone tracker](#milestone-tracker) at the end.
@@ -49,6 +50,11 @@ The numbers below are **criterion numbers, not milestones** (milestones are M0�
 - **Implemented** — the diagram, the stack and the standing decisions are written down.
 - The picture: Telegram → `hermes` (the agent) → `mcp-server` → `backend` → PostgreSQL, with `ingest` refilling the
   database daily and `ollama` serving the model locally so no question leaves the machine.
+- The notes half runs the same way: the Markdown files in [`hermes/agent-knowledge/`](hermes/agent-knowledge/manifest.yaml)
+  are chunked and embedded by the local model into pgvector, and the bot looks a passage up through
+  `GET /search/knowledge` instead of asking a model to remember the rules. No RAG framework in between — the task
+  prefixes and the vector width are two named constants in our own code, which is
+  [explained in `_docs/rag.md`](_docs/rag.md) §3.
 - Diagram and stack: [`AGENTS.md`](AGENTS.md) §Architecture. Plain language:
   [`_docs/scoping.md`](_docs/scoping.md) §1, with "why not a rented GPU" in §6.
 - Decisions are recorded as they are made, in [`_docs/decisions/`](_docs/decisions/README.md) — the notes corpus, the
@@ -61,6 +67,9 @@ The numbers below are **criterion numbers, not milestones** (milestones are M0�
 - The dashboard (data freshness, fixtures and standings, the agent log, eval results, admin controls) is specified in
   [`_docs/product-spec.md`](_docs/product-spec.md).
 - It will be a Next.js/TypeScript app with one typed API client, Vitest unit tests and Playwright end-to-end tests.
+- The eval view will separate retrieval failures from answering failures rather than showing one accuracy number —
+  context relevance, context recall, faithfulness and completeness, with the diagnosis each combination implies. The
+  proposal is [`_docs/rag.md`](_docs/rag.md) §5.
 - Neither `frontend/` nor `tests/e2e/` exists yet.
 
 ## 5. API Contract
@@ -239,6 +248,8 @@ language, and [`_docs/product-spec.md`](_docs/product-spec.md) §8 as requiremen
   the fourteen course criteria are covered
 - [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, data model
 - [`_docs/data-model.md`](_docs/data-model.md) — the tables, how they map onto the contract, and what is still open
+- [`_docs/rag.md`](_docs/rag.md) — the notes the bot can search: how they are chunked, embedded and stored, what is
+  built versus owed, and how retrieval quality will be measured
 - [`openapi.yaml`](openapi.yaml) — the API contract, written before the code
 - [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, router
 - [`AGENTS.md`](AGENTS.md) — durable context and the hard rules for anyone, or anything, working here
