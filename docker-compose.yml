@@ -7,8 +7,8 @@
 #   * secrets arrive from `.env` at run time; nothing is baked into an image layer
 #   * container limits live here, not in Hermes `container_*` settings
 #
-# The M2 scheduler joins `db` and `ollama`; the later application services arrive with their own
-# milestones.
+# The M2 scheduler joins `db` and `ollama`; M3 adds `backend`, the only service with a published host
+# port (and the only one that reaches upstream through nobody: it cannot).
 
 name: ${COMPOSE_PROJECT_NAME:-hermes-football}
 
@@ -61,6 +61,44 @@ services:
       start_period: 10s
     mem_limit: 4g
     cpus: 4
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      target: app
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      # No default: an empty token makes every agent-facing request 401 rather than opening the API.
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      FRESHNESS_MAX_AGE_MINUTES: ${FRESHNESS_MAX_AGE_MINUTES:-1560}
+      INGEST_SCHEDULE_HOUR: ${INGEST_SCHEDULE_HOUR:-2}
+      INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
+      INGEST_TIMEZONE: ${INGEST_TIMEZONE:-UTC}
+    # The API is the only published port in the stack (_docs/product-spec.md §4). Everything else
+    # talks to it over the Compose network by service name.
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./hermes/agent-knowledge:/corpus:ro
+    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # The probe hits the one operation the contract marks `security: []`, so a healthy container is
+    # also one whose token is misconfigured without the healthcheck failing for the wrong reason.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health').read()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 512m
+    cpus: 1
     restart: unless-stopped
 
   ingest:
@@ -125,6 +163,10 @@ services:
         condition: service_healthy
     environment:
       <<: *app-env
+      # The integration suite logs into the API it is testing, so this container needs the same token
+      # the `backend` service is given. Empty by default: Compose already fails loudly when the token
+      # for the API itself is unset, and the suite says so rather than testing an open service.
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:-}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["pytest", "-q", "-m", "not integration"]

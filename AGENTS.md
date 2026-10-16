@@ -16,11 +16,15 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **M1–M2 done; M3 next**. The M2 client, bronze store, normalized ingestion pipeline,
-run ledger, daily scheduler and score-delay polling command are implemented. Unit tests and lint pass; integration
-tests pass against disposable Postgres 16/pgvector and the local embedding model. The retained Postgres volume and a
-real upstream run still need the matching local `.env` password and a valid `UPSTREAM_API_KEY`; never put either
-value in the repo or a prompt.
+Status: **M1–M3 done; M3b (the router spike) next**. M2 supplies the client, bronze store, normalized ingestion
+pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
+read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
+test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
+document, a reused `operationId`, a changed parameter bound, and an enum value the contract does not list. An
+adversarial review of the finished milestone is what produced those cases; its findings and the fixes are in
+`_docs/ai-usage-report.md` (S8). Unit tests and lint pass; integration tests pass against the running stack on the
+retained volume. The retained Postgres volume and a real upstream run still need the matching local `.env` password
+and a valid `UPSTREAM_API_KEY`; never put either value in the repo or a prompt.
 
 ## Architecture (target)
 
@@ -90,7 +94,7 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # start db, ollama and the ingest scheduler; apply migrations
+make up        # start db, ollama, the backend API and the ingest scheduler; apply migrations
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)
@@ -109,14 +113,14 @@ make logs      # tail logs for a service
 - **Do not create or use `git worktree` copies** of this repo (not under `~/GitHub/copilot-worktrees/…`, not
   anywhere else). If a worktree for this project exists, remove the worktree directory (never the branch), then
   `git checkout` the branch at the root.
-- **The active branch is the milestone branch** (currently `anammari-m2-ingest-pipeline`), not `main`. `main`
+- **The active branch is the milestone branch** (currently `anammari-m3-backend-api`), not `main`. `main`
   receives merged milestone work only.
 
 ```bash
 # where am I? Must print the root path, a milestone branch (not main), and a single worktree line.
 pwd && git rev-parse --abbrev-ref HEAD && git worktree list
 # get back
-cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout anammari-m2-ingest-pipeline
+cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout anammari-m3-backend-api
 ```
 
 **Why:** two checkouts of the same repo shared the Compose project name `hermes-football` and one Postgres volume
@@ -165,27 +169,27 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-API contract v0.1.0 reviewed (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes corpus +
-manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the container). M1 is done:
+the API contract reviewed and now at v0.2.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
+corpus + manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the container). M1 is done:
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
 rate-limited collection, bronze payloads, scorer snapshots, the run ledger, schedule/manual entry points, and delay
 polling. M2 is verified live on the retained volume: 54 unit and 9 integration tests pass, and a real run loaded
 13 competitions, ~9.9k matches and standings in about 20 minutes and 162 upstream calls, ending `partial` because EC
 has no standings on the free tier. A full run costs roughly 130-350 calls (about 15-30 minutes at 10 req/min); upstream
-caps `/matches` at 10 days per request. Rebuild images (`DOCKER_BUILDKIT=0 make build`) after changing code: the
-containers bake it in.
+caps `/matches` at 10 days per request. M3 adds `backend/` served by `make up` on <http://localhost:8000> (`/docs`
+renders the contract file): every agent-facing endpoint needs `API_AGENT_TOKEN` as a bearer token, and with no token
+configured it refuses everything instead of opening up. It reads through the `agent_readonly` role. Rebuild images
+(`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
 
 Next, in order:
-1. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
+1. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
+   in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it — the API
+   already records `agent_turns.route`, `route_source` and `route_confidence`, but nothing chooses them yet.
+2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
-2. `backend/` endpoints against the contract + unit/integration tests. This is also where `agent_turns.route`,
-   `route_source` and `route_confidence` join `openapi.yaml` — they exist in the schema today (`_docs/data-model.md`,
-   open items).
-3. `mcp-server/` read-only tool surface; wire into Hermes `config.yaml`.
-4. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
-   in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it.
-5. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
-6. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
+3. `mcp-server/` read-only tool surface over the M3 API; wire into Hermes `config.yaml`.
+4. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
+5. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
    (criterion 2, started — see its backfill list).
