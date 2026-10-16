@@ -113,14 +113,17 @@ make logs      # tail logs for a service
 - **Do not create or use `git worktree` copies** of this repo (not under `~/GitHub/copilot-worktrees/…`, not
   anywhere else). If a worktree for this project exists, remove the worktree directory (never the branch), then
   `git checkout` the branch at the root.
-- **The active branch is the milestone branch** (currently `anammari-m3-backend-api`), not `main`. `main`
-  receives merged milestone work only.
+- **Work happens on a milestone branch, never directly on `main`.** `main` receives merged milestone work only. A new
+  milestone starts by syncing and branching off the latest `main`, named for the milestone
+  (`anammari-m3b-router-spike`, `anammari-m4-agent`, …); a milestone branch is deleted once its pull request is
+  merged. Between milestones the checkout is `main`, and that is the only time being on it is expected.
 
 ```bash
-# where am I? Must print the root path, a milestone branch (not main), and a single worktree line.
+# where am I? Must print the root path, one worktree line, and either a milestone branch or `main` between
+# milestones.
 pwd && git rev-parse --abbrev-ref HEAD && git worktree list
-# get back
-cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout anammari-m3-backend-api
+# get back to the shared working copy, on the latest main
+cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout main && git pull --ff-only
 ```
 
 **Why:** two checkouts of the same repo shared the Compose project name `hermes-football` and one Postgres volume
