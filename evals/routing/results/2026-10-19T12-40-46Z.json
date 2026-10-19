@@ -2,7 +2,7 @@
   "meta": {
     "run_id": "2026-10-19T12-40-46Z",
     "created_at": "2026-10-19T12:47:29.578165+00:00",
-    "git_commit": "aff8930e1b9fb12cd5074c80c7594bc3f2060b03",
+    "git_commit": "uncommitted at run time",
     "sample_path": "evals/routing/sample.yaml",
     "sample_sha256": "40c44fcfc00c9b88cd87beeeef4957dc5e991cc646f7ff8e95d22b78e77e5a21",
     "prompt_path": "prompts/0002-router-model-comparison.md",
@@ -32,7 +32,8 @@
       "model2": "cloud: clef:cloud sends each message to Ollama's cloud"
     },
     "target_macro_f1": 0.9,
-    "decision_rule": "evals/routing/README.md section 5"
+    "decision_rule": "evals/routing/README.md section 5",
+    "git_note": "the run used the working tree committed as the model-comparison change; no commit existed at run time"
   },
   "questions": [
     {

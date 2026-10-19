@@ -199,8 +199,9 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F6.6** Routing is explicit and recorded: a decision model maps every message to one of four intent buckets
   (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and `route_confidence`.
   The router sees the user message and a fixed label set only — never retrieved text, never tool output. There is no
-  regex and no deterministic pre-router. Which model is settled by the M3b comparison (`_docs/decisions/0003`), and
-  routing precision and recall are scored in the eval harness.
+  regex and no deterministic pre-router. Which model is the subject of the M3b comparison (`_docs/decisions/0003`); no model is
+  adopted until it passes the safety and egress gates, and routing precision and recall are scored in the eval
+  harness.
 - **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
 - **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
 - **AC** A note file without a manifest entry, or an entry without a file or a source, fails a test.
