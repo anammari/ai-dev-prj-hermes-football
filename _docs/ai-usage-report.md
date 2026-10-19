@@ -303,7 +303,7 @@ checked and work that merely looked right.
     precision/recall as the report.
   - **The previous routing model and its artifacts were removed** from Docker and from the docs, and the old results deleted.
 - **Rejected or revised, and what made each visible:**
-  - *Deterministic routing* — removed with `rules.py` and its tests; no fallback, no threshold, no tie-break.
+  - *Deterministic routing* — removed with its code and tests; no fallback, no threshold, no tie-break.
   - *The previous judge and its prompt* — removed with the previous artifacts; this spike scores against hand labels
     only. `R-F9.2` applies again only if a judge is introduced.
   - *A cloud model as a drop-in winner* — `clef:cloud` won on quality but sends every message to Ollama's cloud. The

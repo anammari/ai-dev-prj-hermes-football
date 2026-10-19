@@ -5,9 +5,9 @@
 # questions the split is exactly 35 database / 35 notes. Every class keeps 2 questions in `dev` and 3
 # in `holdout`, so per-class accuracy is measurable on both sides.
 #
-# The 34 dev questions were written by the rules author. The 51 holdout questions were written by an
-# independent reviewer from the class list, after `evals/routing/rules.py` was committed; that reviewer
-# did not see the rules or the dev questions. The rules author reviewed the labels, then froze the file.
+# The 34 dev questions were written by the harness author. The 51 holdout questions were written by an
+# independent reviewer from the class list, after the routing request was committed; that reviewer did
+# not see the implementation or the dev questions. The author reviewed the labels, then froze the file.
 #
 # Labels are route + expected tool + one-line rationale. `tool: null` means either the route is not
 # `tool`, or the tool surface has no tool for it (`scorers`, recorded as a gap in decision 0003).
