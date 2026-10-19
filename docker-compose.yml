@@ -128,6 +128,28 @@ services:
   # Tools. On demand, never started by `make up`: `make models`, `make migrate`, `make test`, ...
   # ---------------------------------------------------------------------------------------------
 
+  # The M3b model comparison runs tev1 here, not in the production `ollama`, so the retained
+  # production volume stays clean. Profile-gated, own volume and image tag, never started by `make up`.
+  # `clef:cloud` is Model-2 and runs on the signed-in host Ollama; see evals/routing/README.md.
+  ollama-spike:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+      args:
+        OLLAMA_VERSION: "0.40.6"
+    image: hermes-football-ollama:0.40.6-spike
+    volumes:
+      - ollama-spike-data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    mem_limit: 4g
+    cpus: 8
+
   models:
     <<: *ollama-image
     profiles: [tools]
@@ -161,6 +183,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    extra_hosts:
+      # Model-2 in the routing comparison (clef:cloud) runs on the signed-in host Ollama.
+      - "host.docker.internal:host-gateway"
     environment:
       <<: *app-env
       # The integration suite logs into the API it is testing, so this container needs the same token
@@ -174,3 +199,4 @@ services:
 volumes:
   pgdata:
   ollama-data:
+  ollama-spike-data:

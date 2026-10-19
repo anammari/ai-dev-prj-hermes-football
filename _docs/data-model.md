@@ -114,3 +114,7 @@ response envelopes (`ResponseMeta`, `Pagination`, `ErrorResponse`, the `*List` s
    `PATCH /admin/agent-turns/{turnId}/review` answer a contract-shaped 404 naming M5. Making the first one real needs
    a claimable queue the scheduler picks up; a request handler must not start an upstream run (`AGENTS.md` rule 3),
    so the write path is a scheduler concern before it is an API concern.
+7. **The scorer snapshots have no agent-facing tool.** M2 stores normalised top-scorer rows, but `R-F4.1` exposes no
+   scorer tool and the M3 API has no scorer operation, so a scorer question routes correctly and cannot be answered.
+   The M3b spike labelled five such questions `route: tool` with no expected tool (decision 0003); M4 adds the tool or
+   the bot refuses those questions.

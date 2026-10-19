@@ -100,12 +100,11 @@ There are two ways to answer a football question, and mixing them up is how bots
 from a document, it comes from our notes. A football bot that searches documents for a score is doing it wrong, and
 so is one that tries to query a database for the meaning of "aggregate".
 
-**How the bot decides which way to look.** Not by vibes. The shape of the question is read in plain code first: a
-table, a score or a date goes to the database, while "how does the promotion playoff work?" goes to the notes. A small
-model is asked only when the question is genuinely ambiguous, and whichever way it went is written down with the
-answer — so a wrong turn shows up on the dashboard and in the scoreboard instead of hiding inside a confident
-sentence. Which of the two designs we use is not settled yet: we are testing them against each other first (section 8,
-step M3b).
+**How the bot decides which way to look.** Not by vibes, and not by regex. Every message goes to a decision model,
+which picks one of four surfaces — database, notes, ask back, refuse — and whichever way it went is written down with
+the answer, so a wrong turn shows up on the dashboard and in the scoreboard. Two models were compared on the same 85
+questions and the same request (section 8). The cloud model routed better but cannot ship under the local-inference
+rule, and the local model failed the safety gate, so **no routing model is adopted yet**; M4 owns that choice.
 
 ## 5. Extra work beyond the first brief
 
@@ -124,7 +123,7 @@ in Docker. To make that a real, checkable product — and to cover the course re
 | **Security and audit work** | A list of everything the bot can reach, scans of our own code, and tests that try to trick the bot through a Telegram message |
 | **A written record of how AI was used** | The course asks for it, and it is how you review a project built mostly by agents |
 | **A written list of the notes** | The bot can only cite what exists. A manifest names every note, where it came from and who owns it, and the build fails if a note or an entry goes missing |
-| **Two small models on the laptop** | Turning notes into searchable numbers, and deciding where a question should go, both use small local models: nothing leaves the machine and there is no per-question bill |
+| **One small local model, and a routing decision still open** | `embeddinggemma:300m` turns notes into searchable numbers on the laptop: nothing leaves the machine and there is no per-question bill. The routing model was compared in M3b: the cloud model was better but sends messages off the machine, the local 0.8B model failed safety, so neither is adopted |
 
 ## 6. Where it runs (and why not on Hugging Face)
 
@@ -180,20 +179,47 @@ Each row is a requirement from the course's draft project criteria and the thing
 | M1 | Database schema and the first migration, matching the contract, including the notes table, the list of notes and the small model that turns text into searchable numbers | Tests against the real stack pass, and a note file can be indexed end to end |
 | M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need — done: 14 operations served from Postgres, the contract served as the document, and the drift test failing on a renamed field, a hidden route, a reused operation id, a changed bound, or an undeclared value. An adversarial review of the finished milestone drove eight fixes: routes are read from the router tree, parameter bounds are compared, the validator carries `minItems`, enums are checked by behaviour, the rule 3/4 scans use a whitelist and follow imports, freshness no longer calls a listed-but-empty competition fresh and ignores future-dated runs, and an out-of-range id is a 400 instead of a 500 |
-| M3b | A test, not an opinion, on how questions get routed: the two designs run over the same questions, and an AI judge scores each choice against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask |
+| M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **partly met (2026-10-19)**: the table and the decision exist, `clef:cloud` routed best but failed the refusal and egress gates, and the local model failed safety; M4 owns the fixes |
 | M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
 | M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
 | M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork and a record of what the agents did |
+
+### M3b result (2026-10-19)
+
+85 hand-labelled questions, 17 classes, 35 database / 35 notes / 15 gate; 34 dev + 51 holdout. The holdout was
+written by an independent reviewer and audited by a second before freezing. Both models got the same versioned
+request; the model was the only variable. Run `2026-10-19T12-40-46Z` (`evals/routing/results/`).
+
+| Model | Dev acc | Holdout acc | Holdout macro P | Holdout macro R | Holdout macro F1 | Adversarial (85) | Refusal (85) | p95 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Model-1 `tev1:0.8b` (local) | 62% | 53% | 0.59 | 0.45 | 0.43 | 2/5 | 1/5 | 3.78 s |
+| Model-2 `clef:cloud` (cloud) | 82% | **71%** | **0.78** | **0.79** | **0.70** | **5/5** | **3/5** | 1.60 s |
+
+| Route (holdout) | Support | tev1 P | tev1 R | clef P | clef R |
+| --- | --- | --- | --- | --- | --- |
+| tool | 21 | 0.62 | 0.86 | 0.93 | 0.62 |
+| knowledge | 21 | 1.00 | 0.29 | 1.00 | 0.71 |
+| clarify | 3 | 0.08 | 0.33 | 0.18 | 1.00 |
+| refuse | 6 | 0.67 | 0.33 | 1.00 | 0.83 |
+
+**What it means.** `clef:cloud` is the better router: 71% v 53% accuracy, macro-F1 0.70 v 0.43, and it refused all
+five adversarial messages where tev1 refused two. But clef is a cloud model: adopting it would send every Telegram
+message to Ollama's cloud, against the local-inference rule in section 4 of the product spec, and it still refused
+only 3/5 of the refusal class. The local model is not viable: knowledge recall 0.29 (it asks back or picks a tool
+for rules questions) and 2/5 adversarial refusals. **No model is adopted.** The 0.90 macro-F1 target is not met;
+M4 must either find a local model that passes safety or change the data policy explicitly. The full precision/recall
+tables, every choice and the egress note are in `evals/routing/results/`; the reasoning is in
+[decision 0003](decisions/0003-prompt-router.md).
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
 the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,
 one topic per file, and each one is listed with its source in `hermes/agent-knowledge/manifest.yaml`; the build fails
 if a note is not in the list or the list names a note that is not there.
 
-Searching and routing run on two small models inside the same local stack: `embeddinggemma:300m` turns text into
-768 numbers per chunk, and — if the M3b test says so — `laya` decides where an ambiguous question should go. Both are
-small enough for a laptop, so nothing leaves the machine and there is no per-question bill. The decisions behind them
-are written down in `_docs/decisions/`.
+Searching runs on a small model inside the local stack: `embeddinggemma:300m` turns text into 768 numbers per chunk,
+so nothing leaves the machine and there is no per-question bill. Routing was compared between a local 0.8B decision
+model and a cloud 27B one; the cloud model routed better but cannot ship while inference is local-only, and neither
+passed the safety gate. The decision is written down in `_docs/decisions/`.
 
 ## 9. Still to decide
 
@@ -202,7 +228,8 @@ are written down in `_docs/decisions/`.
    as an option if the project ever needs a 24/7 dashboard, but then it also needs a machine that is never asleep.
 2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
    admin-only and logged.
-3. **Which model holds the conversation:** configurable in Hermes, but pinned for the scoreboard so scores stay
-   comparable. This is no longer every model in the stack: the embedding model is fixed at `embeddinggemma:300m`
-   (768 numbers per chunk) and the router is decided by the M3b test.
+3. **Which model routes, and which holds the conversation:** the conversation model is configurable in Hermes but
+   pinned for the scoreboard. The embedding model is fixed at `embeddinggemma:300m` (768 numbers per chunk). Routing
+   is open: `clef:cloud` scored best but egress blocks it, and `tev1:0.8b` is local but unsafe, so M4 must choose a
+   model that passes both.
 4. **Licence:** the public repo currently has none chosen.

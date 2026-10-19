@@ -19,4 +19,4 @@ the change it makes, so a prompt can be diffed and blamed like code.
 | File | Prompt | Status |
 | --- | --- | --- |
 | [`0001-m3-backend-api.md`](0001-m3-backend-api.md) | Build the M3 API against `openapi.yaml` | Reviewed, shipped |
-| `0002-router-spike-judge.md` | The LLM-as-judge prompt for the M3b routing spike, required by `_docs/decisions/0003` before that spike's numbers may be reported | Not written yet |
+| [`0002-router-model-comparison.md`](0002-router-model-comparison.md) | The one routing request both models receive in the M3b routing comparison, so the model is the only variable | Used by both arms; comparison recorded in `_docs/scoping.md` §8 |

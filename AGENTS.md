@@ -16,7 +16,11 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true.
 
-Status: **M1–M3 done; M3b (the router spike) next**. M2 supplies the client, bronze store, normalized ingestion
+Status: **M1–M3b comparison done; M4 next.** M3b compared two model-first routers on the same 85 hand-labelled
+questions: `clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43), but **no router is adopted** —
+clef failed the refusal gate and sends every message to a cloud provider, against the local-inference rule, and the
+local tev1 failed safety (2/5 adversarial refusals). The fixes are M4's; the numbers are in `_docs/scoping.md` §8 and
+the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
 read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
 test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
@@ -48,7 +52,7 @@ ingest            scheduler: 10 req/min bucket,      frontend (Next.js): freshne
       |           run ledger, idempotent upserts       eval results, admin controls
       v
 football-data.org v4 (free tier)        Postgres (+ pgvector for the knowledge corpus)
-                                        ollama (embeddinggemma:300m, laya): local models, no egress
+                                        ollama (embeddinggemma:300m): local model, no egress
 ```
 
 Supporting, all in the same Compose project: `observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana),
@@ -80,9 +84,10 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 - Python 3.12 (FastAPI, SQLAlchemy 2.x, Alembic, httpx, APScheduler, pytest, ruff)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
-- Ollama for the two small local models: `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres)
-  and, only if the M3b spike adopts it, `laya` (421M decision model) for ambiguous routing. Inference stays local.
-  `laya` is **not pulled and not used today** — nothing depends on it until M3b decides.
+- Ollama for `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres). Inference stays local.
+  Routing was compared in M3b: `tev1:0.8b` runs in the profile-gated `ollama-spike` service (Ollama 0.40.6, never the
+  production `ollama`); `clef:cloud` is a cloud model, used only for the spike and **not adoptable** while the
+  local-inference rule stands. No routing model is adopted.
 - The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
   container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
   and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
@@ -156,8 +161,10 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
    owner; the build fails on a note missing from it or an entry with no file. The corpus is hand-written, English, one
    topic per file, reviewed like code — never generated at runtime, never scraped.
 10. **Every answer says which road it took.** Each turn records whether it came from a tool or from the notes
-    (`route`, `route_source`, `route_confidence`), and routing is scored in the evals. Routing is deterministic first;
-    a model only breaks ties, and it never sees retrieved text or tool output.
+    (`route`, `route_source`, `route_confidence`), and routing is scored in the evals. Routing is **model-first**: a
+    decision model sees the user message and a fixed label set only — never retrieved text, never tool output. There is
+    no regex and no deterministic pre-router. Which model is still open: M3b's comparison is in decision 0003, and no
+    model is adopted until it passes the safety and egress gates.
 
 ## Working agreement (course criterion 2)
 
@@ -173,7 +180,7 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
 the API contract reviewed and now at v0.2.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
-corpus + manifest, 0002 embedding model, 0003 router spike, 0004 the embedding tag that runs in the container). M1 is done:
+corpus + manifest, 0002 embedding model, 0003 routing model comparison, 0004 the embedding tag that runs in the container). M1 is done:
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
 rate-limited collection, bronze payloads, scorer snapshots, the run ledger, schedule/manual entry points, and delay
@@ -186,9 +193,10 @@ configured it refuses everything instead of opening up. It reads through the `ag
 (`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
 
 Next, in order:
-1. Router spike (M3b): deterministic-first vs model-first, judged against hand-checked expectations; record the outcome
-   in `_docs/decisions/0003` and the results table in `_docs/scoping.md` §8. Do not write the router before it — the API
-   already records `agent_turns.route`, `route_source` and `route_confidence`, but nothing chooses them yet.
+1. M4 routing work, from the failed comparison: choose a model that passes the refusal gate on a new independent
+   holdout, keep inference local or record an explicit policy change, and reach the 0.90 macro-F1 target. Then
+   `agent_turns.route`/`route_source`/`route_confidence` get a writer, and the scorer tool gap (`R-F4.1`) is closed or
+   the bot refuses those questions.
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.

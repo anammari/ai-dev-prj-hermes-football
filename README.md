@@ -5,7 +5,9 @@ football-data.org, plus a small hand-written set of notes about the rules, which
 from ([how that works, and how it is scored](_docs/rag.md)). When the data does not support an answer, it says so
 instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
 
-Status: **M1–M3 done.** The next milestone is **M3b**, the router spike — see the
+Status: **M1–M3b comparison done.** Two model-first routers were compared on the same 85 hand-labelled questions:
+`clef:cloud` beat `tev1:0.8b` on accuracy and precision/recall, but neither passed the safety gates, and clef sends
+messages to a cloud provider. No router is adopted yet; **M4** owns that choice — see the
 [milestone tracker](#milestone-tracker) at the end.
 
 ## How to read this README
@@ -58,7 +60,7 @@ The numbers below are **criterion numbers, not milestones** (milestones are M0�
 - Diagram and stack: [`AGENTS.md`](AGENTS.md) §Architecture. Plain language:
   [`_docs/scoping.md`](_docs/scoping.md) §1, with "why not a rented GPU" in §6.
 - Decisions are recorded as they are made, in [`_docs/decisions/`](_docs/decisions/README.md) — the notes corpus, the
-  embedding model, the router spike, the container embedding.
+  embedding model, routing decisions, the container embedding.
 - A dedicated `_docs/architecture.md` arrives with **M6**; until then `AGENTS.md` is the source of truth.
 
 ## 4. Frontend Implementation
@@ -232,15 +234,17 @@ If a build complains that buildx cannot write its state directory (a locked-down
 | M1 | Database schema and first migration, notes table with vectors, corpus manifest and local embedding | Done |
 | M2 | Daily collection from football-data.org: run ledger, idempotent loads, re-indexing changed notes | Done |
 | M3 | Backend API against `openapi.yaml`: fourteen read-only operations, read-only role, freshness report, drift test | Done |
-| M3b | Router spike: deterministic-first versus model-first, judged against hand-checked expectations, before M4 | **Next** |
-| M4 | Telegram agent: `SOUL.md`, first notes reviewed, routing, refusal and freshness behaviour | Later |
+| M3b | Router comparison: `tev1:0.8b` (local) versus `clef:cloud`, scored on precision/recall against hand-checked expectations | Done — clef routed best; no model adopted, safety and egress gates failed |
+| M4 | Telegram agent: `SOUL.md`, first notes reviewed, routing model choice and gate fixes, refusal and freshness behaviour | **Next** |
 | M5 | Dashboard and eval scoreboard, including routing accuracy | Later |
 | M6 | CI/CD, observability, security, deployment and the AI-usage report | Later |
 
-**Next up: M3b, the router spike.** It is a test, not an opinion: the two router designs run over the same questions, an
-AI judge scores each choice against expectations we checked by hand, and the winner is written down in
-[decision 0003](_docs/decisions/0003-prompt-router.md). The router is deliberately not written before that — the
-API already records which road an answer took, but nothing chooses it yet.
+**M3b compared two models, and neither can ship yet.** `clef:cloud` routed better than the local `tev1:0.8b`:
+71% v 53% accuracy, macro-F1 0.70 v 0.43, and it refused all five adversarial messages. But clef sends every
+message to Ollama's cloud, against the local-inference rule, and refused only 3/5 of the refusal class; the local
+model refused 2/5 adversarial messages. **No model is adopted.** The numbers and per-route precision/recall are in
+[`_docs/scoping.md`](_docs/scoping.md) §8, the reasoning in
+[decision 0003](_docs/decisions/0003-prompt-router.md), and every choice in `evals/routing/results/`.
 
 Each milestone's meaning and "done when" are stated in two places: [`_docs/scoping.md`](_docs/scoping.md) §8 in plain
 language, and [`_docs/product-spec.md`](_docs/product-spec.md) §8 as requirements.
