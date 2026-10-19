@@ -108,9 +108,9 @@ make logs      # tail logs for a service
 
 ## Working copy and branches (read before touching git)
 
-- This project has **exactly one working copy**: `/Users/ahmadammari/GitHub/ai-dev-prj-hermes-football`. Every
-  milestone branch is created and checked out **there**.
-- **Do not create or use `git worktree` copies** of this repo (not under `~/GitHub/copilot-worktrees/…`, not
+- This project has **exactly one working copy**: the repository root that contains this file. Every milestone branch
+  is created and checked out **there**.
+- **Do not create or use `git worktree` copies** of this repo (not under a separate worktrees directory, not
   anywhere else). If a worktree for this project exists, remove the worktree directory (never the branch), then
   `git checkout` the branch at the root.
 - **Work happens on a milestone branch, never directly on `main`.** `main` receives merged milestone work only. A new
@@ -123,7 +123,7 @@ make logs      # tail logs for a service
 # milestones.
 pwd && git rev-parse --abbrev-ref HEAD && git worktree list
 # get back to the shared working copy, on the latest main
-cd /Users/ahmadammari/GitHub/ai-dev-prj-hermes-football && git checkout main && git pull --ff-only
+cd "$(git rev-parse --show-toplevel)" && git checkout main && git pull --ff-only
 ```
 
 **Why:** two checkouts of the same repo shared the Compose project name `hermes-football` and one Postgres volume

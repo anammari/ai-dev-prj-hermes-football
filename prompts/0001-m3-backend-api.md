@@ -16,7 +16,7 @@ paths and the environment details that carry no meaning for a reviewer.
 
 ## The task, as given
 
-> Kick off M3: the backend API in `/Users/ahmadammari/GitHub/ai-dev-prj-hermes-football`. Repo on `main` with M2
+> Kick off M3: the backend API in the repository root. Repo on `main` with M2
 > merged. Read first, in order: `AGENTS.md` (hard rules) → `_docs/scoping.md` §7 row 6 + §8 → `_docs/product-spec.md`
 > §F3 + §7 → `openapi.yaml` (source of truth) → `_docs/data-model.md`, `db/models.py`, `db/session.py` →
 > `_docs/ai-usage-report.md` "How to add an entry". Build `backend/` (FastAPI) against the contract; it does not
