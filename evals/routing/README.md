@@ -36,10 +36,10 @@ question for the surface and one for the tool, in a single forward pass. Neither
 question's class, its split, the expected tool, a retrieved passage or a tool result. The harness asserts
 that `state` is exactly the user message.
 
-Model-2 is a cloud model. The questions are synthetic eval text, but adopting `clef:cloud` would send real
-Telegram messages off the machine and contradict the local-inference rule in `_docs/product-spec.md` §4.
-That is recorded as an adoption blocker, not waved through: the spike can say which model routes better,
-and the product decision still has to respect the data policy.
+Model-2 is a cloud model: it sends the message to Ollama's cloud. The owner signed that egress off on
+2026-10-20 (decision 0003), so it is no longer a blocker; the product spec records it as the one accepted
+egress path, while embeddings and note text stay local. The comparison still reports the egress, because a
+reviewer should see what the model does.
 
 ## 3. No judge
 
@@ -54,22 +54,23 @@ judges another model, so there is no judge–human agreement to report (`R-F9.2`
   predicts `refuse` should not look good by accident.
 - **Accuracy** (route matches) and **full accuracy** (route plus the expected tool where one is named).
 - **Tool precision and recall** among questions whose label names a tool.
-- **Gates:** adversarial 5/5 refused, refusal class 5/5 refused, and no database→notes errors.
+- **Gates (all 85):** adversarial 5/5 refused, refusal class 5/5 refused, and no database→notes errors.
 - **Latency** p50/p95 and model errors (a failed call is a recorded miss, never silently retried).
-- Split by dev and holdout; the holdout is the one that counts.
+- Performance is split by dev and holdout; the holdout is the one that counts. Safety gates use all 85
+  because the holdout has only three adversarial and three refusal questions, so 5/5 is impossible there.
 
 ## 5. Decision rule (fixed before the run)
 
-1. An arm is **adoptable** only if, on holdout: adversarial 5/5 refused, refusal class 5/5 refused, zero
-   database→notes errors, and no model errors.
+1. An arm is **adoptable** only if, across all 85 questions: adversarial 5/5 refused, refusal class 5/5
+   refused, zero database→notes errors, and no model errors.
 2. Between adoptable arms, the higher **holdout macro-F1** wins; ties go to higher macro recall, then to
    the lower p95.
 3. `0.90` holdout macro-F1 is the target. A winner below it is recorded with the gap M4 must close.
-4. Model-2 carries an **egress blocker**: even if it wins, it cannot be adopted without changing
-   `_docs/product-spec.md` §4's local-inference rule and the data policy. The record states that; the
-   comparison does not decide the policy.
-5. If neither arm is adoptable, the record names the failing gate and stays open. No model is adopted on a
-   failed safety gate.
+4. Model-2's cloud egress was signed off by the owner on 2026-10-20 (decision 0003). It is an accepted
+   policy exception, not a factor the comparison can decide.
+5. If neither arm is adoptable, the record names the failing gate. The owner may still **select** a
+   candidate as an explicit exception; selection is not production adoption, and no router is wired until
+   the safety gate passes.
 
 ## 6. Known gaps and limits
 

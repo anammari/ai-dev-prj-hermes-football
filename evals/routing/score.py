@@ -263,7 +263,11 @@ def score_model(records: list[dict], split: str | None = None) -> dict:
 
 
 def render_markdown(meta: dict, records_by_model: dict[str, list[dict]], scores: dict) -> str:
-    labels = {"model1": "Model-1 tev1:0.8b", "model2": "Model-2 clef:cloud"}
+    servers = meta.get("servers", {})
+    labels = {
+        key: f"Model-{index} {servers.get(key, {}).get('model', f'model-{index}')}"
+        for index, key in enumerate(("model1", "model2"), start=1)
+    }
     lines = [
         "# M3b routing comparison — two models, same request",
         "",

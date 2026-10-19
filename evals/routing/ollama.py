@@ -63,6 +63,8 @@ class SystemOne:
             body = response.json()
         except ValueError as error:
             raise OllamaError(f"{self.model}: response was not JSON") from error
+        if not isinstance(body, dict):
+            raise OllamaError(f"{self.model}: response is not a JSON object")
         answers = body.get("answers")
         if not isinstance(answers, dict):
             raise OllamaError(f"{self.model}: response has no answers object")
@@ -77,12 +79,13 @@ class SystemOne:
                 raise OllamaError(f"{self.model}: probabilities for {name!r} are not an object")
             try:
                 confidence = float(entry.get("confidence", 0.0))
+                parsed_probabilities = {str(key): float(value) for key, value in probabilities.items()}
             except (TypeError, ValueError) as error:
-                raise OllamaError(f"{self.model}: confidence for {name!r} is not a number") from error
+                raise OllamaError(f"{self.model}: malformed number for {name!r}") from error
             parsed[name] = Answer(
                 label=str(entry["choice"]),
                 confidence=max(0.0, min(1.0, confidence)),
-                probabilities={key: float(value) for key, value in probabilities.items()},
+                probabilities=parsed_probabilities,
             )
         return parsed
 
@@ -108,8 +111,13 @@ class OllamaProbe:
 
     def models(self) -> dict[str, ModelInfo]:
         body = self._get("/api/tags")
+        entries = body.get("models", [])
+        if not isinstance(entries, list):
+            raise OllamaError("spike server /api/tags: models is not a list")
         result: dict[str, ModelInfo] = {}
-        for entry in body.get("models", []):
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
             name = entry.get("name") or entry.get("model")
             if name:
                 result[str(name)] = ModelInfo(
@@ -126,7 +134,10 @@ class OllamaProbe:
             raise OllamaError(f"spike server unreachable: {error}") from error
         if response.status_code != 200:
             raise OllamaError(f"spike server {path}: HTTP {response.status_code}")
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as error:
+            raise OllamaError(f"spike server {path}: response was not JSON") from error
         if not isinstance(body, dict):
             raise OllamaError(f"spike server {path}: unexpected response")
         return body

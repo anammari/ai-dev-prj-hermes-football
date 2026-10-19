@@ -7,10 +7,9 @@ The harness is retained as the record of the comparison. The run:
 3. asks both models every question in a fixed shuffled order, recording failures rather than hiding them;
 4. writes `results/<run-id>.json` (every choice and timing) and `.md` (precision/recall tables).
 
-Model-1 runs in the profile-gated local Ollama. Model-2 is `clef:cloud`, which sends the message to
-Ollama's cloud; that is recorded in the artifact and is a blocker for adopting it in the product, whose
-inference is local-only (`_docs/product-spec.md` §4). The messages here are synthetic eval questions, not
-user conversations.
+Model-1 and Model-2 are whatever the CLI points at. In the archived run, Model-2 was `clef:cloud`, whose
+message goes to Ollama's cloud; that egress is now the one signed-off exception in `_docs/product-spec.md`
+§4 (decision 0003). The messages here are synthetic eval questions, not user conversations.
 """
 
 from __future__ import annotations

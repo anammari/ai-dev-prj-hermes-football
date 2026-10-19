@@ -316,12 +316,13 @@ checked and work that merely looked right.
     too often. The model was signed off anyway; the refusal gap is an explicit M4 gate, not something the sign-off
     pretends is solved.
 - **Evidence:**
-  - `make lint` clean; `make test` **254 unit tests** pass, including the sample, prompt loader, arm plumbing and
+  - `make lint` clean; `make test` **256 unit tests** pass, including the sample, prompt loader, arm plumbing and
     precision/recall arithmetic.
   - The harness ran both models on 2026-10-19 (`2026-10-19T12-40-46Z`): tev1 holdout 53% accuracy, macro
     P/R/F1 0.59/0.45/0.43; clef 71%, 0.78/0.79/0.70. Neither passed the safety gates. Results, per-route
     precision/recall and every choice are in `evals/routing/results/`.
-  - Decision 0003 is Accepted: `clef:cloud` is the routing model, with the cloud egress signed off. `_docs/scoping.md`
+  - Decision 0003 is Accepted: `clef:cloud` is selected, with the cloud egress signed off; production wiring waits
+    for the M4 safety gate. `_docs/scoping.md`
     §8 carries the table; `AGENTS.md` and `README.md` no longer claim a deterministic router.
 
 ## Sessions that predate this log (backfill needed)

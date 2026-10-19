@@ -197,8 +197,9 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   question classes, competitions, source citation, owner, status and review date, mirroring the file's YAML
   front-matter. A test fails when a file is missing from the manifest, when an entry has no file, or when an entry
   cites no source. Any rendered table is generated from the manifest, never hand-edited.
-- **R-F6.6** Routing is explicit and recorded: `clef:cloud` maps every message to one of four intent buckets
-  (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and `route_confidence`.
+- **R-F6.6** Routing is explicit and recorded: the chosen model, `clef:cloud`, maps every message to one of four
+  intent buckets (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and
+  `route_confidence`. M4 wires it behind a hard safety gate; selection is not production adoption.
   The router sees the user message and a fixed label set only — never retrieved text, never tool output. There is no
   regex and no deterministic pre-router. The model and its cloud egress are recorded in `_docs/decisions/0003`;
   routing precision and recall are scored in the eval harness, and a hard safety gate runs before the tool surface.

@@ -17,9 +17,10 @@ criteria and how each is covered live in `_docs/scoping.md` §7 — that mapping
 If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
 Status: **M1–M3b done; M4 next.** M3b compared two model-first routers on the same 85 hand-labelled questions:
-`clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **signed off on 2026-10-20** as the
+`clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **selected on 2026-10-20** as the
 routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
-and note text stay local. tev1 is rejected. The refusal gap and the 0.90 target are M4's; the numbers are in
+and note text stay local. tev1 is rejected. Selection is not production wiring: the refusal gap (3/5 across all 85)
+and the 0.90 target are the M4 safety gate. The numbers are in
 `_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
 read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a

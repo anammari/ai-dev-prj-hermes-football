@@ -6,16 +6,16 @@ from ([how that works, and how it is scored](_docs/rag.md)). When the data does 
 instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
 
 Status: **M1–M3b done; M4 next.** The routing comparison chose `clef:cloud` and the owner signed it off on
-2026-10-20, with its cloud egress accepted. The backend, database and ingestion work; the Telegram agent, dashboard
-and production pipeline are M4-M6.
+2026-10-20, with its cloud egress accepted. Selection is not production wiring: the model's refusal gap is an M4
+safety gate. The backend, database and ingestion work; the Telegram agent, dashboard and production pipeline are M4-M6.
 
 ### M3b routing comparison
 
 Two decision models routed the same 85 hand-labelled questions through the same versioned request. `clef:cloud`
 beat the local `tev1:0.8b` — 71% v 53% accuracy, macro precision 0.78 v 0.59, macro recall 0.79 v 0.45 [result
-report](evals/routing/results/2026-10-19T12-40-46Z.md). clef was signed off as the routing model; its cloud call is
-the one accepted egress path, and its refusal gap is M4 work. The reasoning and the rejected option are in
-[decision 0003](_docs/decisions/0003-prompt-router.md).
+report](evals/routing/results/2026-10-19T12-40-46Z.md). clef was selected as the routing model; its cloud call is
+the one accepted egress path, and its refusal gap (3/5 across the 85) is the M4 safety gate that must pass before the
+router is wired. The reasoning is in [decision 0003](_docs/decisions/0003-prompt-router.md).
 
 ## How to read this README
 
@@ -65,7 +65,7 @@ Telegram/Hermes agent do not exist yet, so this is not the full-stack applicatio
 ## 6. Testing
 
 **Partly.** Unit tests and integration tests exist and pass:
-`make test` (254 unit tests, no network) and `make itest` (the real Compose stack, from collection to the API). The
+`make test` (256 unit tests, no network) and `make itest` (the real Compose stack, from collection to the API). The
 gap is one command for both: the course asks for unit **and** integration tests with a single command, and these
 are deliberately separate so the fast suite stays fast. Contract drift is covered by
 [`tests/test_api_contract.py`](tests/test_api_contract.py), which fails on a renamed field, a hidden route, a reused
@@ -126,8 +126,8 @@ payload; it lands with M6 and the observability stack.
 | M1 | Database schema and first migration, notes table with vectors, corpus manifest and local embedding | Done |
 | M2 | Daily collection from football-data.org: run ledger, idempotent loads, re-indexing changed notes | Done |
 | M3 | Backend API against `openapi.yaml`: fourteen read-only operations, read-only role, freshness report, drift test | Done |
-| M3b | Routing comparison: `tev1:0.8b` (local) vs `clef:cloud`, scored on precision/recall; clef signed off | Done |
-| M4 | Telegram agent: `SOUL.md`, first notes reviewed, clef routing wired, safety gate, refusal and freshness behaviour | **Next** |
+| M3b | Routing comparison: `tev1:0.8b` (local) vs `clef:cloud`, scored on precision/recall; clef selected | Done |
+| M4 | Telegram agent: `SOUL.md`, first notes reviewed, clef routing wired behind the safety gate, refusal and freshness behaviour | **Next** |
 | M5 | Dashboard and eval scoreboard, including routing precision/recall over time | Later |
 | M6 | CI/CD, observability, alerting, on-call agent, security artifacts and the AI-usage report close-out | Later |
 

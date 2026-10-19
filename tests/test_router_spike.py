@@ -1,8 +1,8 @@
 """The model comparison's pieces, held down without a model or a stack.
 
 The sample checks, the prompt loader, the arm plumbing and the precision/recall arithmetic are all
-deterministic. They are what a reviewer can re-run with `make test`; the real comparison comes from
-`make router-spike`.
+deterministic. They are what a reviewer can re-run with `make test`; the real comparison ran from
+`python -m evals.routing.run_cli --base-url1 … --base-url2 …` and is archived in `results/`.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import yaml
 from db.settings import REPO_ROOT
 from evals.routing import score
 from evals.routing.arms import LABEL_TO_ROUTE, route_message
-from evals.routing.ollama import Answer, OllamaError
+from evals.routing.ollama import Answer, OllamaError, SystemOne
 from evals.routing.prompt import PromptError, load_router_prompt
 from evals.routing.tools import TOOL_BY_NAME, TOOLS
 
@@ -261,8 +261,58 @@ def test_markdown_report_has_the_two_model_tables() -> None:
         key: {split: score.score_model(rows, split) for split in ("dev", "holdout", "all")}
         for key in ("model1", "model2")
     }
-    meta = {"run_id": "test", "sample_sha256": "0" * 64, "prompt_version": 1}
+    meta = {
+        "run_id": "test",
+        "sample_sha256": "0" * 64,
+        "prompt_version": 1,
+        "servers": {"model1": {"model": "model-one"}, "model2": {"model": "model-two"}},
+    }
     text = score.render_markdown(meta, {"model1": rows, "model2": rows}, scores)
-    assert "Model-1 tev1:0.8b" in text
-    assert "Model-2 clef:cloud" in text
+    assert "Model-1 model-one" in text
+    assert "Model-2 model-two" in text
     assert "Per-route precision / recall" in text
+
+
+class _Response:
+    def __init__(self, body) -> None:
+        self.status_code = 200
+        self.text = ""
+        self._body = body
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class _Client:
+    def __init__(self, body) -> None:
+        self._body = self._response = _Response(body)
+
+    def post(self, *_args, **_kwargs):
+        return self._response
+
+
+def _client_with(body) -> SystemOne:
+    client = SystemOne("http://example.invalid", "fake-model")
+    client._client = _Client(body)
+    return client
+
+
+def test_a_non_mapping_json_body_is_an_ollama_error() -> None:
+    with pytest.raises(OllamaError, match="not a JSON object"):
+        _client_with(["not", "a", "mapping"]).ask("q", {"surface": {"type": "choice", "criteria": {}}})
+
+
+def test_a_malformed_probability_is_an_ollama_error() -> None:
+    body = {
+        "answers": {
+            "surface": {
+                "choice": "database",
+                "confidence": 0.7,
+                "probabilities": {"database": "not-a-number"},
+            }
+        }
+    }
+    with pytest.raises(OllamaError, match="malformed number"):
+        _client_with(body).ask("q", {"surface": {"type": "choice", "criteria": {}}})

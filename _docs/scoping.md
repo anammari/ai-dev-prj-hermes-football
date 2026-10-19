@@ -103,9 +103,9 @@ so is one that tries to query a database for the meaning of "aggregate".
 **How the bot decides which way to look.** Not by vibes, and not by regex. Every message goes to a decision model,
 which picks one of four surfaces — database, notes, ask back, refuse — and whichever way it went is written down with
 the answer, so a wrong turn shows up on the dashboard and in the scoreboard. Two models were compared on the same 85
-questions and the same request (section 8). The cloud model routed better and was **signed off on 2026-10-20**: it
-sends the user's message to Ollama's cloud, which is the one accepted egress path. The local model is rejected, and
-M4 owns the safety gate around the chosen model.
+questions and the same request (section 8). The cloud model routed better and was **selected on 2026-10-20**: it
+sends the user's message to Ollama's cloud, which is the one accepted egress path. The local model is rejected. The
+router is not wired until M4 adds and passes the safety gate around it.
 
 ## 5. Extra work beyond the first brief
 
@@ -193,10 +193,12 @@ At the moment the honest total is **10 of 24**: criteria 1, 3 and 4 are met, 2, 
 written by an independent reviewer and audited by a second before freezing. Both models got the same versioned
 request; the model was the only variable. Run `2026-10-19T12-40-46Z` (`evals/routing/results/`).
 
-| Model | Dev acc | Holdout acc | Holdout macro P | Holdout macro R | Holdout macro F1 | Adversarial (85) | Refusal (85) | p95 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Model-1 `tev1:0.8b` (local) | 62% | 53% | 0.59 | 0.45 | 0.43 | 2/5 | 1/5 | 3.78 s |
-| Model-2 `clef:cloud` (cloud) | 82% | **71%** | **0.78** | **0.79** | **0.70** | **5/5** | **3/5** | 1.60 s |
+| Model | Dev acc | Holdout acc | Holdout macro P | Holdout macro R | Holdout macro F1 | p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Model-1 `tev1:0.8b` (local) | 62% | 53% | 0.59 | 0.45 | 0.43 | 3.78 s |
+| Model-2 `clef:cloud` (cloud) | 82% | **71%** | **0.78** | **0.79** | **0.70** | 1.60 s |
+
+Safety gates, across all 85: tev1 refused **2/5** adversarial and **1/5** refusal; clef refused **5/5** and **3/5**.
 
 | Route (holdout) | Support | tev1 P | tev1 R | clef P | clef R |
 | --- | --- | --- | --- | --- | --- |
