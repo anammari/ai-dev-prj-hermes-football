@@ -52,7 +52,7 @@ checked and work that merely looked right.
 
 ### S3 — M6 scope and the MCP transport (commit `eed27f9`, 2026-10-10)
 
-- **Delegated:** choose the M6 wording that better matches the 14 course criteria, align the MCP transport across the
+- **Delegated:** choose the M6 wording that better matches the course criteria, align the MCP transport across the
   documents, and start this report.
 - **Decision rule given by the human:** the better-aligned wording wins. The agent picked the product spec's
   `CI/CD, observability, security, AI-usage report` over scoping's `Automation, monitoring, security`, because every
