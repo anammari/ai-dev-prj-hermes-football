@@ -307,20 +307,22 @@ checked and work that merely looked right.
   - *The previous judge and its prompt* — removed with the previous artifacts; this spike scores against hand labels
     only. `R-F9.2` applies again only if a judge is introduced.
   - *A cloud model as a drop-in winner* — `clef:cloud` won on quality but sends every message to Ollama's cloud. The
-    spike records that as an **adoption blocker** against the local-inference rule; a quality win is not a policy
-    change. The 85 messages are synthetic eval text, not user conversations.
+    spike recorded that as a blocker; the owner then **signed the egress off on 2026-10-20** after seeing the
+    numbers, and the product spec was changed to say which data leaves the machine. The 85 messages were synthetic
+    eval text; production messages will not be.
   - *`tev1:0.8b` as the local answer* — it failed safety: 2/5 adversarial refusals, 1/5 refusal-class, knowledge
     recall 0.29. The local model is not viable yet, and the record says so.
   - *`clef:cloud` refusal* — 5/5 adversarial but only 3/5 refusal-class, and `clarify` precision 0.18; it asks back
-    too often. It did not pass the pre-registered gates, so no model is adopted.
+    too often. The model was signed off anyway; the refusal gap is an explicit M4 gate, not something the sign-off
+    pretends is solved.
 - **Evidence:**
   - `make lint` clean; `make test` **254 unit tests** pass, including the sample, prompt loader, arm plumbing and
     precision/recall arithmetic.
-  - `make router-spike` ran both models on 2026-10-19 (`2026-10-19T12-40-46Z`): tev1 holdout 53% accuracy, macro
+  - The harness ran both models on 2026-10-19 (`2026-10-19T12-40-46Z`): tev1 holdout 53% accuracy, macro
     P/R/F1 0.59/0.45/0.43; clef 71%, 0.78/0.79/0.70. Neither passed the safety gates. Results, per-route
     precision/recall and every choice are in `evals/routing/results/`.
-  - Decision 0003 records the comparison and stays Proposed (no adoption); `_docs/scoping.md` §8 carries the table;
-    `AGENTS.md` and `README.md` no longer claim a deterministic router.
+  - Decision 0003 is Accepted: `clef:cloud` is the routing model, with the cloud egress signed off. `_docs/scoping.md`
+    §8 carries the table; `AGENTS.md` and `README.md` no longer claim a deterministic router.
 
 ## Sessions that predate this log (backfill needed)
 

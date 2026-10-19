@@ -63,7 +63,7 @@ agent's container, which is root-equivalent control of the host. The container i
 | `db` | Postgres 16 + pgvector | none (5432 exposed in dev only) | `pgdata` |
 | `frontend` | Next.js dashboard | 3000 (dev) | — |
 | `obs` | OTel collector, Prometheus, Loki, Tempo, Grafana | 3001 | `grafana-data` |
-| `ollama` | Local model server: `embeddinggemma:300m` for the notes index; the routing model is chosen by M3b (decision 0003) and is not adopted yet | none | `ollama-data` |
+| `ollama` | Local embedding server (`embeddinggemma:300m`). The routing model, `clef:cloud`, runs in Ollama's cloud and is not a Compose service (decision 0003) | none | `ollama-data` |
 
 Only `backend` is published; the Cloudflare tunnel points at it. Telegram uses long polling, so `hermes` needs egress
 only — no inbound port, no static IP, no VPS. **Both public paths are demo-scoped:** the tunnel and the bot run for one
@@ -73,9 +73,10 @@ address, not a hosted service.
 Rules the layout enforces:
 
 - **No Docker socket** in any container; the knowledge corpus is mounted **read-only** into `hermes`.
-- **Local inference only.** `ollama` serves the embeddings and any routing model inside the Compose network; no note
-  text and no user question is sent to a hosted model provider. A cloud routing model was compared in M3b and is
-  **not adopted**: its quality does not override the egress rule.
+- **Local embeddings; one signed-off egress path.** `ollama` serves the embeddings locally, and no note text or
+  retrieved passage leaves the machine. Routing is the exception: `clef:cloud` sends the user's message to Ollama's
+  cloud, signed off on 2026-10-20 (decision 0003). Tool output and retrieved text are never part of that call. Any
+  other cloud call is a policy change, not a configuration detail.
 - **MCP over HTTP, not stdio.** A stdio server would have to live inside the Hermes image, coupling tool code to the
   agent image and complicating its own tests and scans. As a sibling container it keeps a read-only DB role, its own
   tests and its own scan artifacts.
@@ -196,12 +197,11 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   question classes, competitions, source citation, owner, status and review date, mirroring the file's YAML
   front-matter. A test fails when a file is missing from the manifest, when an entry has no file, or when an entry
   cites no source. Any rendered table is generated from the manifest, never hand-edited.
-- **R-F6.6** Routing is explicit and recorded: a decision model maps every message to one of four intent buckets
+- **R-F6.6** Routing is explicit and recorded: `clef:cloud` maps every message to one of four intent buckets
   (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and `route_confidence`.
   The router sees the user message and a fixed label set only — never retrieved text, never tool output. There is no
-  regex and no deterministic pre-router. Which model is the subject of the M3b comparison (`_docs/decisions/0003`); no model is
-  adopted until it passes the safety and egress gates, and routing precision and recall are scored in the eval
-  harness.
+  regex and no deterministic pre-router. The model and its cloud egress are recorded in `_docs/decisions/0003`;
+  routing precision and recall are scored in the eval harness, and a hard safety gate runs before the tool surface.
 - **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
 - **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
 - **AC** A note file without a manifest entry, or an entry without a file or a source, fails a test.
@@ -321,7 +321,7 @@ model and the router are recorded in `_docs/decisions/` (0001, 0002, 0003).
 1. `make up` on a clean machine yields a working bot that answers the golden set within threshold.
 2. Eval accuracy >= 90% on answerable questions, 100% correct refusals on unanswerable ones.
 3. Zero invented facts detected across two consecutive eval runs.
-4. Every one of the 14 course criteria has a named, inspectable artifact (map in `_docs/scoping.md#7`).
+4. Every one of the 12 course criteria has a named, inspectable artifact or an explicit gap (map in `_docs/scoping.md#7`).
 5. Every note in `hermes/agent-knowledge/` appears in `manifest.yaml` with a source citation, and the manifest and the
    directory agree in CI.
 6. Routing is correct on the golden set at or above the target the M3b comparison sets, and no factual answer is sourced

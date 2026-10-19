@@ -12,15 +12,15 @@ curated knowledge corpus for the qualitative parts (competition formats, tiebrea
 Everything runs locally in **Docker Compose**. There is no VPS and no cloud host for the agent; the public
 interface is the Telegram bot itself, and the dashboard is exposed through a Cloudflare tunnel.
 
-Course context: this is the final project for the DataTalks.Club **AI Dev Tools Zoomcamp 2026**. The 14 draft
-project criteria and how each is covered live in `_docs/scoping.md` — that mapping is a deliverable, not decoration.
-If you add or change a component, keep that table true.
+Course context: this is the final project for the DataTalks.Club **AI Dev Tools Zoomcamp 2026**. The 12 project
+criteria and how each is covered live in `_docs/scoping.md` §7 — that mapping is a deliverable, not decoration.
+If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
-Status: **M1–M3b comparison done; M4 next.** M3b compared two model-first routers on the same 85 hand-labelled
-questions: `clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43), but **no router is adopted** —
-clef failed the refusal gate and sends every message to a cloud provider, against the local-inference rule, and the
-local tev1 failed safety (2/5 adversarial refusals). The fixes are M4's; the numbers are in `_docs/scoping.md` §8 and
-the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
+Status: **M1–M3b done; M4 next.** M3b compared two model-first routers on the same 85 hand-labelled questions:
+`clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **signed off on 2026-10-20** as the
+routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
+and note text stay local. tev1 is rejected. The refusal gap and the 0.90 target are M4's; the numbers are in
+`_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
 read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
 test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
@@ -63,8 +63,8 @@ Supporting, all in the same Compose project: `observability/` (OTel collector ->
 ```text
 README.md               product-spec.md        openapi.yaml      docker-compose.yml   Makefile
 AGENTS.md               .env.example          Dockerfile
-_docs/                  scoping.md (14-criteria map), product-spec.md, architecture.md,
-                        data-model.md, decisions/, ai-usage-report.md
+_docs/                  scoping.md (12-criteria map), product-spec.md, architecture.md,
+                        data-model.md, agent-team.md, decisions/, ai-usage-report.md
 db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
 backend/                FastAPI app
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
@@ -84,10 +84,10 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 - Python 3.12 (FastAPI, SQLAlchemy 2.x, Alembic, httpx, APScheduler, pytest, ruff)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
-- Ollama for `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres). Inference stays local.
-  Routing was compared in M3b: `tev1:0.8b` runs in the profile-gated `ollama-spike` service (Ollama 0.40.6, never the
-  production `ollama`); `clef:cloud` is a cloud model, used only for the spike and **not adoptable** while the
-  local-inference rule stands. No routing model is adopted.
+- Ollama for `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres). Embeddings and note text stay
+  local. Routing uses `clef:cloud` (Ollama's cloud, 27B): the user message is the one signed-off egress path
+  (decision 0003); tool output and retrieved text are never sent. `tev1:0.8b` was rejected and its spike server
+  removed.
 - The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
   container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
   and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
@@ -163,10 +163,10 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 10. **Every answer says which road it took.** Each turn records whether it came from a tool or from the notes
     (`route`, `route_source`, `route_confidence`), and routing is scored in the evals. Routing is **model-first**: a
     decision model sees the user message and a fixed label set only — never retrieved text, never tool output. There is
-    no regex and no deterministic pre-router. Which model is still open: M3b's comparison is in decision 0003, and no
-    model is adopted until it passes the safety and egress gates.
+    no regex and no deterministic pre-router. The model is `clef:cloud` (decision 0003); its cloud egress is signed
+    off, and a hard safety gate around it is M4 work.
 
-## Working agreement (course criterion 2)
+## Working agreement (course criteria 2-4)
 
 - Spec before code: `_docs/product-spec.md` is the source of truth; change it in the same PR as the behavior change.
 - One task per PR, small and reviewable; the task states goal + checkable acceptance criteria + out of scope.
@@ -193,10 +193,10 @@ configured it refuses everything instead of opening up. It reads through the `ag
 (`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
 
 Next, in order:
-1. M4 routing work, from the failed comparison: choose a model that passes the refusal gate on a new independent
-   holdout, keep inference local or record an explicit policy change, and reach the 0.90 macro-F1 target. Then
-   `agent_turns.route`/`route_source`/`route_confidence` get a writer, and the scorer tool gap (`R-F4.1`) is closed or
-   the bot refuses those questions.
+1. M4 routing work on the chosen model: wire `clef:cloud`, add a hard pre-routing refusal for instruction overrides
+   and fabricated facts, re-measure the refusal gate on a new independent holdout, and reach the 0.90 macro-F1
+   target. Then `agent_turns.route`/`route_source`/`route_confidence` get a writer, and the scorer tool gap
+   (`R-F4.1`) is closed or the bot refuses those questions.
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.

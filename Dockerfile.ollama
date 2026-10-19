@@ -20,11 +20,7 @@
 #
 # To go back to stock upstream, point the `ollama` and `models` services in `docker-compose.yml` at
 # `ollama/ollama:0.40.2` again and delete this file.
-# The default is the production pin. The M3b model comparison builds a tools-profile server on 0.40.6
-# so the spike's local model (tev1:0.8b) never lands in the production volume; a later milestone would
-# change the default only if a model-first router is adopted (decision 0003).
-ARG OLLAMA_VERSION=0.40.2
-FROM ollama/ollama:${OLLAMA_VERSION} AS upstream
+FROM ollama/ollama:0.40.2 AS upstream
 
 RUN rm -rf /usr/lib/ollama/cuda_v12 \
            /usr/lib/ollama/cuda_v13 \

@@ -2,7 +2,7 @@
 
 ```yaml
 version: 1
-used by: evals/routing/arms.py, make router-spike, _docs/scoping.md §8, _docs/decisions/0003
+used by: evals/routing/arms.py, _docs/scoping.md §8, _docs/decisions/0003
 model: tev1:0.8b and clef:cloud — the same request, so the model is the only variable
 date: 2026-10-19
 owner: Ahmad Ammari

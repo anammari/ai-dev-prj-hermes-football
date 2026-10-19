@@ -1,8 +1,8 @@
 # 0003 — Which model routes a question between the database and the notes
 
-- **Status:** Proposed (2026-10-19) — the comparison chose `clef:cloud` on quality, but **no router is adopted**:
-  clef fails the refusal gate and carries a cloud-egress blocker, and `tev1:0.8b` fails safety and quality. This
-  record moves to Accepted when a model passes the gates in M4.
+- **Status:** Accepted (2026-10-20) — **`clef:cloud` is the routing model.** The owner signed off the choice and the
+  cloud egress it implies; the local `tev1:0.8b` is rejected. The refusal and accuracy gaps are M4 work, not reasons to
+  leave the model undecided.
 - **Milestone:** M3b (comparison, done), M4 (implementation and gate fixes), M5 (scoring)
 - **Related:** `_docs/product-spec.md` R-F6.3, R-F6.6, F9; `_docs/scoping.md` §4, §8; `evals/routing/README.md`
 
@@ -41,8 +41,9 @@ Both answer the same `choice` request (`prompts/0002-router-model-comparison.md`
 5. **Gates.** Adoptable only with adversarial 5/5 refused, refusal class 5/5 refused, zero database→notes errors,
    and no model errors. Higher holdout macro-F1 wins; ties go to recall, then lower p95. `0.90` macro-F1 is the
    target.
-6. **Egress is a gate of its own.** `clef:cloud` cannot be adopted while `_docs/product-spec.md` §4 says inference
-   stays local and no user question goes to a hosted provider. A quality win does not change that policy.
+6. **Egress is recorded, then decided by the owner.** `clef:cloud` sends each message to Ollama's cloud. The
+   comparison reports it; the owner signs it off or rejects the model. On 2026-10-20 the owner signed it off, and
+   `_docs/product-spec.md` §4 was updated to say which data leaves the machine and why.
 
 Whatever the outcome: the route is recorded on every turn (`route`, `route_source`, `route_confidence`), the
 router sees the user message and a fixed label set only, and the tool surface stays read-only and allowlisted.
@@ -66,31 +67,32 @@ Holdout per-route precision / recall:
 | clarify | 3 | 0.08 | 0.33 | 0.18 | 1.00 |
 | refuse | 6 | 0.67 | 0.33 | 1.00 | 0.83 |
 
-**The comparison has a winner and no adoption.**
+**`clef:cloud` is adopted.**
 
-1. **`clef:cloud` routes better on every headline metric.** 71% v 53% accuracy, macro-F1 0.70 v 0.43, macro recall
-   0.79 v 0.45, and it refused all five adversarial messages where tev1 refused two. Its weakness is `clarify`:
-   precision 0.18, so it asks back too often, and it refused only 3/5 of the refusal class.
-2. **`tev1:0.8b` is not viable.** It sends most rules questions to `clarify` or to a tool (knowledge recall 0.29),
+1. **It routes better on every headline metric.** 71% v 53% accuracy, macro-F1 0.70 v 0.43, macro recall 0.79 v
+   0.45, and it refused all five adversarial messages where tev1 refused two. Its weakness is `clarify`: precision
+   0.18, so it asks back too often, and it refused only 3/5 of the refusal class.
+2. **`tev1:0.8b` is rejected.** It sends most rules questions to `clarify` or to a tool (knowledge recall 0.29),
    refuses 2/5 adversarial messages, and is slower on CPU (3.78 s p95).
-3. **Neither passes the gates.** clef fails the refusal class (3/5) and the cloud-egress gate; tev1 fails both
-   safety gates. No model is adopted. The best model is recorded, not shipped.
-4. **The 0.90 macro-F1 target is not met.** clef is 20 points short on holdout. The next milestone must either
-   find a local model that clears the gates or change the data policy explicitly; a cloud win is not a licence to
-   send Telegram messages to a provider.
+3. **The egress sign-off is explicit.** clef runs in Ollama's cloud, so each Telegram message goes to a hosted
+   provider. The owner signed this off on 2026-10-20 as the cost of the better router. The product spec now says so;
+   the 85 spike messages were synthetic eval text, but production messages are real user input.
+4. **Safety remains M4 work.** clef refused 3/5 of the refusal class, so the model alone is not the safety layer: M4
+   needs a hard pre-routing refusal for instruction overrides and fabricated facts, re-measured on a new independent
+   holdout. The 0.90 macro-F1 target is still 20 points away.
 
-**What M4 does with this.** The router stays model-first. The candidate is a model that passes safety on a new
-independent holdout; `clef:cloud` is the quality reference, not the deployment. If the owner decides the local-only
-rule can change, that is a separate recorded decision, not this spike's side effect. The missing scorer tool
-(`R-F4.1`) and the incomplete corpus remain open and are recorded elsewhere.
+**What M4 does with this.** Wire `clef:cloud` as the router, keep the route recorded on every turn, add the safety
+gate around it, and close the scorer tool gap (`R-F4.1`). The local-only rule is no longer a blocker for routing; it
+still applies to note retrieval and embeddings.
 
-**Limits.** The cloud arm uses synthetic eval messages, not user conversations; adopting it would change that.
-The sample is single-turn, so `clarify` means vague as a standalone message. Both models share one prompt, so a
-prompt tuned for one would invalidate the comparison. The sample's knowledge labels are taxonomy-correct while
-only two of the seven knowledge classes have a note today.
+**Limits.** The comparison used synthetic eval text; production messages will leave the machine. The sample is
+single-turn, so `clarify` means vague as a standalone message. Both models shared one prompt, so a prompt tuned for
+one would have invalidated the comparison. The sample's knowledge labels are taxonomy-correct while only two of the
+seven knowledge classes have a note today.
 
 ## Verification
 
-- `make router-spike` reproduces the run; `make test` and `make lint` cover the sample, prompt loader, arm
-  plumbing and precision/recall arithmetic without calling a model.
+- The run artifact is retained; the spike server and `tev1` were removed after the decision, so a rerun needs both
+  models pulled again. `make test` and `make lint` cover the sample, prompt loader, arm plumbing and
+  precision/recall arithmetic without calling a model.
 - The run artifact holds every choice, timing, model digest, prompt version, sample hash and the egress note.

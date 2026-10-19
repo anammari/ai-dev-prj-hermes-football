@@ -1,11 +1,7 @@
 # M3b routing comparison — two models, same request
 
-Status: **pre-registered, no results yet.** This protocol is committed before the holdout is run. The
-decision rule is fixed; a change is a new version of this file, committed before a rerun, and the previous
-run stays in `results/`.
-
-What this is: the second routing experiment, and the one that decides the M4 design. There is **no
-deterministic pre-router and no regex**. Both arms send every message to a decision model through the same
+Status: **run complete; `clef:cloud` adopted on 2026-10-20** (decision 0003). This protocol was committed
+before the holdout ran, and its decision rule is fixed. There is **no deterministic pre-router and no regex**. Both arms send every message to a decision model through the same
 versioned request; the only variable is the model.
 
 ## 1. Sample (unchanged)
@@ -85,13 +81,14 @@ judges another model, so there is no judge–human agreement to report (`R-F9.2`
 - **One prompt.** Both models use the same request; a prompt tuned for one of them would invalidate the
   comparison.
 
-## 7. Reproduction
+## 7. Archived run
 
-```bash
-ollama pull clef:cloud      # host, once; requires an Ollama account
-make router-spike           # builds the spike server, pulls tev1, runs both arms
-```
+The comparison ran on 2026-10-19 with a throwaway local Ollama server for `tev1:0.8b` and the signed-in host
+Ollama for `clef:cloud`. The server, the volume and `tev1` were removed after `clef:cloud` was adopted, so the
+`make router-spike` target no longer exists. The harness and the artifact remain: a rerun needs a local Ollama
+with `tev1:0.8b` pulled, a host Ollama with `clef:cloud`, and
+`python -m evals.routing.run_cli --base-url1 … --base-url2 …`.
 
-The run writes `results/<run-id>.json` and `.md`: every choice, timing, model digest, prompt version, sample
-hash, and the cloud-egress note. Unit tests cover the sample, the prompt loader, the arm plumbing and the
+The artifact (`results/<run-id>.json` and `.md`) holds every choice, timing, model digest, prompt version,
+sample hash and the cloud-egress note. Unit tests cover the sample, the prompt loader, the arm plumbing and the
 precision/recall arithmetic; they do not call a model.

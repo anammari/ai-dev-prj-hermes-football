@@ -34,7 +34,8 @@
     "target_macro_f1": 0.9,
     "decision_rule": "evals/routing/README.md section 5",
     "git_note": "the run used the working tree committed as the model-comparison change; no commit existed at run time",
-    "sample_note": "comment-only edit to the sample header after the run; the 85 questions and labels are unchanged"
+    "sample_note": "comment-only edit to the sample header after the run; the 85 questions and labels are unchanged",
+    "decision": "clef:cloud adopted 2026-10-20; cloud egress signed off"
   },
   "questions": [
     {

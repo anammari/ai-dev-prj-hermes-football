@@ -103,8 +103,9 @@ so is one that tries to query a database for the meaning of "aggregate".
 **How the bot decides which way to look.** Not by vibes, and not by regex. Every message goes to a decision model,
 which picks one of four surfaces — database, notes, ask back, refuse — and whichever way it went is written down with
 the answer, so a wrong turn shows up on the dashboard and in the scoreboard. Two models were compared on the same 85
-questions and the same request (section 8). The cloud model routed better but cannot ship under the local-inference
-rule, and the local model failed the safety gate, so **no routing model is adopted yet**; M4 owns that choice.
+questions and the same request (section 8). The cloud model routed better and was **signed off on 2026-10-20**: it
+sends the user's message to Ollama's cloud, which is the one accepted egress path. The local model is rejected, and
+M4 owns the safety gate around the chosen model.
 
 ## 5. Extra work beyond the first brief
 
@@ -123,7 +124,7 @@ in Docker. To make that a real, checkable product — and to cover the course re
 | **Security and audit work** | A list of everything the bot can reach, scans of our own code, and tests that try to trick the bot through a Telegram message |
 | **A written record of how AI was used** | The course asks for it, and it is how you review a project built mostly by agents |
 | **A written list of the notes** | The bot can only cite what exists. A manifest names every note, where it came from and who owns it, and the build fails if a note or an entry goes missing |
-| **One small local model, and a routing decision still open** | `embeddinggemma:300m` turns notes into searchable numbers on the laptop: nothing leaves the machine and there is no per-question bill. The routing model was compared in M3b: the cloud model was better but sends messages off the machine, the local 0.8B model failed safety, so neither is adopted |
+| **A local model for notes, a cloud model for routing** | `embeddinggemma:300m` turns notes into searchable numbers on the laptop, so note text never leaves the machine. Routing uses `clef:cloud`, signed off in M3b: it is better at the four-way choice, at the cost of sending the user's message to Ollama's cloud |
 
 ## 6. Where it runs (and why not on Hugging Face)
 
@@ -150,26 +151,28 @@ plan (about $9/month), and even then one Space holds a single container — no d
 alongside it. Its disk is wiped on restart, and free Spaces fall asleep after 48 hours of quiet, which for a Telegram
 bot means a bot that stops answering. It is the wrong shape for this project, not just the wrong price.
 
-## 7. How the 14 course criteria are covered
+## 7. How the 12 course criteria are covered
 
-Each row is a requirement from the course's draft project criteria and the thing in this repo that satisfies it.
+The course now scores **12 criteria worth 24 points; 10 points pass**. The table maps each one to an artifact in
+this repo and names the gap where one exists. It is evidence, not a self-score.
 
-| # | Course requirement | How this project meets it | Where to look |
-| --- | --- | --- | --- |
-| 1 | Problem Description | README and spec explain what the bot answers, what the free data allows, and what it says when it doesn't know | `README.md`, `_docs/product-spec.md` |
-| 2 | AI-Assisted Development Workflow | A versioned collection of the prompts used, written project instructions for AI helpers, and a log of what was delegated, reviewed and rejected | `prompts/`, `AGENTS.md`, `_docs/ai-usage-report.md` |
-| 3 | Technologies and System Architecture | A diagram and a short explanation of every part, and why it is there | `_docs/architecture.md` |
-| 4 | Frontend Implementation | The dashboard, with its own tests and clear instructions to run them | `frontend/`, `tests/e2e/` |
-| 5 | API Contract | The API is written down first in `openapi.yaml` (v0.2.0), the backend follows it, and a test fails if they drift apart — in either direction, down to parameter names, requiredness, bounds and response fields, with routes read from the router tree so a route hidden from the generated document is caught, and with enums checked by sending an unlisted value. The contract is also served verbatim at `/openapi.yaml`, so a reviewer can diff the deployed API against the repo | `openapi.yaml`, `tests/test_api_contract.py` |
-| 6 | Backend Implementation | Layered FastAPI code with tests on the important endpoints: 14 read-only operations over the daily data, freshness attached to every answer (and never claiming fresh for a competition with no stored rows), the contract's own error semantics (400/401/404/500/503, with out-of-range ids answered as 400 rather than 500), and two admin operations declared as unimplemented rather than missing | `backend/`, `tests/test_api_*.py` |
-| 7 | Database Integration | Works with a simple file database in development and Postgres in the full stack, with migrations and a documented schema; the API reads through the read-only role | `db/`, `_docs/data-model.md` |
-| 8 | Containerization | One `make up` starts everything (`db`, `ollama`, `backend`, `ingest`); health checks included, the API is the only published port, and a test asserts the API container is given no upstream credential and no Docker socket | `docker-compose.yml`, `Makefile` |
-| 9 | Integration Testing | Tests that run against the real stack, from collection to a bot reply — kept separate from the unit tests | `tests/integration/` |
-| 10 | Deployment | A public Telegram bot plus a public dashboard address, with a check after each deploy | `_docs/deployment.md` |
-| 11 | CI/CD Pipeline | Every pull request runs lint, tests and the answer-quality scoreboard; merging to main deploys, verifies and can roll back | `.github/workflows/` |
-| 12 | Agent Extension Pack | Project instructions, a reusable routine, a checker helper, our own tool server, a guardrail, and a written list of what the bot may do | `skills/`, `subagents/`, `mcp-server/`, `hooks/`, `docs/permissions.md` |
-| 13 | Security, Audit, and DevOps Hardening | An AI code-review on pull requests, scanner findings, a capability list for the bot, an incident rehearsal, and a written data policy | `security/`, `ops/`, `observability/` |
-| 14 | Reproducibility | Three commands from a clean machine: set up, start, test end to end | `README.md`, `Makefile` |
+| # | Criterion | Evidence in this repo | Status / gap | Where to look |
+| --- | --- | --- | --- | --- |
+| 1 | Problem Description | The README states the problem, what the bot answers, what the free data allows, and what it says when it does not know | Met | `README.md`, `_docs/product-spec.md` |
+| 2 | Product Specification | The product spec and the API contract exist and are versioned; each milestone names acceptance criteria | **Gap:** no public task tracker with evidence the agents used it; the milestone/PR record is not a substitute | `_docs/product-spec.md`, `openapi.yaml`, `_docs/scoping.md` §8 |
+| 3 | Agent Team Specification | [`_docs/agent-team.md`](agent-team.md) defines the owner, the coding agent, the independent reviewers and how they hand off; prompts and the AI-usage report make the process inspectable | Met | `_docs/agent-team.md`, `AGENTS.md`, `prompts/`, `_docs/ai-usage-report.md` |
+| 4 | Context Management | `AGENTS.md` is the entry point and points to modular docs: scope, spec, data model, decisions, RAG, AI usage, the routing comparison | Met | `AGENTS.md`, `_docs/` |
+| 5 | Application | Backend, Postgres and ingestion work end to end; the dashboard and Hermes are M4/M5 | **Gap:** no frontend yet, so it is not a full-stack application | `backend/`, `db/`, `ingest/` |
+| 6 | Testing | Unit tests (`make test`) and integration tests against the Compose stack (`make itest`) exist and pass | **Gap:** they are separate commands; the course asks for both with one command | `tests/`, `tests/integration/`, `Makefile` |
+| 7 | Containerization | One `make up` starts `db`, `ollama`, `backend` and the ingest scheduler, with health checks and one published port | **Gap:** frontend and Hermes are not in the Compose project yet | `docker-compose.yml`, `Makefile` |
+| 8 | Deployment | The demo-scoped public path is written down (§6); the Telegram bot needs no inbound port | **Gap:** no working deployment yet; the demo tunnel is planned, not shown | `_docs/scoping.md` §6 |
+| 9 | CI/CD | No workflows yet; local gates are `make test`, `make lint` | **Gap:** no CI on pull requests, no deploy/rollback | `.github/workflows/` (missing), `Makefile` |
+| 10 | Observability | No telemetry yet; the plan is OTel -> Prometheus/Loki/Tempo/Grafana | **Gap:** no metrics, traces or correlated logs | `_docs/product-spec.md` F10, `observability/` (missing) |
+| 11 | Alerting on User Impact | No alert yet; the planned alert is data staleness or repeated agent failures | **Gap:** no alert rules or incident rehearsal | `_docs/product-spec.md` F10, `ops/` (missing) |
+| 12 | On-Call Agent | No on-call agent yet; Hermes cron jobs and an answer-verifier are planned | **Gap:** no agent wakes on an alert | `hermes/` (M4), `subagents/` (missing) |
+
+At the moment the honest total is **10 of 24**: criteria 1, 3 and 4 are met, 2, 6, 7 and 8 are partly met, and 5,
+9, 10, 11 and 12 are open. The open gaps are the M4-M6 work, not decoration.
 
 ## 8. The plan
 
@@ -179,7 +182,7 @@ Each row is a requirement from the course's draft project criteria and the thing
 | M1 | Database schema and the first migration, matching the contract, including the notes table, the list of notes and the small model that turns text into searchable numbers | Tests against the real stack pass, and a note file can be indexed end to end |
 | M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need — done: 14 operations served from Postgres, the contract served as the document, and the drift test failing on a renamed field, a hidden route, a reused operation id, a changed bound, or an undeclared value. An adversarial review of the finished milestone drove eight fixes: routes are read from the router tree, parameter bounds are compared, the validator carries `minItems`, enums are checked by behaviour, the rule 3/4 scans use a whitelist and follow imports, freshness no longer calls a listed-but-empty competition fresh and ignores future-dated runs, and an out-of-range id is a 400 instead of a 500 |
-| M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **partly met (2026-10-19)**: the table and the decision exist, `clef:cloud` routed best but failed the refusal and egress gates, and the local model failed safety; M4 owns the fixes |
+| M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **model chosen (2026-10-20)**: `clef:cloud` routed best and was signed off, with the cloud egress accepted; its refusal gap and the 0.90 target are M4 work |
 | M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, and every rules answer cites its note |
 | M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
 | M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork and a record of what the agents did |
@@ -202,14 +205,13 @@ request; the model was the only variable. Run `2026-10-19T12-40-46Z` (`evals/rou
 | clarify | 3 | 0.08 | 0.33 | 0.18 | 1.00 |
 | refuse | 6 | 0.67 | 0.33 | 1.00 | 0.83 |
 
-**What it means.** `clef:cloud` is the better router: 71% v 53% accuracy, macro-F1 0.70 v 0.43, and it refused all
-five adversarial messages where tev1 refused two. But clef is a cloud model: adopting it would send every Telegram
-message to Ollama's cloud, against the local-inference rule in section 4 of the product spec, and it still refused
-only 3/5 of the refusal class. The local model is not viable: knowledge recall 0.29 (it asks back or picks a tool
-for rules questions) and 2/5 adversarial refusals. **No model is adopted.** The 0.90 macro-F1 target is not met;
-M4 must either find a local model that passes safety or change the data policy explicitly. The full precision/recall
-tables, every choice and the egress note are in `evals/routing/results/`; the reasoning is in
-[decision 0003](decisions/0003-prompt-router.md).
+**What it means.** `clef:cloud` is the chosen router: 71% v 53% accuracy, macro-F1 0.70 v 0.43, and it refused all
+five adversarial messages where tev1 refused two. It is a cloud model, so every Telegram message goes to Ollama's
+cloud; the owner signed that off on 2026-10-20 as the cost of the better router. The local model is rejected:
+knowledge recall 0.29 (it asks back or picks a tool for rules questions) and 2/5 adversarial refusals. clef still
+refused only 3/5 of the refusal class and is 20 points short of the 0.90 macro-F1 target, so M4 adds a hard safety
+gate around it. The full precision/recall tables, every choice and the egress note are in `evals/routing/results/`;
+the reasoning is in [decision 0003](decisions/0003-prompt-router.md).
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
 the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,
@@ -217,9 +219,9 @@ one topic per file, and each one is listed with its source in `hermes/agent-know
 if a note is not in the list or the list names a note that is not there.
 
 Searching runs on a small model inside the local stack: `embeddinggemma:300m` turns text into 768 numbers per chunk,
-so nothing leaves the machine and there is no per-question bill. Routing was compared between a local 0.8B decision
-model and a cloud 27B one; the cloud model routed better but cannot ship while inference is local-only, and neither
-passed the safety gate. The decision is written down in `_docs/decisions/`.
+so note text never leaves the machine and there is no per-question bill. Routing uses `clef:cloud`, the 27B model
+that won the M3b comparison; its cloud call is the accepted egress path, and the decision is written down in
+`_docs/decisions/`.
 
 ## 9. Still to decide
 
@@ -228,8 +230,7 @@ passed the safety gate. The decision is written down in `_docs/decisions/`.
    as an option if the project ever needs a 24/7 dashboard, but then it also needs a machine that is never asleep.
 2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
    admin-only and logged.
-3. **Which model routes, and which holds the conversation:** the conversation model is configurable in Hermes but
-   pinned for the scoreboard. The embedding model is fixed at `embeddinggemma:300m` (768 numbers per chunk). Routing
-   is open: `clef:cloud` scored best but egress blocks it, and `tev1:0.8b` is local but unsafe, so M4 must choose a
-   model that passes both.
+3. **Which model routes, and which holds the conversation:** routing is settled — `clef:cloud` (decision 0003),
+   with the user message going to Ollama's cloud. The conversation model is configurable in Hermes but pinned for the
+   scoreboard; the embedding model is fixed at `embeddinggemma:300m` (768 numbers per chunk).
 4. **Licence:** the public repo currently has none chosen.

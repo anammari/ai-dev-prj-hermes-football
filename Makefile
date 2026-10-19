@@ -9,11 +9,9 @@ SPEC  := openapi.yaml
 SWAGGER_PORT ?= 8081
 SWAGGER_NAME ?= hermes-football-swagger
 Q ?=
-SPIKE_MODEL1 ?= tev1:0.8b
-SPIKE_MODEL2 ?= clef:cloud
 
 .PHONY: help setup build up down db-port migrate models model-ready test itest itest-isolated lint check-notes index-notes search ingest score-delay \
-        logs swagger swagger-stop validate-spec router-spike
+        logs swagger swagger-stop validate-spec
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -117,20 +115,6 @@ swagger: ## Serve the API contract in Swagger UI at http://localhost:$(SWAGGER_P
 
 swagger-stop: ## Stop the Swagger UI container
 	-docker rm -f $(SWAGGER_NAME)
-
-router-spike: ## Compare tev1 and clef on the routing sample; write evals/routing/results/
-	DOCKER_BUILDKIT=0 $(TOOLS) build tests
-	DOCKER_BUILDKIT=0 $(TOOLS) build ollama-spike
-	$(TOOLS) up -d --wait ollama-spike
-	$(COMPOSE) exec -T ollama-spike ollama pull $(SPIKE_MODEL1)
-	@ollama list 2>/dev/null | grep -qi clef || { \
-	  echo "host Ollama has no $(SPIKE_MODEL2): run 'ollama pull $(SPIKE_MODEL2)' and sign in first"; exit 1; }
-	$(TOOLS) run --rm \
-	  -e ROUTER_MODEL1=$(SPIKE_MODEL1) -e ROUTER_MODEL2=$(SPIKE_MODEL2) \
-	  -e ROUTER_URL1=http://ollama-spike:11434 -e ROUTER_URL2=http://host.docker.internal:11434 \
-	  -e GIT_COMMIT=$$(git rev-parse HEAD 2>/dev/null || echo unknown) \
-	  -v "$(CURDIR)/evals/routing/results:/app/evals/routing/results" \
-	  tests python -m evals.routing.run_cli
 
 validate-spec: ## Lint the OpenAPI contract
 	npx --yes @redocly/cli@latest lint $(SPEC)

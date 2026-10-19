@@ -1,6 +1,6 @@
 """Run the two-model routing spike and write its evidence.
 
-`make router-spike` is the only intended caller. The run:
+The harness is retained as the record of the comparison. The run:
 
 1. loads the frozen sample and refuses to start if it violates the protocol;
 2. loads the versioned request both models receive, and probes both servers;
