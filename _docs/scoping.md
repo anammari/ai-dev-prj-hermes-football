@@ -138,6 +138,14 @@ conflict.
 For the dashboard we use a **free Cloudflare tunnel** — a public web address that points at the local stack. We also
 have the option to publish the dashboard as a free static page on Hugging Face.
 
+**The public exposure is for the demo, not permanent.** The Telegram bot and the tunnel are switched on for one short
+recorded demo that proves the deployment criterion end to end — a real message answered by the bot, the dashboard
+reached over its public address — and shut down afterwards. The laptop is the server only for those minutes; nothing
+stays listening on the internet, and no tunnel, hostname or credential outlives the recording. The demo is the
+evidence, `_docs/deployment.md` records what was run and where the recording lives, and the always-on alternative
+(a small always-on machine) is explicitly not this project's plan. That keeps the honest position: local-first data,
+public access demonstrated rather than rented.
+
 **Could Hugging Face Spaces host the whole thing for free? No.** Docker Spaces on free hardware now require a paid
 plan (about $9/month), and even then one Space holds a single container — no database, no dashboard, no monitoring
 alongside it. Its disk is wiped on restart, and free Spaces fall asleep after 48 hours of quiet, which for a Telegram
@@ -189,8 +197,9 @@ are written down in `_docs/decisions/`.
 
 ## 9. Still to decide
 
-1. **Dashboard address:** a permanent Cloudflare tunnel (needs a domain you own) or a temporary one whose address
-   changes on restart. Default: temporary first, permanent before the final submission.
+1. **Dashboard address:** settled as a **temporary tunnel, opened for the demo only** — no domain purchase and no
+   permanent hostname, because nothing is meant to stay online after the recording. A permanent tunnel stays available
+   as an option if the project ever needs a 24/7 dashboard, but then it also needs a machine that is never asleep.
 2. **How much the dashboard can do:** read-only at first; any button that changes something (re-run collection) is
    admin-only and logged.
 3. **Which model holds the conversation:** configurable in Hermes, but pinned for the scoreboard so scores stay

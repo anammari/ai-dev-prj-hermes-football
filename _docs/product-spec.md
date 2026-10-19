@@ -66,7 +66,9 @@ agent's container, which is root-equivalent control of the host. The container i
 | `ollama` | Local model server: `embeddinggemma:300m` for the notes index, and `laya` if the M3b spike adopts model routing | none | `ollama-data` |
 
 Only `backend` is published; the Cloudflare tunnel points at it. Telegram uses long polling, so `hermes` needs egress
-only — no inbound port, no static IP, no VPS.
+only — no inbound port, no static IP, no VPS. **Both public paths are demo-scoped:** the tunnel and the bot run for one
+recorded demo and are stopped afterwards, so the repository describes a local system with a demonstrated public
+address, not a hosted service.
 
 Rules the layout enforces:
 

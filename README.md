@@ -148,6 +148,9 @@ The numbers below are **criterion numbers, not milestones** (milestones are M0�
 - **Not Started** — arrives with **M6**.
 - The bot itself is the public interface, using long polling so nothing has to be exposed inbound; the dashboard will
   be reachable through a Cloudflare tunnel.
+- Public access is switched on for **one short recorded demo** and shut down afterwards: the laptop is the server for
+  those minutes only, and no tunnel, hostname or session outlives the recording. The demo video is the evidence; the
+  always-on alternative is deliberately not the plan.
 - `_docs/deployment.md` will record the addresses and the check that runs after each deploy.
 - No VPS and no cloud host, on purpose — the reasoning is in [`_docs/scoping.md`](_docs/scoping.md) §6.
 
