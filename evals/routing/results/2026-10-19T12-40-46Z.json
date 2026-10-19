@@ -4,7 +4,7 @@
     "created_at": "2026-10-19T12:47:29.578165+00:00",
     "git_commit": "uncommitted at run time",
     "sample_path": "evals/routing/sample.yaml",
-    "sample_sha256": "40c44fcfc00c9b88cd87beeeef4957dc5e991cc646f7ff8e95d22b78e77e5a21",
+    "sample_sha256": "1c9334ddcc7cff8e5e9d656e2e02ea783d4471db9ad2a6fac2164dece2a56a67",
     "prompt_path": "prompts/0002-router-model-comparison.md",
     "prompt_sha256": "84b79c6ce28af5510b3eceb7f87391efeed8060156005ce6ba8c8f33645d34cc",
     "prompt_version": 1,
@@ -33,7 +33,8 @@
     },
     "target_macro_f1": 0.9,
     "decision_rule": "evals/routing/README.md section 5",
-    "git_note": "the run used the working tree committed as the model-comparison change; no commit existed at run time"
+    "git_note": "the run used the working tree committed as the model-comparison change; no commit existed at run time",
+    "sample_note": "comment-only edit to the sample header after the run; the 85 questions and labels are unchanged"
   },
   "questions": [
     {
