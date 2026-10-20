@@ -9,14 +9,6 @@ Status: **M1–M3b done; M4 next.** The routing comparison chose `clef:cloud` an
 2026-10-20, with its cloud egress accepted. Selection is not production wiring: the model's refusal gap is an M4
 safety gate. The backend, database and ingestion work; the Telegram agent, dashboard and production pipeline are M4-M6.
 
-### M3b routing comparison
-
-Two decision models routed the same 85 hand-labelled questions through the same versioned request. `clef:cloud`
-beat the local `tev1:0.8b` — 71% v 53% accuracy, macro precision 0.78 v 0.59, macro recall 0.79 v 0.45 [result
-report](evals/routing/results/2026-10-19T12-40-46Z.md). clef was selected as the routing model; its cloud call is
-the one accepted egress path, and its refusal gap (3/5 across the 85) is the M4 safety gate that must pass before the
-router is wired. The reasoning is in [decision 0003](_docs/decisions/0003-prompt-router.md).
-
 ## How to read this README
 
 One short section per course criterion, using the current names from the
@@ -107,6 +99,9 @@ payload; it lands with M6 and the observability stack.
 
 ## Supporting work (not a separate criterion)
 
+- **Routing comparison:** two decision models routed the same 85 hand-labelled questions through the same request;
+  `clef:cloud` beat `tev1:0.8b` — 71% v 53% accuracy, macro-F1 0.70 v 0.43. clef was selected, its cloud egress is
+  signed off, and its 3/5 refusal gap is the M4 safety gate. [Result report](evals/routing/results/2026-10-19T12-40-46Z.md).
 - **API contract:** `openapi.yaml` is written before the backend, served verbatim at `/openapi.yaml`, and a test
   fails when the two drift apart. Every agent-facing endpoint needs `API_AGENT_TOKEN`; with no token configured it
   refuses everything.
