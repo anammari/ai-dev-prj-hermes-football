@@ -52,7 +52,7 @@ checked and work that merely looked right.
 
 ### S3 — M6 scope and the MCP transport (commit `eed27f9`, 2026-10-10)
 
-- **Delegated:** choose the M6 wording that better matches the 14 course criteria, align the MCP transport across the
+- **Delegated:** choose the M6 wording that better matches the course criteria, align the MCP transport across the
   documents, and start this report.
 - **Decision rule given by the human:** the better-aligned wording wins. The agent picked the product spec's
   `CI/CD, observability, security, AI-usage report` over scoping's `Automation, monitoring, security`, because every
@@ -290,6 +290,41 @@ checked and work that merely looked right.
   and the drift test's Postgres half is skipped on a throwaway volume that has no ingested rows
   ([`_docs/data-model.md`](data-model.md) open items).
 
+### S9 — M3b: comparing two model-first routers (branch `anammari-m3b-router-spike`, 2026-10-19)
+
+- **Delegated:** the routing comparison to the DeepSeek Harness coding agent, in the root checkout on the existing
+  branch. The task: remove the regex router entirely, compare two decision models on the same 85-question sample and
+  the same request, report precision and recall, delete the previous routing artifacts, and record the result.
+- **Decided by the human, and binding on the agent:**
+  - **No deterministic pre-router and no regex.** The owner removed the approach outright; routing is model-first.
+    The measured problem with the old rules was precision (87% overall, 75% on holdout), not speed — regex runs in
+    microseconds — but the direction is removed on the owner's call and the docs say so.
+  - **Model-1 `tev1:0.8b` (local) versus Model-2 `clef:cloud` (cloud)**, same dataset, same distributions,
+    precision/recall as the report.
+  - **The previous routing model and its artifacts were removed** from Docker and from the docs, and the old results deleted.
+- **Rejected or revised, and what made each visible:**
+  - *Deterministic routing* — removed with its code and tests; no fallback, no threshold, no tie-break.
+  - *The previous judge and its prompt* — removed with the previous artifacts; this spike scores against hand labels
+    only. `R-F9.2` applies again only if a judge is introduced.
+  - *A cloud model as a drop-in winner* — `clef:cloud` won on quality but sends every message to Ollama's cloud. The
+    spike recorded that as a blocker; the owner then **signed the egress off on 2026-10-20** after seeing the
+    numbers, and the product spec was changed to say which data leaves the machine. The 85 messages were synthetic
+    eval text; production messages will not be.
+  - *`tev1:0.8b` as the local answer* — it failed safety: 2/5 adversarial refusals, 1/5 refusal-class, knowledge
+    recall 0.29. The local model is not viable yet, and the record says so.
+  - *`clef:cloud` refusal* — 5/5 adversarial but only 3/5 refusal-class, and `clarify` precision 0.18; it asks back
+    too often. The model was signed off anyway; the refusal gap is an explicit M4 gate, not something the sign-off
+    pretends is solved.
+- **Evidence:**
+  - `make lint` clean; `make test` **256 unit tests** pass, including the sample, prompt loader, arm plumbing and
+    precision/recall arithmetic.
+  - The harness ran both models on 2026-10-19 (`2026-10-19T12-40-46Z`): tev1 holdout 53% accuracy, macro
+    P/R/F1 0.59/0.45/0.43; clef 71%, 0.78/0.79/0.70. Neither passed the safety gates. Results, per-route
+    precision/recall and every choice are in `evals/routing/results/`.
+  - Decision 0003 is Accepted: `clef:cloud` is selected, with the cloud egress signed off; production wiring waits
+    for the M4 safety gate. `_docs/scoping.md`
+    §8 carries the table; `AGENTS.md` and `README.md` no longer claim a deterministic router.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;
@@ -306,8 +341,7 @@ the humans involved should add the delegation, review and rejection detail, or m
 
 ## Where the prompts live
 
-`prompts/` is the versioned prompt bank (see its README). It now holds
-[`0001-m3-backend-api.md`](../prompts/0001-m3-backend-api.md), the task that produced `backend/`, with the plan the human
-approved, the constraints that were binding, and the acceptance criteria the work was checked against. The next entry
-will be the router spike's LLM-as-judge prompt, which [`_docs/decisions/0003`](decisions/0003-router-spike.md) requires
-to be versioned before its numbers are reported.
+`prompts/` is the versioned prompt bank (see its README). It holds
+[`0001-m3-backend-api.md`](../prompts/0001-m3-backend-api.md), the task that produced `backend/`, and
+[`0002-router-model-comparison.md`](../prompts/0002-router-model-comparison.md), the one routing request both models
+received, so the model was the only variable. It is versioned with the run and referenced by decision 0003.

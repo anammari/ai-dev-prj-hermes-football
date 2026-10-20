@@ -244,8 +244,8 @@ Four dimensions, in the order the pipeline runs:
 
 ### How we avoid fooling ourselves
 
-- **A model-based judge is validated before its numbers count.** `R-F9.2` already says any model judgement — the
-  router spike's judge included — must be checked against hand-labelled cases first. The same applies here: a judge
+- **A model-based judge is validated before its numbers count.** `R-F9.2` already says any model judgement —
+  including a routing judge — must be checked against hand-labelled cases first. The same applies here: a judge
   that cannot reliably spot a deliberately unsupported claim is not allowed to produce the faithfulness number.
 - **Deliberate failures are planted.** Following the acceptance criteria already written for the harness
   ([`product-spec.md`](product-spec.md) §F9: a deliberately wrong answer is caught, and a wrong route is caught as a

@@ -24,8 +24,10 @@ RUN pip install --no-cache-dir ".[dev]"
 
 # Then everything else, so editing a test or a note does not rebuild the dependency layer.
 # openapi.yaml is an input to the test suite, not just a document: the contract-coverage test reads it.
-COPY alembic.ini README.md openapi.yaml ./
+COPY alembic.ini README.md openapi.yaml docker-compose.yml ./
 COPY tests ./tests
+COPY evals ./evals
+COPY prompts ./prompts
 COPY hermes ./hermes
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
