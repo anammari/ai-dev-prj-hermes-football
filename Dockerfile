@@ -21,6 +21,7 @@ COPY db ./db
 COPY ingest ./ingest
 COPY backend ./backend
 COPY agent ./agent
+COPY mcp_server ./mcp_server
 RUN pip install --no-cache-dir ".[dev]"
 
 # Then everything else, so editing a test or a note does not rebuild the dependency layer.

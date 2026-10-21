@@ -101,6 +101,31 @@ services:
     cpus: 1
     restart: unless-stopped
 
+  mcp-server:
+    build:
+      context: .
+      target: app
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      BACKEND_BASE_URL: http://backend:8000
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+    command: ["python", "-m", "mcp_server"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/health').read()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
   ingest:
     build:
       context: .

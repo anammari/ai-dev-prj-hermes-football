@@ -30,7 +30,7 @@ up: ## Start the stack, apply migrations, serve the API
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory model-ready
 	@$(MAKE) --no-print-directory migrate
-	$(COMPOSE) up -d backend ingest
+	$(COMPOSE) up -d backend mcp-server ingest
 	@sleep 5
 	@if [ -z "$$($(COMPOSE) ps --status running --services ingest)" ]; then \
 	  echo "ingest scheduler exited at startup (usually a missing UPSTREAM_API_KEY):"; \
