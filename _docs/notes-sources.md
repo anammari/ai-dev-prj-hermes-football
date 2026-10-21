@@ -46,6 +46,7 @@ human; a scripted check sees only the app shell.
 | 10 | `glossary/aggregate-two-legged-tie.md` | glossary | Aggregate score, two legs, no away-goals rule | [UEFA Champions League Regulations 2026/27, Article 20][uefa-art20] | — | 200 JS |
 | 11 | `glossary/clean-sheet.md` | glossary | No regulator defines the term; the official stats page shows its usage only. The definition is editorial (open item 1) | [Premier League clean sheets][pl-clean-sheets] | — | 200 HTML |
 | 12 | `multi_hop/fifth-place-and-cup-winner.md` | multi_hop | Top four enter the UCL; a fifth UCL place can come from the European Performance Spot; 5th (or 6th) takes the UEL place; FA Cup winners enter the UEL league phase; EFL Cup winners enter the Conference League play-off; a cup winner already in the top five passes the place down | [Premier League: European qualification explained][pl-europe] | [UEFA access list (men's)][uefa-access-list] | 200 HTML |
+| 13 | `tiebreakers/la-liga-head-to-head.md` | tiebreakers | Two clubs level: head-to-head goal difference, then overall goal difference, goals scored, fair play, a neutral match; three or more: a mini-league of the matches between them, then the same list | [RFEF Circular 84, 2026/27 (PDF)][rfef-84], Article 10 | [LaLiga regulatory page][laliga-normative] | 206 PDF |
 
 [efl-regs]: https://images.gc.eflservices.co.uk/c99e4490-a070-11f1-b53b-9be1de328ad3.pdf
 [efl-statement]: https://www.efl.com/news/2026/march/05/efl-statement--sky-bet-championship-play-off-format/
@@ -67,6 +68,8 @@ human; a scripted check sees only the app shell.
 [fd-lookup]: https://docs.football-data.org/general/v4/lookup_tables.html
 [pl-clean-sheets]: https://www.premierleague.com/en/clean-sheets-25-26
 [pl-europe]: https://www.premierleague.com/en/european-qualification-explained
+[rfef-84]: https://rfef.es/sites/default/files/pdf/circulares/1._Circular_84_-_CNL_Primera_y_Segunda_Division___Anexo.pdf
+[laliga-normative]: https://www.laliga.com/en-GB/transparency/normative
 
 Two "also checked" pages reject a plain command-line fetch while opening in a browser: the UEFA news explainer
 and the UEFA access-list page refuse the connection to a script, and the Bundesliga FAQ answers `403`. They are
@@ -104,10 +107,14 @@ The provider's own pages and the live API do not agree, and the notes must not p
    entry point and the PDF for Rule C.17 itself.
 6. **All rows are 2026/27.** Re-check at the season rollover; a rule change is a note change with a new
    `reviewed_at`, not an edit to last season's text.
-7. **The FIGC source is Italian.** The note carries the operative clauses in English translation and the
-   document reference (Communiqué 244/A, 27 May 2026).
+7. **Two sources are not in English.** The FIGC source is Italian and the RFEF source is Spanish. Each note
+   carries the operative clauses in English translation and the document reference (FIGC Communiqué 244/A,
+   27 May 2026; RFEF Circular 84, 30 June 2026).
 8. **The delay has no provider URL.** It is our measurement, reproduced by `make score-delay`; the note cites
    `_docs/scoping.md` §3 and the command, not a provider page.
+9. **La Liga's tiebreak rule is not in LaLiga's general regulation.** That regulation's Article IV.13 only sets
+   the points; the tiebreak criteria are Article 10 of the RFEF's 2026/27 competition rules (Circular 84).
+   Cite RFEF, not the LaLiga page, for the rule itself.
 
 ## How this becomes an M4 task
 
