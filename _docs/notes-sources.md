@@ -25,6 +25,10 @@ adds the missing source URLs without changing that decision.
    document reference (for example the FIGC communiqué number and date).
 6. Where a provider page and the live API disagree, the live API wins for what the bot can actually answer,
    and the note says both. The free-tier probe is recorded in `_docs/scoping.md` §3.
+7. Translation happens at authoring time, not at query time. The author reads the official source and writes the
+   English note; a quoted clause appears in English translation and is reviewed with the note. No translation API,
+   no runtime translation service and no egress: only English note text is chunked and embedded. A local model may
+   draft a translation, but a human reviews it and the note remains the source of truth.
 
 ## Planned notes and sources
 

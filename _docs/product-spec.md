@@ -184,6 +184,9 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   runtime and never scraped from a remote feed. Upstream API payloads carry no prose and are not a source.
   Every note's sources are listed with a URL, publisher, season and check date in
   [`_docs/notes-sources.md`](notes-sources.md); the manifest keeps the short citation.
+  A non-English source is translated **at authoring time**: the note is written in English and reviewed, and only
+  English note text is chunked and embedded. No translation API or runtime translation service is part of the
+  pipeline, so translation adds no cost and no egress.
 - **R-F6.2** Files are chunked and embedded into pgvector with `embeddinggemma:300m`, served locally by the `ollama`
   container (768 dimensions, pinned in the migration as `vector(768)`); retrieval returns passages with source file and
   heading. The client applies the model's task prefixes — documents and queries are formatted differently. Each chunk
