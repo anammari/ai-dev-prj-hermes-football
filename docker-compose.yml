@@ -149,6 +149,8 @@ services:
         condition: service_healthy
     environment:
       <<: *app-env
+      AGENT_DB_WRITER_ROLE: ${AGENT_DB_WRITER_ROLE:-agent_writer}
+      AGENT_DB_WRITER_PASSWORD: ${AGENT_DB_WRITER_PASSWORD:-}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["alembic", "upgrade", "head"]
@@ -167,6 +169,8 @@ services:
       # the `backend` service is given. Empty by default: Compose already fails loudly when the token
       # for the API itself is unset, and the suite says so rather than testing an open service.
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:-}
+      AGENT_DB_WRITER_ROLE: ${AGENT_DB_WRITER_ROLE:-agent_writer}
+      AGENT_DB_WRITER_PASSWORD: ${AGENT_DB_WRITER_PASSWORD:-}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["pytest", "-q", "-m", "not integration"]

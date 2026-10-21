@@ -10,6 +10,7 @@ Prerequisites: `make up` (db + ollama, migrated) and `make models` (the ~400 MB 
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
 import pytest
@@ -184,3 +185,67 @@ def test_indexing_twice_on_postgres_writes_nothing(
     stack_session.commit()
     assert second.chunks_written == 0
     assert second.indexed == []
+
+
+@pytest.fixture(scope="module")
+def writer_engine() -> Iterator[Engine]:
+    """A connection *as* the turn-writer role created by `0003_agent_turn_writer`."""
+    settings = Settings.from_env()
+    role = (os.environ.get("AGENT_DB_WRITER_ROLE") or "agent_writer").strip()
+    password = os.environ.get("AGENT_DB_WRITER_PASSWORD")
+    if not password:
+        pytest.skip("AGENT_DB_WRITER_PASSWORD is unset, so agent_writer was created NOLOGIN")
+    url = make_url(settings.database_url).set(username=role, password=password)
+    engine = create_engine(url, poolclass=NullPool)
+    yield engine
+    engine.dispose()
+
+
+def test_the_turn_writer_can_write_its_own_table_and_nothing_else(
+    writer_engine: Engine, stack_engine: Engine
+) -> None:
+    import uuid
+
+    turn_id = str(uuid.uuid4())
+    try:
+        with writer_engine.begin() as connection:
+            assert connection.execute(text("select current_user")).scalar_one() == (
+                os.environ.get("AGENT_DB_WRITER_ROLE") or "agent_writer"
+            )
+            connection.execute(
+                text(
+                    "insert into agent_turns "
+                    "(id, user_message, answer, grounded, route, route_source, route_confidence) "
+                    "values (:id, 'integration question', 'integration answer', false, 'tool', 'model', 0.5)"
+                ),
+                {"id": turn_id},
+            )
+        with writer_engine.connect() as connection:
+            assert connection.execute(
+                text("select route from agent_turns where id = :id"), {"id": turn_id}
+            ).scalar_one() == "tool"
+
+        for statement in (
+            "update agent_turns set answer = 'changed' where id = :id",
+            "delete from agent_turns where id = :id",
+            "insert into matches (id) values (1)",
+            "select count(*) from matches",
+            "select count(*) from knowledge_chunks",
+        ):
+            with pytest.raises(ProgrammingError):
+                with writer_engine.begin() as connection:
+                    connection.execute(text(statement), {"id": turn_id})
+    finally:
+        with stack_engine.begin() as connection:
+            connection.execute(text("delete from agent_turns where id = :id"), {"id": turn_id})
+
+
+def test_the_read_only_role_still_cannot_write_a_turn(agent_engine: Engine) -> None:
+    with pytest.raises(ProgrammingError):
+        with agent_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "insert into agent_turns (id, user_message, answer, grounded, route, route_source) "
+                    "values ('readonly-should-fail', 'x', 'y', false, 'tool', 'model')"
+                )
+            )
