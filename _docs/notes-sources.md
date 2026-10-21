@@ -96,10 +96,9 @@ The provider's own pages and the live API do not agree, and the notes must not p
 
 ## Open items
 
-1. **Clean sheet has no official definition.** No law or competition regulation defines it. Options: write it as
-   an editorial definition citing official *usage* (the link in row 11), or leave it out of the first
-   corpus and answer "not in my notes". Recommendation: write it, mark the source as usage rather than a rule,
-   and say so in the note. This needs the owner's call before the note is written.
+1. **Clean sheet has no official definition — resolved 2026-10-22.** The note is written as an editorial
+   definition citing official *usage* (row 11), and it says no regulator defines the term. It is not presented as a
+   competition rule.
 2. **The provider is wrong about its own free tier.** Rows 7–9 must describe the probe, not repeat "12
    competitions" or "squads are paid" as fact. This is a content rule, not a missing URL.
 3. **UEFA documents are JavaScript apps.** The URLs open the right article in a browser; a scripted fetch sees

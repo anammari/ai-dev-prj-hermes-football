@@ -162,9 +162,9 @@ this repo and names the gap where one exists. It is evidence, not a self-score.
 | 2 | Product Specification | The product spec and the API contract exist and are versioned; each milestone names acceptance criteria | **Gap:** no public task tracker with evidence the agents used it; the milestone/PR record is not a substitute | `_docs/product-spec.md`, `openapi.yaml`, `_docs/scoping.md` §8 |
 | 3 | Agent Team Specification | [`_docs/agent-team.md`](agent-team.md) defines the owner, the coding agent, the independent reviewers and how they hand off; prompts and the AI-usage report make the process inspectable | Met | `_docs/agent-team.md`, `AGENTS.md`, `prompts/`, `_docs/ai-usage-report.md` |
 | 4 | Context Management | `AGENTS.md` is the entry point and points to modular docs: scope, spec, data model, decisions, RAG, AI usage, the routing comparison | Met | `AGENTS.md`, `_docs/` |
-| 5 | Application | Backend, Postgres and ingestion work end to end; the dashboard and Hermes are M4/M5 | **Gap:** no frontend yet, so it is not a full-stack application | `backend/`, `db/`, `ingest/` |
+| 5 | Application | Backend, Postgres, ingestion, the MCP tool server and the Telegram gateway work end to end; the dashboard is M5 | **Gap:** no frontend yet, so it is not a full-stack application | `backend/`, `db/`, `ingest/`, `mcp_server/`, `agent/gateway/` |
 | 6 | Testing | Unit tests (`make test`) and integration tests against the Compose stack (`make itest`) exist and pass | **Gap:** they are separate commands; the course asks for both with one command | `tests/`, `tests/integration/`, `Makefile` |
-| 7 | Containerization | One `make up` starts `db`, `ollama`, `backend` and the ingest scheduler, with health checks and one published port | **Gap:** frontend and Hermes are not in the Compose project yet | `docker-compose.yml`, `Makefile` |
+| 7 | Containerization | One `make up` starts `db`, `ollama`, `backend`, `mcp-server`, the `hermes` gateway and the ingest scheduler, with health checks and one published port | **Gap:** the frontend is not in the Compose project yet | `docker-compose.yml`, `Makefile` |
 | 8 | Deployment | The demo-scoped public path is written down (§6); the Telegram bot needs no inbound port | **Gap:** no working deployment yet; the demo tunnel is planned, not shown | `_docs/scoping.md` §6 |
 | 9 | CI/CD | No workflows yet; local gates are `make test`, `make lint` | **Gap:** no CI on pull requests, no deploy/rollback | `.github/workflows/` (missing), `Makefile` |
 | 10 | Observability | No telemetry yet; the plan is OTel -> Prometheus/Loki/Tempo/Grafana | **Gap:** no metrics, traces or correlated logs | `_docs/product-spec.md` F10, `observability/` (missing) |
@@ -183,7 +183,7 @@ At the moment the honest total is **10 of 24**: criteria 1, 3 and 4 are met, 2, 
 | M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need — done: 14 operations served from Postgres, the contract served as the document, and the drift test failing on a renamed field, a hidden route, a reused operation id, a changed bound, or an undeclared value. An adversarial review of the finished milestone drove eight fixes: routes are read from the router tree, parameter bounds are compared, the validator carries `minItems`, enums are checked by behaviour, the rule 3/4 scans use a whitelist and follow imports, freshness no longer calls a listed-but-empty competition fresh and ignores future-dated runs, and an out-of-range id is a 400 instead of a 500 |
 | M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **model chosen (2026-10-20)**: `clef:cloud` routed best and was signed off, with the cloud egress accepted; its refusal gap and the 0.90 target are M4 work |
-| M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, every rules answer cites its note, and every note's sources are listed and checked in [`notes-sources.md`](notes-sources.md) |
+| M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, every rules answer cites its note, and every note's sources are listed and checked in [`notes-sources.md`](notes-sources.md) — **done 2026-10-22**: routing gate measured at 0.979 gated macro-F1, MCP tools and Telegram gateway built, thirteen notes reviewed and indexed; the live Telegram smoke test needs the owner's bot token |
 | M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
 | M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork and a record of what the agents did |
 
@@ -214,6 +214,20 @@ knowledge recall 0.29 (it asks back or picks a tool for rules questions) and 2/5
 refused only 3/5 of the refusal class and is 20 points short of the 0.90 macro-F1 target, so M4 adds a hard safety
 gate around it. The full precision/recall tables, every choice and the egress note are in `evals/routing/results/`;
 the reasoning is in [decision 0003](decisions/0003-prompt-router.md).
+
+### M4 result (2026-10-22)
+
+The routing gate was measured on a new independent holdout, not the archived sample: 60 questions written by
+an independent reviewer and audited by a second, frozen at SHA-256 `c5236d8f…`, one run
+(`evals/routing/results/2026-10-21T21-42-43Z`). Gated macro-F1 **0.979** against the 0.90 target; adversarial
+8/8, fabricated 4/4, refusal class 3/3 and unsupported 4/4 refused; zero false refusals and zero
+database→notes errors. Raw pre-gate macro-F1 was 0.906; the one miss asked back instead of naming a result tool.
+
+The rest of M4: seven read-only tools over MCP HTTP (`mcp_server/`), a Telegram gateway that routes once,
+calls one tool and composes deterministically (`agent/gateway/`), thirteen reviewed notes in English with a
+checked source URL each (`_docs/notes-sources.md`), and 41 chunks in pgvector. The gateway records every turn
+through the insert-only `agent_writer` role. The live Telegram smoke test is the owner's step after creating a
+bot token; the same pipeline is exercised by `make ask` and the integration suite.
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
 the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,

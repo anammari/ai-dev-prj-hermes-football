@@ -61,20 +61,23 @@ def test_an_entry_without_a_file_fails(corpus_copy: Path) -> None:
 
 
 def test_an_unknown_question_class_is_refused(corpus_copy: Path) -> None:
+    import yaml
+
     path = corpus_copy / MANIFEST_NAME
-    path.write_text(
-        path.read_text(encoding="utf-8").replace("      - data_policy", "      - vibes"),
-        encoding="utf-8",
-    )
+    body = yaml.safe_load(path.read_text(encoding="utf-8"))
+    body["notes"][0]["question_classes"] = ["vibes"]
+    path.write_text(yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
     with pytest.raises(ManifestError, match="unknown question classes"):
         load_manifest(corpus_copy)
 
 
 def test_a_note_without_a_source_is_refused(corpus_copy: Path) -> None:
+    import yaml
+
     path = corpus_copy / MANIFEST_NAME
-    path.write_text(
-        "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if "source:" not in line),
-        encoding="utf-8",
-    )
+    body = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for entry in body["notes"]:
+        entry.pop("source", None)
+    path.write_text(yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
     with pytest.raises(ManifestError, match="missing source"):
         load_manifest(corpus_copy)

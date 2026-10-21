@@ -10,8 +10,9 @@ property asks for.
 
 ## Tables
 
-Thirteen tables across two Alembic revisions. `0001_init` established the M1 schema; `0002_ingestion_storage`
-adds the M2 bronze store and scorer snapshots. The active revision is `0002_ingestion_storage`. Bronze payloads are
+Thirteen tables across three Alembic revisions. `0001_init` established the M1 schema;
+`0002_ingestion_storage` adds the M2 bronze store and scorer snapshots; `0003_agent_turn_writer` adds
+the insert-only writer role. The active revision is `0003_agent_turn_writer`. Bronze payloads are
 retained as JSON; only normalized rows feed serving tools.
 
 ### Catalog
@@ -90,6 +91,7 @@ response envelopes (`ResponseMeta`, `Pagination`, `ErrorResponse`, the `*List` s
 | `embedding` | `vector(768)` via pgvector | `TEXT` holding JSON, same `Embedding` type decorator |
 | Similarity search | `<=>` against an HNSW index (`vector_cosine_ops`) | cosine in Python, same ranking, slower |
 | Read-only agent role | `agent_readonly`: `SELECT`, plus default privileges so later tables stay read-only | no roles; the test suite checks the role on Postgres instead |
+| Turn-writer role | `agent_writer`: `INSERT`/`SELECT` on `agent_turns` only, no default privileges | no roles; the writer test runs on Postgres |
 | Foreign keys | always enforced | `PRAGMA foreign_keys=ON` set by `db/session.py`, so a broken test cannot pass for the wrong reason |
 
 ## Open items
@@ -114,7 +116,9 @@ response envelopes (`ResponseMeta`, `Pagination`, `ErrorResponse`, the `*List` s
    `PATCH /admin/agent-turns/{turnId}/review` answer a contract-shaped 404 naming M5. Making the first one real needs
    a claimable queue the scheduler picks up; a request handler must not start an upstream run (`AGENTS.md` rule 3),
    so the write path is a scheduler concern before it is an API concern.
-7. **The scorer snapshots have no agent-facing tool.** M2 stores normalised top-scorer rows, but `R-F4.1` exposes no
-   scorer tool and the M3 API has no scorer operation, so a scorer question routes correctly and cannot be answered.
-   The M3b spike labelled five such questions `route: tool` with no expected tool (decision 0003); M4 adds the tool or
-   the bot refuses those questions.
+7. **The scorer snapshots have no agent-facing tool — explicitly refused in M4.** M2 stores normalised top-scorer
+   rows, but `R-F4.1` exposes no scorer tool and the M3 API has no scorer operation. The router marks such a question
+   `database` with `tool: not_applicable`, and the gate refuses it with reason `unsupported_tool`; the M4 holdout
+   labels four scorer questions as `refuse` and the bot answers "I don't have a tool for top-scorer totals yet".
+   Closing the gap properly (a scorer endpoint, a contract operation and a `get_top_scorers` tool) is a named
+   follow-up, not silently faked.

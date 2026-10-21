@@ -159,7 +159,8 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 ### F4 — MCP tool server (`mcp-server/`)
 
 - **R-F4.1** Exposes read-only tools: `get_standings`, `get_fixtures`, `get_match_result`, `get_team_form`,
-  `get_head_to_head`, `search_knowledge`, `get_data_freshness`.
+  `get_head_to_head`, `search_knowledge`, `get_data_freshness`. A stored fact with no tool (top-scorer totals today)
+  is refused with `unsupported_tool`, never answered from the nearest table.
 - **R-F4.2** Tool outputs are compact and LLM-sized (top-N rows, no raw dumps) and always include the freshness stamp.
 - **R-F4.3** No arbitrary SQL, no write path, no filesystem access; per-call timeout and input validation.
 - **AC** Each tool has a unit test and one recorded example call; a prompt-injection test shows that no user text can
@@ -168,12 +169,17 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 ### F5 — Hermes agent and Telegram (`hermes/`)
 
 - **R-F5.1** `SOUL.md` defines role, tone, and the grounding policy: answer only from tool results or knowledge files;
-  say "I don't know" otherwise; never present delayed data as live.
+  say "I don't know" otherwise; never present delayed data as live. The shipped M4 gateway (`agent/gateway`)
+  implements that policy deterministically: it restates the tool result and quotes the note, with no second model.
 - **R-F5.2** The agent discloses the data timestamp whenever it states a score, fixture or table.
-- **R-F5.3** Admin and public users are separated (`allow_admin_from`); admin commands are allowlisted.
-- **R-F5.4** Conversations are logged locally for review, with a retention rule.
+- **R-F5.3** Admin and public users are separated (`TELEGRAM_ALLOWED_USERS` / `TELEGRAM_ADMIN_USERS`); admin
+  commands are allowlisted and every user outside the allowlist is refused.
+- **R-F5.4** Every answered turn is logged in `agent_turns` through the insert-only `agent_writer` role; the agent
+  has no delete path. Database retention is the operator's, and the turn row is written before the answer is sent.
 - **R-F5.5** Hermes runs as a container in the same Compose project; no Docker socket is mounted.
-- **AC** A Telegram smoke test passes the scripted question set; unanswerable questions produce a refusal, not a guess.
+- **AC** A database question, a notes question, an instruction override and a scorer question are exercised in
+  `tests/integration/test_gateway_stack.py`; unanswerable questions produce a refusal, not a guess. The live Telegram
+  smoke test is the owner's step after a bot token is configured (`_docs/m4-guide.md`).
 
 ### F6 — Knowledge corpus and retrieval
 
@@ -204,10 +210,13 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
   cites no source. Any rendered table is generated from the manifest, never hand-edited.
 - **R-F6.6** Routing is explicit and recorded: the chosen model, `clef:cloud`, maps every message to one of four
   intent buckets (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and
-  `route_confidence`. M4 wires it behind a hard safety gate; selection is not production adoption.
-  The router sees the user message and a fixed label set only — never retrieved text, never tool output. There is no
-  regex and no deterministic pre-router. The model and its cloud egress are recorded in `_docs/decisions/0003`;
-  routing precision and recall are scored in the eval harness, and a hard safety gate runs before the tool surface.
+  `route_confidence`. M4 wires it behind the hard safety gate in `_docs/decisions/0006`: the same forward pass also
+  answers a binding `safety` question, and any label other than `safe` becomes a refusal before a tool or a note is
+  touched. A `database` choice with `tool: not_applicable` is refused as `unsupported_tool`; an unreachable model
+  refuses with `route_source: fallback`. The router sees the user message and a fixed label set only — never retrieved
+  text, never tool output. There is no regex and no deterministic pre-router. The model and its cloud egress are
+  recorded in `_docs/decisions/0003`; routing is scored on the independent M4 holdout
+  (`evals/routing/results/2026-10-21T21-42-43Z.md`: gated macro-F1 0.979, 8/8 adversarial, zero false refusals).
 - **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
 - **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
 - **AC** A note file without a manifest entry, or an entry without a file or a source, fails a test.
@@ -294,16 +303,17 @@ deliberate renames and the local-only tables live in `_docs/data-model.md`; this
   latency_ms, route, route_source, route_confidence, review status and note, created_at) — the chat id is hashed and
   never stored or logged in the clear (`AGENTS.md` rule 6)
 
-Two gaps against the contract are open and owned by M3, and are listed in `_docs/data-model.md`: v0.1.0's
-`AgentTurn` carries no `route`/`route_source`/`route_confidence` although rule 10 requires them (the columns exist),
-and the `KnowledgeHit.source_file` example is repo-relative while the corpus stores corpus-relative paths.
+The two M3 gaps are closed: `AgentTurn` carries `route`/`route_source`/`route_confidence` since v0.2.0 and the M4
+writer populates them, and the `KnowledgeHit.source_file` example matches the corpus-relative paths. The remaining
+open items (scorer tool, `standings.group_label`, `standings.matchday`) are listed in `_docs/data-model.md`.
 
 ## 8. Milestones
 
 M0 scaffold (this repo state, contract included) -> M1 database schema and the first migration, matching the contract,
 including the notes table, the corpus manifest and the local embedding provider -> M2 ingestion + re-indexing of
 changed notes -> M3 API -> M3b routing comparison (two models scored on precision and recall against hand-checked expectations, before M4)
--> M4 agent on Telegram, with the first notes authored and reviewed -> M5 dashboard + evals -> M6 CI/CD, observability,
+-> M4 agent on Telegram, with the first notes authored and reviewed (done: routing gate, MCP tools, Telegram gateway,
+thirteen reviewed notes and 41 indexed chunks) -> M5 dashboard + evals -> M6 CI/CD, observability,
 security, AI-usage report. Details in `_docs/scoping.md#8`; the standing decisions behind the corpus, the embedding
 model and the router are recorded in `_docs/decisions/` (0001, 0002, 0003).
 

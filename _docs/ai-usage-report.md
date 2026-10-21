@@ -351,6 +351,50 @@ checked and work that merely looked right.
   `AGENTS.md` next step 4 and the README. No test is claimed for a document; the check is a reviewer opening the
   links.
 
+### S11 — M4: the routing gate, the MCP tools, the Telegram gateway and the notes (branch `anammari-m4-agent`, 2026-10-22)
+
+- **Delegated:** the M4 build to the DeepSeek Harness coding agent, in the root checkout on the milestone branch,
+  after the owner signed off the plan. Two independent subagents did the holdout: one wrote 60 questions from the
+  class definitions, the other audited every label. Neither read the router request, `agent/` or the archived
+  sample. The AI-usage report, the decision records and the guide were written by the coding agent and reviewed.
+- **Decided by the human, and binding on the agent:**
+  - One small routing slice first, then the tool surface, the Telegram interface and the notes; split if too large.
+  - The gate must be model-first: no regex and no deterministic pre-router. The same-pass safety question with a
+    hard veto was approved on that basis.
+  - Translation of the Italian and Spanish sources happens at authoring time, in the note, with no translation API
+    and no runtime service.
+  - The scorer gap is explicitly refused rather than answered from the wrong table.
+  - Telegram is the M4 interface; a web-chat substitute was not needed.
+- **Rejected or revised, and what made each visible:**
+  - *Running the Nous Hermes Agent image as the gateway.* Rejected for M4: it owns its tool loop, so the gate
+    could not be guaranteed before every tool call, and its model provider would need a second egress decision for
+    tool output and notes. Recorded in decision 0007; the MCP surface remains the contract and the optional
+    deployment template is in `hermes/config.yaml`.
+  - *A second model to make answers conversational.* Rejected: tool output and note text would leave the machine.
+    The composer restates the payload; the cost is that answers are not chatty.
+  - *A deterministic deny-list for injections.* Rejected before code, per rule 10 and decision 0006.
+  - *A threshold on the model's probabilities to "fix" the clarify over-prediction.* Rejected as a deterministic
+    post-router; the preference instruction fixed most of it model-first, and the holdout measured the rest.
+  - *The archived 85-question sample as the M4 holdout.* Rejected: the request changed, so reusing it would have
+    measured the old prompt against new behaviour. A new independent 60-question holdout was written and frozen.
+  - *A first draft of the notes that cited LaLiga's general regulation for the tiebreak.* Corrected: that document
+    only sets the points; the criteria are in RFEF Circular 84, Article 10.
+- **Evidence:**
+  - Routing: `make test` has 323 unit tests, all passing; `make lint` clean. The holdout ran once:
+    gated macro-F1 0.979, raw 0.906, 8/8 adversarial, 4/4 fabricated, 3/3 refusal, 4/4 unsupported, zero false
+    refusals, zero database→notes. One miss (`results-h3`).
+  - Tools: `tests/test_mcp_server.py` covers every tool against a fake backend and the JSON-RPC surface;
+    `tests/integration/test_mcp_stack.py` runs six tests against the real API and the running container.
+  - Gateway: `tests/test_gateway.py` covers composition, the one-tool pipeline, the allowlist and commands;
+    `tests/integration/test_gateway_stack.py` runs five end-to-end turns against the real router, MCP server,
+    writer role and corpus (database question, notes question, override, scorer refusal, clarify).
+  - Notes: `make check-notes` passes for 13 reviewed notes; `make index-notes` wrote 41 chunks and removed the five
+    chunks of the old draft. Retrieval was checked by hand for all five rule notes before the gateway test.
+  - Manual: `make ask Q="where are Arsenal in the table?"` answered with the data timestamp and `route: tool`;
+    `make ask Q="how does the championship playoff work?"` answered with the note passage and its citation.
+  - Not yet run: the live Telegram smoke test. No bot token exists in the repository or the retained `.env`; the
+    owner's step and the exact commands are in `_docs/m4-guide.md`.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;
