@@ -34,6 +34,7 @@ class RouteDecision:
     confidence: float | None
     reason: str | None
     surface_route: Route | None
+    surface_tool: str | None
     safety: Safety | None
     surface_confidence: float | None
     safety_confidence: float | None
@@ -52,6 +53,7 @@ class RouteDecision:
             "route_confidence": self.confidence,
             "route_reason": self.reason,
             "surface_route": self.surface_route,
+            "surface_tool": self.surface_tool,
             "safety": self.safety,
             "surface_confidence": self.surface_confidence,
             "safety_confidence": self.safety_confidence,
@@ -79,6 +81,7 @@ def apply(
             confidence=safety_confidence,
             reason=safety,
             surface_route=surface_route,
+            surface_tool=tool,
             safety=safety,
             surface_confidence=surface_confidence,
             safety_confidence=safety_confidence,
@@ -93,6 +96,7 @@ def apply(
             confidence=surface_confidence,
             reason=UNSUPPORTED_TOOL,
             surface_route=surface_route,
+            surface_tool=tool,
             safety=safety,
             surface_confidence=surface_confidence,
             safety_confidence=safety_confidence,
@@ -106,6 +110,7 @@ def apply(
         confidence=surface_confidence,
         reason=MODEL_REFUSAL if surface_route == "refuse" else None,
         surface_route=surface_route,
+        surface_tool=tool,
         safety=safety,
         surface_confidence=surface_confidence,
         safety_confidence=safety_confidence,
@@ -123,6 +128,7 @@ def fallback(error: str, latency_ms: float) -> RouteDecision:
         confidence=None,
         reason=ROUTER_UNAVAILABLE,
         surface_route=None,
+        surface_tool=None,
         safety=None,
         surface_confidence=None,
         safety_confidence=None,

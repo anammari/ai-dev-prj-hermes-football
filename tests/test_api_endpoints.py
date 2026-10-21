@@ -33,7 +33,7 @@ def test_health_reports_the_running_version_and_the_schema_revision(client: Test
     body = response.json()
     assert body["status"] == "ok"
     assert body["version"] == backend.__version__
-    assert body["db"] == {"status": "ok", "schema_revision": "0002_ingestion_storage"}
+    assert body["db"] == {"status": "ok", "schema_revision": "0003_agent_turn_writer"}
     assert isinstance(body["uptime_seconds"], int)
 
 
