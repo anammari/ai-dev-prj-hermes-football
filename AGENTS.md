@@ -24,8 +24,8 @@ thirteen notes and indexed 41 chunks. The live Telegram smoke test needs the own
 integration suite exercise the same pipeline. M3b compared two model-first routers on the same 85 hand-labelled questions:
 `clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **selected on 2026-10-20** as the
 routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
-and note text stay local. tev1 is rejected. Selection is not production wiring: the refusal gap (3/5 across all 85)
-and the 0.90 target are the M4 safety gate. The numbers are in
+and note text stay local. tev1 is rejected. Selection is not adoption: the refusal gap (3/5 across all 85) and the
+0.90 target were the M4 gate, which is now measured on a new independent holdout (gated macro-F1 0.979). The numbers are in
 `_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
 read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
@@ -76,10 +76,9 @@ backend/                FastAPI app
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
                         knowledge/ (corpus manifest, chunker, embedding client, indexer)
 frontend/               Next.js dashboard (centralized API client, unit tests)
-mcp-server/             MCP server over HTTP exposing read-only football tools
+mcp_server/             MCP server over HTTP: read-only tools, backend client, name resolver
 hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
 agent/                  routing (prompt loader, clef:cloud client, hard gate), turn writer, Telegram gateway
-mcp_server/             read-only MCP tools over HTTP, backend client, name resolver
 skills/ subagents/ hooks/ plugins/    agent extension pack
 evals/                  golden questions, groundedness/accuracy scoring
 observability/          otel collector, prometheus, grafana, loki, alerts
@@ -109,7 +108,7 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # start db, ollama, the backend API and the ingest scheduler; apply migrations
+make up        # start db, ollama, backend, mcp-server, the hermes gateway and ingest; migrate
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)

@@ -104,3 +104,11 @@ seven knowledge classes have a note today.
   models pulled again. `make test` and `make lint` cover the sample, prompt loader, arm plumbing and
   precision/recall arithmetic without calling a model.
 - The run artifact holds every choice, timing, model digest, prompt version, sample hash and the egress note.
+
+## M4 outcome (2026-10-22)
+
+The gate this record asked for is implemented in [decision 0006](0006-routing-safety-gate.md) and measured on a
+new independent 60-question holdout: gated macro-F1 0.979, adversarial 8/8, fabricated 4/4, refusal class 3/3,
+unsupported 4/4, zero false refusals. Run `2026-10-21T21-42-43Z` in `evals/routing/results/`. The comparison above
+is unchanged; the production request adds the safety question, so its scores are not compared as if the request
+were identical.
