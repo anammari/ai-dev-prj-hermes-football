@@ -126,6 +126,44 @@ services:
     cpus: 0.5
     restart: unless-stopped
 
+  hermes:
+    build:
+      context: .
+      target: app
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      MCP_URL: http://mcp-server:8100/mcp
+      AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
+      CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
+      ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
+      ROUTER_MODEL: ${ROUTER_MODEL:-clef:cloud}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
+      TELEGRAM_ADMIN_USERS: ${TELEGRAM_ADMIN_USERS:-}
+      GATEWAY_PORT: "8200"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./hermes/agent-knowledge:/corpus:ro
+    command: ["python", "-m", "agent.gateway"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8200/health').read()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
   ingest:
     build:
       context: .
@@ -196,6 +234,10 @@ services:
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:-}
       AGENT_DB_WRITER_ROLE: ${AGENT_DB_WRITER_ROLE:-agent_writer}
       AGENT_DB_WRITER_PASSWORD: ${AGENT_DB_WRITER_PASSWORD:-}
+      AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
+      CHAT_HASH_SALT: ${CHAT_HASH_SALT:-test-salt}
+      ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
+      MCP_URL: http://mcp-server:8100/mcp
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["pytest", "-q", "-m", "not integration"]

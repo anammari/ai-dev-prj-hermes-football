@@ -30,7 +30,7 @@ up: ## Start the stack, apply migrations, serve the API
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory model-ready
 	@$(MAKE) --no-print-directory migrate
-	$(COMPOSE) up -d backend mcp-server ingest
+	$(COMPOSE) up -d backend mcp-server hermes ingest
 	@sleep 5
 	@if [ -z "$$($(COMPOSE) ps --status running --services ingest)" ]; then \
 	  echo "ingest scheduler exited at startup (usually a missing UPSTREAM_API_KEY):"; \
@@ -38,7 +38,11 @@ up: ## Start the stack, apply migrations, serve the API
 	@if [ -z "$$($(COMPOSE) ps --status running --services backend)" ]; then \
 	  echo "backend exited at startup (usually a missing API_AGENT_TOKEN):"; \
 	  $(COMPOSE) logs --tail=10 backend; exit 1; fi
-	@echo "stack up: db, ollama, backend on http://localhost:$${BACKEND_PORT:-8000} (docs at /docs), ingest scheduler."
+	@if [ -z "$$($(COMPOSE) ps --status running --services hermes)" ]; then \
+	  echo "hermes gateway exited at startup (check AGENT_TURN_DSN, MCP_SERVER_TOKEN and ROUTER_*):"; \
+	  $(COMPOSE) logs --tail=20 hermes; exit 1; fi
+	@echo "stack up: db, ollama, backend on http://localhost:$${BACKEND_PORT:-8000} (docs at /docs), mcp-server, hermes gateway, ingest scheduler."
+	@echo "gateway health: docker compose exec -T hermes python -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8200/health').read().decode())\""
 
 down: ## Stop everything, keep the volumes
 	$(COMPOSE) --profile tools down
@@ -68,7 +72,7 @@ test: ## Unit tests: fast, no network, no stack
 	$(TOOLS) run --rm tests pytest -q -m "not integration"
 
 itest: ## Integration tests against the running stack (Postgres + pgvector + Ollama)
-	$(TOOLS) run --rm tests pytest -q -m integration
+	$(TOOLS) run --rm -e BACKEND_BASE_URL=http://backend:8000 tests pytest -q -m integration
 
 # Own Compose project, own volumes, throwaway passwords: never touches the retained stack's data.
 # The backend gets its own host port so an isolated run can never fight the retained stack's for 8000.
@@ -98,6 +102,9 @@ search: ## Ask the corpus a question: make search Q="how does the playoff work"
 
 ingest: ## Trigger one manual upstream collection run
 	$(COMPOSE) run --rm ingest python -m ingest run
+
+ask: ## Ask the agent one question through the real pipeline: make ask Q="where are Arsenal?"
+	$(TOOLS) run --rm -e BACKEND_BASE_URL=http://backend:8000 tests python -m agent.gateway.ask --message "$(Q)"
 
 score-delay: ## Poll a live or recent match and report how old the provider's data is
 	$(COMPOSE) run --rm ingest python -m ingest measure-score-delay $(if $(MATCH_ID),--match-id $(MATCH_ID),)

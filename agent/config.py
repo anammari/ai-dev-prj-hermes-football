@@ -41,6 +41,7 @@ class AgentSettings:
     backend_base_url: str = "http://backend:8000"
     backend_token: str | None = None
     mcp_url: str = "http://mcp-server:8100/mcp"
+    mcp_token: str | None = None
     mcp_timeout: float = 20.0
     poll_timeout: int = 30
 
@@ -63,6 +64,7 @@ class AgentSettings:
             backend_base_url=(source.get("BACKEND_BASE_URL") or "http://backend:8000").rstrip("/"),
             backend_token=source.get("API_AGENT_TOKEN") or None,
             mcp_url=source.get("MCP_URL") or "http://mcp-server:8100/mcp",
+            mcp_token=source.get("MCP_SERVER_TOKEN") or source.get("API_AGENT_TOKEN") or None,
             mcp_timeout=float(source.get("MCP_TIMEOUT_SECONDS") or 20.0),
             poll_timeout=int(source.get("TELEGRAM_POLL_TIMEOUT") or 30),
         )

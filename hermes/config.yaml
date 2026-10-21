@@ -1,0 +1,30 @@
+# Reference configuration for running the Nous Research Hermes Agent against this project.
+#
+# The shipped M4 gateway is `agent/gateway` (Compose service `hermes`): it implements SOUL.md and
+# calls the MCP server directly, so it needs no model provider and no third-party runtime. This file
+# records the equivalent surface for a Hermes Agent deployment, and is not read by the shipped
+# gateway. Secrets come from the environment; never put one here.
+agent:
+  name: hermes-football
+  soul: /opt/data/SOUL.md
+  language: en-GB
+  tools:
+    - get_standings
+    - get_fixtures
+    - get_match_result
+    - get_team_form
+    - get_head_to_head
+    - search_knowledge
+    - get_data_freshness
+mcp:
+  transport: http
+  url: http://mcp-server:8100/mcp
+  auth: "Bearer ${MCP_SERVER_TOKEN}"
+  timeout_seconds: 20
+policy:
+  grounding: tool-result-or-note-only
+  freshness: always-cite-data-as-of
+  route_recording: required
+  write_tools: none
+  shell: none
+  note_egress: local-only
