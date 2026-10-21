@@ -137,6 +137,7 @@ the 12 criteria are in [`_docs/scoping.md`](_docs/scoping.md) §7.
 - [`_docs/agent-team.md`](_docs/agent-team.md) — the agent roles and the hand-off process
 - [`_docs/data-model.md`](_docs/data-model.md) — the tables, how they map onto the contract, and what is still open
 - [`_docs/rag.md`](_docs/rag.md) — the notes the bot can search: chunking, embedding, storage and scoring
+- [`_docs/notes-sources.md`](_docs/notes-sources.md) — the checked source URLs behind every note, one row per planned file
 - [`openapi.yaml`](openapi.yaml) — the API contract, written before the code
 - [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, routing model
 - [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what was delegated to agents, and what a human caught

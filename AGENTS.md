@@ -202,6 +202,7 @@ Next, in order:
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
 3. `mcp-server/` read-only tool surface over the M3 API; wire into Hermes `config.yaml`.
-4. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test.
+4. `hermes/` SOUL.md, knowledge corpus, cron jobs; end-to-end Telegram smoke test. Write each note against
+   [`_docs/notes-sources.md`](_docs/notes-sources.md) and check its source URL before the note is reviewed.
 5. `frontend/` dashboard + tests; `evals/`; CI/CD; observability; security artifacts; `_docs/ai-usage-report.md`
    (criterion 2, started — see its backfill list).

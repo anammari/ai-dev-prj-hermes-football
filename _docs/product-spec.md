@@ -182,6 +182,8 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F6.1a** The corpus is **authored by hand** from stable public sources (competition regulations, the provider's
   own documentation) and reviewed like code: versioned in git, changed through pull requests, never generated at
   runtime and never scraped from a remote feed. Upstream API payloads carry no prose and are not a source.
+  Every note's sources are listed with a URL, publisher, season and check date in
+  [`_docs/notes-sources.md`](notes-sources.md); the manifest keeps the short citation.
 - **R-F6.2** Files are chunked and embedded into pgvector with `embeddinggemma:300m`, served locally by the `ollama`
   container (768 dimensions, pinned in the migration as `vector(768)`); retrieval returns passages with source file and
   heading. The client applies the model's task prefixes — documents and queries are formatted differently. Each chunk

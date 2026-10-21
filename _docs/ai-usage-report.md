@@ -325,6 +325,32 @@ checked and work that merely looked right.
     for the M4 safety gate. `_docs/scoping.md`
     §8 carries the table; `AGENTS.md` and `README.md` no longer claim a deterministic router.
 
+### S10 — M4 sources: the URL table behind the notes (branch `anammari-m4-agent`, 2026-10-21)
+
+- **Delegated:** compile the official source URLs for the notes planned in decision 0001, put them in a separate
+  `_docs/notes-sources.md` table, and make sourcing an explicit M4 task. Documentation only; no code was touched.
+- **Decided by the human, and binding on the agent:** URLs live in a separate table, not in
+  `hermes/agent-knowledge/manifest.yaml`. The manifest keeps the short citation; the table holds the checkable link,
+  publisher, season and date.
+- **Rejected or revised, and what made each visible:**
+  - *Search API unavailable.* Used DuckDuckGo's HTML page and direct fetches instead. Search results from Wikipedia,
+    Sky Sports and stats aggregators were rejected as sources; they were used only to find the official page.
+  - *The provider contradicts itself.* The pricing and coverage pages say 12 free competitions and list squads and
+    goal scorers as paid; the live probe on 2026-10-10 found **13** competitions and returned squads and top scorers
+    on the free key. The table records both, and the notes must follow the probe (`_docs/scoping.md` §3).
+  - *Clean sheet has no official definition.* No law or competition regulation defines it. Recorded as an owner
+    decision with a recommendation, rather than inventing a regulatory citation.
+  - *The EFL statement and the UEFA document pages render with JavaScript.* The EFL regulation PDF is the authority;
+    the statement is only the dated announcement of the move from four to six clubs.
+  - *A first assumption about Serie A was wrong.* The 2026/27 FIGC communiqué (244/A, 27 May 2026) does not simply
+    rank on head-to-head: it defines a single play-off for 1st, a two-legged 17th-v-18th play-off, the *classifica
+    avulsa* for more than two clubs, and no play-off when a club is in a UEFA final. The table now cites the
+    communiqué and the note must follow it, not the older summary.
+- **Evidence:** every URL in `_docs/notes-sources.md` was opened on 2026-10-21 (HTTP 200 for pages, 206 for ranged
+  PDF requests). The table is linked from `_docs/scoping.md` §8 (M4 "done when"), `_docs/product-spec.md` R-F6.1a,
+  `AGENTS.md` next step 4 and the README. No test is claimed for a document; the check is a reviewer opening the
+  links.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;
