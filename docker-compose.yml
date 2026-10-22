@@ -143,6 +143,8 @@ services:
       CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
       ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
       ROUTER_MODEL: ${ROUTER_MODEL:-clef:cloud}
+      COMPOSER_BASE_URL: ${COMPOSER_BASE_URL:-http://host.docker.internal:11434}
+      COMPOSER_MODEL: ${COMPOSER_MODEL:-beam:cloud}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
       TELEGRAM_ADMIN_USERS: ${TELEGRAM_ADMIN_USERS:-}
@@ -237,6 +239,8 @@ services:
       AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
       CHAT_HASH_SALT: ${CHAT_HASH_SALT:-test-salt}
       ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
+      COMPOSER_BASE_URL: ${COMPOSER_BASE_URL:-http://host.docker.internal:11434}
+      COMPOSER_MODEL: ${COMPOSER_MODEL:-beam:cloud}
       MCP_URL: http://mcp-server:8100/mcp
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro

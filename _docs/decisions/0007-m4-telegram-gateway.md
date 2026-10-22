@@ -59,3 +59,24 @@ our gate, and its model provider would need a separate data-egress decision for 
   MCP server, corpus and writer role.
 - Manual: `make ask Q="where are Arsenal in the table?"` and a rules question; Telegram smoke test is
   the owner's step after setting a bot token (guide in `_docs/m4-guide.md`).
+
+## M4 extension (2026-10-22): the complexity split and `beam:cloud`
+
+The first M4 gateway had one answer path: one tool, one deterministic sentence. That cannot answer a question that
+combines standings with form, or several notes. The owner rejected it and chose a split rather than a rewrite:
+
+- `clef:cloud` now also labels the message `simple` or `complex` in the same request. The router still sees only the
+  user message and fixed labels.
+- **Simple** keeps the original design: one tool (or one retrieval), deterministic composer, no tool output leaves
+  the machine.
+- **Complex** lets a planner choose up to four allowlisted MCP tools, or retrieves up to eight note chunks, and
+  sends those results to **`beam:cloud`** (Ollama cloud, Reflection Beam) for the answer. A citation check runs
+  before sending; a failed plan or an uncited draft falls back to the deterministic composer.
+
+The complex path is a second signed-off egress: tool results and note passages go to Ollama's cloud on complex
+questions only. The owner signed that off on 2026-10-22. The simple path and all embeddings stay local. `beam:cloud`
+is the composer; the planner uses the same model. No new tool, SQL, shell or write path is added.
+
+Verification: `tests/test_complex_path.py` (planner, composer, verifier, fallback), the complex cases in
+`tests/integration/test_gateway_stack.py`, and the real `make ask` runs recorded in the M4 guide. Prompt v2 was run
+on the frozen holdout as a regression check: gated macro-F1 0.960, all safety gates passed.

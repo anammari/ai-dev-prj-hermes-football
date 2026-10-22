@@ -102,3 +102,35 @@ def test_a_vague_question_asks_back(runtime: Runtime, owner_engine) -> None:
         assert "Which team" in answer.text
     finally:
         _cleanup(owner_engine, answer.turn_id)
+
+
+def test_a_complex_database_question_plans_several_tools_and_composes(runtime: Runtime, owner_engine) -> None:
+    settings = runtime.settings
+    question = "Compare Arsenal's league position with their recent form and say whether they are in the title race."
+    answer = runtime.pipeline.answer(
+        question, chat_id_hash=hash_chat_id(12345, settings.chat_hash_salt)
+    )
+    try:
+        assert answer.complexity == "complex", answer
+        assert "beam:cloud" in answer.model
+        assert len(answer.tool_calls) >= 2, answer.tool_calls
+        assert answer.grounded is True
+        assert "source: football-data.org" in answer.text.lower()
+        assert "As of " in answer.text
+    finally:
+        _cleanup(owner_engine, answer.turn_id)
+
+
+def test_a_complex_notes_question_synthesises_and_cites(runtime: Runtime, owner_engine) -> None:
+    settings = runtime.settings
+    question = "Compare the Championship playoff format with the Bundesliga relegation playoff."
+    answer = runtime.pipeline.answer(
+        question, chat_id_hash=hash_chat_id(12345, settings.chat_hash_salt)
+    )
+    try:
+        assert answer.complexity == "complex", answer
+        assert answer.route == "knowledge"
+        assert "beam:cloud" in answer.model
+        assert "Source:" in answer.text
+    finally:
+        _cleanup(owner_engine, answer.turn_id)

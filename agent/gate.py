@@ -35,6 +35,7 @@ class RouteDecision:
     reason: str | None
     surface_route: Route | None
     surface_tool: str | None
+    complexity: str | None
     safety: Safety | None
     surface_confidence: float | None
     safety_confidence: float | None
@@ -54,6 +55,7 @@ class RouteDecision:
             "route_reason": self.reason,
             "surface_route": self.surface_route,
             "surface_tool": self.surface_tool,
+            "complexity": self.complexity,
             "safety": self.safety,
             "surface_confidence": self.surface_confidence,
             "safety_confidence": self.safety_confidence,
@@ -67,6 +69,7 @@ def apply(
     surface_route: Route,
     tool: str | None,
     surface_confidence: float,
+    complexity: str = "simple",
     safety: Safety,
     safety_confidence: float,
     latency_ms: float,
@@ -82,6 +85,7 @@ def apply(
             reason=safety,
             surface_route=surface_route,
             surface_tool=tool,
+            complexity=complexity,
             safety=safety,
             surface_confidence=surface_confidence,
             safety_confidence=safety_confidence,
@@ -97,6 +101,7 @@ def apply(
             reason=UNSUPPORTED_TOOL,
             surface_route=surface_route,
             surface_tool=tool,
+            complexity=complexity,
             safety=safety,
             surface_confidence=surface_confidence,
             safety_confidence=safety_confidence,
@@ -111,6 +116,7 @@ def apply(
         reason=MODEL_REFUSAL if surface_route == "refuse" else None,
         surface_route=surface_route,
         surface_tool=tool,
+        complexity=complexity,
         safety=safety,
         surface_confidence=surface_confidence,
         safety_confidence=safety_confidence,
@@ -129,6 +135,7 @@ def fallback(error: str, latency_ms: float) -> RouteDecision:
         reason=ROUTER_UNAVAILABLE,
         surface_route=None,
         surface_tool=None,
+        complexity=None,
         safety=None,
         surface_confidence=None,
         safety_confidence=None,

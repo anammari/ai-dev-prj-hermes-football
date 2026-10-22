@@ -109,6 +109,8 @@ seven knowledge classes have a note today.
 
 The gate this record asked for is implemented in [decision 0006](0006-routing-safety-gate.md) and measured on a
 new independent 60-question holdout: gated macro-F1 0.979, adversarial 8/8, fabricated 4/4, refusal class 3/3,
-unsupported 4/4, zero false refusals. Run `2026-10-21T21-42-43Z` in `evals/routing/results/`. The comparison above
+unsupported 4/4, zero false refusals. Prompt v2 adds the complexity question; the same frozen holdout re-run as a
+regression check scored 0.960 gated macro-F1 with all safety gates still passed (`2026-10-22T12-19-58Z`). The
+independent v1 run is `2026-10-21T21-42-43Z` in `evals/routing/results/`. The comparison above
 is unchanged; the production request adds the safety question, so its scores are not compared as if the request
 were identical.

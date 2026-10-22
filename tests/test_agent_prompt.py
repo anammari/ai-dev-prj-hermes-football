@@ -14,12 +14,12 @@ PROMPT = Path(__file__).resolve().parents[1] / "prompts" / "0003-agent-router.md
 def test_the_production_prompt_loads_and_sends_the_message_unchanged() -> None:
     prompt = load_router_prompt(PROMPT)
     message = "where are Arsenal in the table?"
-    assert prompt.version == 1
+    assert prompt.version == 2
     assert prompt.render(message) == message
     payload = prompt.payload(message, "clef:cloud")
     assert payload["model"] == "clef:cloud"
     assert payload["state"] == message
-    assert set(payload["questions"]) == {"surface", "tool", "safety"}
+    assert set(payload["questions"]) == {"surface", "tool", "complexity", "safety"}
 
 
 def test_each_question_has_exactly_its_reviewed_labels() -> None:
@@ -35,6 +35,7 @@ def test_each_question_has_exactly_its_reviewed_labels() -> None:
         "not_applicable",
     }
     assert set(prompt.questions["safety"]["criteria"]) == {"safe", "instruction_override", "fabricated_fact"}
+    assert set(prompt.questions["complexity"]["criteria"]) == {"simple", "complex"}
 
 
 def _mutated(tmp_path: Path, old: str, new: str) -> Path:

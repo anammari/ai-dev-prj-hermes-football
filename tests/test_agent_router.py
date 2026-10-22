@@ -28,10 +28,18 @@ class FakeClient:
         return self.answers
 
 
-def _answers(surface: str, tool: str, safety: str, *, surface_confidence: float = 0.8) -> dict[str, Answer]:
+def _answers(
+    surface: str,
+    tool: str,
+    safety: str,
+    *,
+    complexity: str = "simple",
+    surface_confidence: float = 0.8,
+) -> dict[str, Answer]:
     return {
         "surface": Answer(label=surface, confidence=surface_confidence, probabilities={}),
         "tool": Answer(label=tool, confidence=0.7, probabilities={}),
+        "complexity": Answer(label=complexity, confidence=0.8, probabilities={}),
         "safety": Answer(label=safety, confidence=0.9, probabilities={}),
     }
 
@@ -125,6 +133,7 @@ def test_the_outbound_payload_carries_only_the_model_the_message_and_the_label_s
                 "answers": {
                     "surface": {"choice": "database", "confidence": 0.9, "probabilities": {}},
                     "tool": {"choice": "get_standings", "confidence": 0.9, "probabilities": {}},
+                    "complexity": {"choice": "simple", "confidence": 0.9, "probabilities": {}},
                     "safety": {"choice": "safe", "confidence": 0.9, "probabilities": {}},
                 }
             },
@@ -140,7 +149,7 @@ def test_the_outbound_payload_carries_only_the_model_the_message_and_the_label_s
     assert set(body) == {"model", "state", "questions"}
     assert body["state"] == message
     assert body["model"] == "clef:cloud"
-    assert set(body["questions"]) == {"surface", "tool", "safety"}
+    assert set(body["questions"]) == {"surface", "tool", "complexity", "safety"}
     assert "NOTE-TEXT-MUST-NOT-LEAVE" in body["state"]
     assert decision.route == "tool"
 
@@ -158,4 +167,4 @@ def test_the_router_follows_the_model_labels_not_the_message_text() -> None:
 
 def test_build_router_loads_the_reviewed_prompt() -> None:
     router = build_router(base_url="http://decision.invalid", model="clef:cloud", prompt_path=PROMPT)
-    assert router.prompt_version == 1
+    assert router.prompt_version == 2

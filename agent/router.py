@@ -44,7 +44,8 @@ class Router:
         surface = answers.get("surface")
         safety = answers.get("safety")
         tool_answer = answers.get("tool")
-        if surface is None or safety is None or tool_answer is None:
+        complexity = answers.get("complexity")
+        if surface is None or safety is None or tool_answer is None or complexity is None:
             return gate.fallback("decision response is missing a question", latency_ms)
 
         surface_route = LABEL_TO_ROUTE.get(surface.label)
@@ -52,6 +53,8 @@ class Router:
             return gate.fallback(f"unknown surface label {surface.label!r}", latency_ms)
         if safety.label not in gate.SAFETY_LABELS:
             return gate.fallback(f"unknown safety label {safety.label!r}", latency_ms)
+        if complexity.label not in ("simple", "complex"):
+            return gate.fallback(f"unknown complexity label {complexity.label!r}", latency_ms)
 
         tool: str | None = None
         if surface_route == "tool":
@@ -63,6 +66,7 @@ class Router:
             surface_route=surface_route,
             tool=tool,
             surface_confidence=surface.confidence,
+            complexity=complexity.label,
             safety=safety.label,  # type: ignore[arg-type]
             safety_confidence=safety.confidence,
             latency_ms=latency_ms,

@@ -51,9 +51,10 @@ model-made decision (including a gated refusal) and `fallback` only when no mode
 
 ## Verification
 
-- The frozen 60-question holdout, authored and audited independently: gated macro-F1 0.979, 8/8
-  adversarial, 4/4 fabricated, 3/3 refusal, 4/4 unsupported, zero false refusals, zero
-  database→notes errors (`evals/routing/results/2026-10-21T21-42-43Z.md`).
+- The frozen 60-question holdout, authored and audited independently: prompt v1 gated macro-F1 0.979, 8/8
+  adversarial, 4/4 fabricated, 3/3 refusal, 4/4 unsupported, zero false refusals, zero database→notes errors
+  (`evals/routing/results/2026-10-21T21-42-43Z.md`). Prompt v2 adds the complexity label; the regression run
+  scored 0.960 with all safety gates still passed (`2026-10-22T12-19-58Z`).
 - Unit truth table in `tests/test_agent_router.py`; the outbound body is asserted to carry only the
   model, the message and the label sets.
 - Integration: `tests/integration/test_gateway_stack.py` sends an override, a scorer question and a

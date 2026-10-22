@@ -11,8 +11,9 @@ there. The evidence and the decisions are in the linked files; this page is the 
   becomes a refusal before a tool or a note is touched. The model sees the user message and a fixed
   label set only.
 - **A measured safety gate.** A new 60-question holdout was written by one independent reviewer and
-  audited by another, then run once: gated macro-F1 **0.979** against the 0.90 target, 8/8 adversarial,
-  4/4 fabricated, 3/3 refusal and 4/4 unsupported refused, zero false refusals. Raw pre-gate macro-F1
+  audited by another, then run once: gated macro-F1 **0.979** against the 0.90 target on prompt v1; prompt v2
+  (the complexity label) scored **0.960** on the same frozen holdout as a regression check. Adversarial 8/8,
+  fabricated 4/4, refusal 3/3 and unsupported 4/4 refused, zero false refusals on v1. Raw pre-gate macro-F1
   was 0.906. Evidence: [`evals/routing/results/2026-10-21T21-42-43Z.md`](evals/routing/results/2026-10-21T21-42-43Z.md).
 - **A read-only MCP tool server.** Seven tools over MCP HTTP: standings, fixtures, match result, team
   form, head-to-head, knowledge search, freshness. It calls the M3 API; it has no write path, no SQL,
@@ -29,21 +30,30 @@ there. The evidence and the decisions are in the linked files; this page is the 
 
 ## What happens to one message
 
-1. **Route.** The message goes to `clef:cloud` with the fixed label sets. Nothing else is sent.
+1. **Route.** The message goes to `clef:cloud` with the fixed label sets. Nothing else is sent. It
+   returns the road, the first tool, a safety label and a **complexity** label.
 2. **Gate.** If `safety` is not `safe`, the turn refuses now. A `database` choice with no tool is refused
    as `unsupported_tool`. If the model is unreachable, the turn refuses with `route_source: fallback`.
-3. **Call one tool.** For `tool`, the gateway calls the matching MCP tool with the message as `query`;
-   for `knowledge`, it calls `search_knowledge`. The tool resolves club and competition names itself.
-4. **Compose.** The answer restates numbers, names and dates from the payload and adds the provider's
-   timestamp. A note answer quotes the passage and cites the file and heading.
-5. **Record, then send.** One `agent_turns` row carries route, source, confidence, tool calls, data
-   timestamp and the hashed chat id. If recording fails, the answer is withheld.
+3. **Simple path.** One MCP tool (or one `search_knowledge` call). The tool resolves club and
+   competition names itself.
+4. **Complex path.** The planner (`beam:cloud`) chooses up to four allowlisted tools, or the gateway
+   retrieves up to eight note chunks. The gateway runs the tools and sends those results to
+   `beam:cloud` for a composed answer. A citation check runs before sending; a failed plan or an
+   uncited draft falls back to the deterministic composer.
+5. **Compose.** Simple: the answer restates numbers, names and dates and adds the provider timestamp; a
+   note answer quotes the passage and cites the file and heading. Complex: `beam:cloud` writes it from
+   the results, and the verifier requires the timestamp or the note file.
+6. **Record, then send.** One `agent_turns` row carries route, source, confidence, every tool call, the
+   data timestamp and the hashed chat id. If recording fails, the answer is withheld.
+
+Only the simple path keeps tool output and note text on the machine. The complex path sends them to
+`beam:cloud`; that egress is signed off for complex questions only.
 
 ## What it does and does not do
 
 **Does:** standings, fixtures, results, form, head-to-head, freshness, competition rules, tiebreakers,
-qualification, coverage limits, glossary definitions, multi-hop rules questions, refusals and one
-clarify question back.
+qualification, coverage limits, glossary definitions, multi-hop rules questions, comparisons that combine
+several results or notes, refusals and one clarify question back.
 
 **Does not:** live in-play scores, lineups, odds, xG, predictions, betting advice, top-scorer totals
 (there is no scorer tool yet), multi-turn memory, or a dashboard. The Telegram smoke test in this guide
@@ -91,7 +101,25 @@ make ask Q="how does the championship playoff work?"
 ```
 
 Expected shape: the note's passage, then `Source: formats/championship-playoffs.md, How the
-Championship promotion play-offs work.`, then `"route": "knowledge"` and a `turn_id`.
+Championship promotion play-offs work.`, then `"route": "knowledge"`, `"complexity": "simple"` and a
+`turn_id`.
+
+Complex database question (plan + Beam):
+
+```bash
+make ask Q="Compare Arsenal's league position with their recent form and say whether they are in the title race."
+```
+
+Expected shape: a composed answer with the timestamp, `"complexity": "complex"`, `"grounded": true` and
+two `tool_calls`.
+
+Complex notes question (synthesis across notes):
+
+```bash
+make ask Q="Compare the Championship playoff format with the Bundesliga relegation playoff."
+```
+
+Expected shape: both notes summarised, each with its own `Source:` citation, `"complexity": "complex"`.
 
 Refusal:
 
@@ -194,4 +222,4 @@ artifact under `evals/routing/results/`.
 - Gateway decision: [`_docs/decisions/0007-m4-telegram-gateway.md`](_docs/decisions/0007-m4-telegram-gateway.md)
 - Holdout result: [`evals/routing/results/2026-10-21T21-42-43Z.md`](evals/routing/results/2026-10-21T21-42-43Z.md)
 - Source URLs for the notes: [`_docs/notes-sources.md`](_docs/notes-sources.md)
-- AI usage for this milestone: [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) S11
+- AI usage for this milestone: [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) S12

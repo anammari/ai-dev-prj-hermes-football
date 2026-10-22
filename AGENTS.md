@@ -18,14 +18,16 @@ criteria and how each is covered live in `_docs/scoping.md` §7 — that mapping
 If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
 Status: **M1–M4 done; M5 next.** M4 wired the selected router behind a binding safety gate, measured it on a new
-independent 60-question holdout (gated macro-F1 0.979; 8/8 adversarial, 4/4 fabricated, 3/3 refusal and 4/4
-unsupported refused; zero false refusals), built the seven read-only MCP tools and the Telegram gateway, reviewed
-thirteen notes and indexed 41 chunks. The live Telegram smoke test needs the owner's bot token; `make ask` and the
-integration suite exercise the same pipeline. M3b compared two model-first routers on the same 85 hand-labelled questions:
+independent 60-question holdout (gated macro-F1 0.979 on prompt v1, 0.960 on the v2 regression; 8/8 adversarial,
+4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the seven read-only MCP tools and the Telegram gateway, reviewed
+thirteen notes and indexed 41 chunks. The gateway splits on the model's `complexity` label: simple answers use one
+tool and the deterministic composer; complex answers plan several tools or notes and compose with `beam:cloud`.
+The live Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same
+pipeline. M3b compared two model-first routers on the same 85 hand-labelled questions:
 `clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **selected on 2026-10-20** as the
 routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
 and note text stay local. tev1 is rejected. Selection is not adoption: the refusal gap (3/5 across all 85) and the
-0.90 target were the M4 gate, which is now measured on a new independent holdout (gated macro-F1 0.979). The numbers are in
+0.90 target were the M4 gate, now measured on a new independent holdout (0.979 on v1, 0.960 on v2). The numbers are in
 `_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
 read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
@@ -92,16 +94,17 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 - Python 3.12 (FastAPI, SQLAlchemy 2.x, Alembic, httpx, APScheduler, pytest, ruff)
 - Postgres 16 + pgvector; SQLite is the dev-only fallback so `DATABASE_URL` stays swappable
 - Ollama for `embeddinggemma:300m` (768-d embeddings, hence `vector(768)` in Postgres). Embeddings and note text stay
-  local. Routing uses `clef:cloud` (Ollama's cloud, 27B): the user message is the one signed-off egress path
-  (decision 0003); tool output and retrieved text are never sent. `tev1:0.8b` was rejected and its spike server
-  removed.
+  local. Routing uses `clef:cloud` (Ollama's cloud, 27B): the user message is a signed-off egress path (decision
+  0003). The complex answer path sends tool results and note passages to `beam:cloud` (owner sign-off 2026-10-22,
+  decision 0007); the simple path keeps them local. `tev1:0.8b` was rejected and its spike server removed.
 - The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
   container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
   and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
 - Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
-- The M4 gateway is `agent/gateway` in the `hermes` container: Telegram long polling, one routed tool call, a
-  deterministic composer and a turn row. `hermes/SOUL.md` is the shared policy; `hermes/config.yaml` records the
-  equivalent MCP surface for a future Nous Hermes Agent deployment. MCP tools are HTTP, not stdio.
+- The M4 gateway is `agent/gateway` in the `hermes` container: Telegram long polling, one routed tool call on the
+  simple path, a planner plus `beam:cloud` on the complex path, and a turn row. `hermes/SOUL.md` is the shared
+  policy; `hermes/config.yaml` records the equivalent MCP surface for a future Nous Hermes Agent deployment. MCP
+  tools are HTTP, not stdio.
 - Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
 
 ## Commands (make targets land with the scaffold — keep them working)
@@ -175,7 +178,9 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
     decision model sees the user message and a fixed label set only — never retrieved text, never tool output. There is
     no regex and no deterministic pre-router. The model is `clef:cloud` (decision 0003), wired behind the binding
     safety gate in decision 0006: a non-`safe` answer refuses before a tool or note is touched, and an unreachable
-    model fails closed. Only the user message leaves the machine; the gateway's composer is local.
+    model fails closed. The same request labels the message `simple` or `complex`. Simple answers stay local; complex
+    answers send the collected results to `beam:cloud`, with a citation check and a deterministic fallback (decision
+    0007). No regex, no deterministic pre-router.
 
 ## Working agreement (course criteria 2-4)
 
@@ -206,8 +211,8 @@ configured it refuses everything instead of opening up. It reads through the `ag
 Next, in order:
 1. M4 owner step: create a Telegram bot with @BotFather, set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` and
    `TELEGRAM_ADMIN_USERS`, recreate the `hermes` service and run the smoke script in
-   [`_docs/m4-guide.md`](_docs/m4-guide.md). The pipeline itself is already exercised by `make ask` and the
-   integration suite.
+   [`_docs/m4-guide.md`](_docs/m4-guide.md), including one simple and one complex question. The pipeline itself is
+   already exercised by `make ask` and the integration suite.
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.

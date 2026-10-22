@@ -28,8 +28,14 @@ TOOL_LABELS = {
     "not_applicable",
 }
 SAFETY_LABELS = {"safe", "instruction_override", "fabricated_fact"}
-QUESTIONS = ("surface", "tool", "safety")
-LABELS = {"surface": SURFACE_LABELS, "tool": TOOL_LABELS, "safety": SAFETY_LABELS}
+COMPLEXITY_LABELS = {"simple", "complex"}
+QUESTIONS = ("surface", "tool", "complexity", "safety")
+LABELS = {
+    "surface": SURFACE_LABELS,
+    "tool": TOOL_LABELS,
+    "complexity": COMPLEXITY_LABELS,
+    "safety": SAFETY_LABELS,
+}
 
 
 class PromptError(ValueError):

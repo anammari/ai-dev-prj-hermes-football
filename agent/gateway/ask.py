@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
                 "route_source": answer.route_source,
                 "route_confidence": answer.route_confidence,
                 "route_reason": answer.route_reason,
+                "complexity": answer.complexity,
+                "model": answer.model,
                 "grounded": answer.grounded,
                 "latency_ms": answer.latency_ms,
                 "turn_id": answer.turn_id,

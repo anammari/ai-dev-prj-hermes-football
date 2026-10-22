@@ -6,7 +6,8 @@ from ([how that works, and how it is scored](_docs/rag.md)). When the data does 
 instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
 
 Status: **M1–M4 done; M5 next.** The routing gate is wired around `clef:cloud` and measured on an independent
-holdout (gated macro-F1 0.979; 8/8 adversarial, 4/4 fabricated, 3/3 refusal and 4/4 unsupported refused). M4 also
+holdout (gated macro-F1 0.979 on prompt v1 and 0.960 on the prompt-v2 regression; 8/8 adversarial, 4/4
+fabricated, 3/3 refusal and 4/4 unsupported refused). M4 also
 adds the seven read-only MCP tools, the Telegram gateway, thirteen reviewed notes and 41 indexed chunks. The live
 Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same pipeline.
 The dashboard, eval scoreboard, CI/CD and observability are M5–M6.
@@ -101,11 +102,12 @@ owner report, weekly evals) and the `answer-verifier` subagent are M6; until the
 ## Supporting work (not a separate criterion)
 
 - **Routing gate:** `clef:cloud` is wired behind a binding safety question. On a new 60-question independent holdout
-  the gated result is macro-F1 0.979, with 8/8 adversarial, 4/4 fabricated, 3/3 refusal and 4/4 unsupported
-  refused, zero false refusals. [Result report](evals/routing/results/2026-10-21T21-42-43Z.md). The archived
+  the gated result is macro-F1 0.979 on prompt v1 (0.960 on the prompt-v2 regression), with 8/8 adversarial,
+  4/4 fabricated, 3/3 refusal and 4/4 unsupported refused, zero false refusals on the v1 run. [Result report](evals/routing/results/2026-10-21T21-42-43Z.md). The archived
   comparison remains at [2026-10-19](evals/routing/results/2026-10-19T12-40-46Z.md).
-- **Agent and tools:** seven read-only MCP tools over HTTP, a Telegram gateway that routes once, calls one tool and
-  composes deterministically, an insert-only turn writer, and thirteen reviewed notes with 41 indexed chunks.
+- **Agent and tools:** seven read-only MCP tools over HTTP, a Telegram gateway with two answer paths — one tool and a
+  deterministic composer for simple questions; a planner, several tools or notes, and `beam:cloud` composition with a
+  citation check for complex ones — an insert-only turn writer, and thirteen reviewed notes with 41 indexed chunks.
 - **API contract:** `openapi.yaml` is written before the backend, served verbatim at `/openapi.yaml`, and a test
   fails when the two drift apart. Every agent-facing endpoint needs `API_AGENT_TOKEN`; with no token configured it
   refuses everything.
@@ -159,7 +161,7 @@ One Compose project, one command. `make up` starts six services:
 | `ollama` | Local embedding server. Turns English note text into 768-number vectors; no cloud call. |
 | `backend` | Read-only FastAPI over Postgres. The only published port (`8000`); serves data to the tools and the dashboard. |
 | `mcp-server` | Seven read-only football tools over MCP HTTP. Translates a tool call into a backend request. |
-| `hermes` | Telegram gateway. Routes each message, applies the safety gate, calls one tool, answers, records the turn. |
+| `hermes` | Telegram gateway. Routes each message, applies the safety gate, answers on the simple or complex path, records the turn. |
 | `ingest` | Daily scheduler. Pulls football-data.org into the database and re-indexes notes that changed. |
 
 Only `backend` publishes a host port. `hermes` uses Telegram long polling, so it needs no inbound port. No

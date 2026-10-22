@@ -395,6 +395,39 @@ checked and work that merely looked right.
   - Not yet run: the live Telegram smoke test. No bot token exists in the repository or the retained `.env`; the
     owner's step and the exact commands are in `_docs/m4-guide.md`.
 
+### S12 — M4 answer layer: complexity split and Beam (2026-10-22, branch `anammari-m4-agent`)
+
+- **Delegated:** extend the M4 gateway so `clef:cloud` labels a message `simple` or `complex`; keep the one-tool,
+  deterministic path for simple questions; add a planner, several tools or notes, and a `beam:cloud` composer for
+  complex ones; verify citations and fall back deterministically. Keep all of it in M4, not a sub-milestone.
+- **Decided by the human, and binding on the agent:**
+  - Complexity is a fourth label in the same `clef:cloud` request, not a second router or a regex.
+  - `beam:cloud` is the response generator for complex queries; the owner accepted its cloud egress for that path.
+  - Operational work stays in M4; sub-milestones are for spikes only.
+  - The final Mermaid pipeline diagram is a later task, after all milestones, in `README.md`.
+- **Rejected or revised, and what made each visible:**
+  - *The deterministic-only answer layer* — rejected by the owner: it cannot combine standings with form, or
+    synthesise across notes. The simple path kept it; the complex path replaced the single-tool assumption.
+  - *A local chat model for the composer* — not chosen; `beam:cloud` was selected for speed and cost. This is a new
+    signed-off egress for complex questions, recorded in decision 0007 and the product spec §4.
+  - *Sending simple answers to Beam too* — rejected: the simple path stays local and cheaper.
+  - *A full claim-by-claim verifier* — not built in this slice; the verifier checks the required timestamp/source and
+    the note file, with the deterministic composer as fallback. A fuller answer-verifier remains a follow-up.
+  - *Closing the scorer gap in this slice* — still open: the planner can only choose exposed tools, so a scorer
+    question is refused rather than answered from the wrong table.
+- **Evidence:**
+  - `clef:cloud` prompt v2 classified the probe set correctly: simple table lookup, simple one-note rule, complex
+    standings+form comparison, complex two-note comparison. The same frozen holdout re-run scored gated macro-F1
+    0.960 with all safety gates still passed (`2026-10-22T12-19-58Z`).
+  - `make ask Q="Compare Arsenal's league position with their recent form and say whether they are in the title
+    race."` produced `complexity: complex`, two tool calls, a Beam answer with the data timestamp and `grounded: true`.
+  - `make ask Q="Compare the Championship playoff format with the Bundesliga relegation playoff."` produced a
+    two-note synthesis with both `Source:` citations.
+  - Unit: `tests/test_complex_path.py` covers the planner allowlist, the composer input, the verifier and both
+    fallbacks; integration: two new end-to-end complex turns in `tests/integration/test_gateway_stack.py`.
+  - `make test` 335 unit tests and `make itest` 37 integration tests pass; `make lint` clean.
+  - The simple path still returns the deterministic answer and no Beam model in `model`.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

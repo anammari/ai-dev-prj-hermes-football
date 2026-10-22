@@ -73,10 +73,12 @@ address, not a hosted service.
 Rules the layout enforces:
 
 - **No Docker socket** in any container; the knowledge corpus is mounted **read-only** into `hermes`.
-- **Local embeddings; one signed-off egress path.** `ollama` serves the embeddings locally, and no note text or
-  retrieved passage leaves the machine. Routing is the exception: `clef:cloud` sends the user's message to Ollama's
-  cloud, signed off on 2026-10-20 (decision 0003). Tool output and retrieved text are never part of that call. Any
-  other cloud call is a policy change, not a configuration detail.
+- **Local embeddings; two signed-off egress paths.** `ollama` serves the embeddings locally, so the embedding step
+  never leaves the machine. Routing sends the user's message to `clef:cloud`, signed off on 2026-10-20 (decision
+  0003). The **simple** answer path then keeps tool output and note text local. The **complex** path, signed off on
+  2026-10-22, sends the collected tool results or note passages to `beam:cloud` for composition; a citation check
+  runs before the answer is sent, and the deterministic composer is the fallback. Any other cloud call is a policy
+  change, not a configuration detail.
 - **MCP over HTTP, not stdio.** A stdio server would have to live inside the Hermes image, coupling tool code to the
   agent image and complicating its own tests and scans. As a sibling container it keeps a read-only DB role, its own
   tests and its own scan artifacts.
@@ -170,8 +172,14 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 
 - **R-F5.1** `SOUL.md` defines role, tone, and the grounding policy: answer only from tool results or knowledge files;
   say "I don't know" otherwise; never present delayed data as live. The shipped M4 gateway (`agent/gateway`)
-  implements that policy deterministically: it restates the tool result and quotes the note, with no second model.
-- **R-F5.2** The agent discloses the data timestamp whenever it states a score, fixture or table.
+  implements that policy on two paths: simple answers are restated deterministically; complex answers are composed
+  by `beam:cloud` from the collected results, with a citation check and the deterministic composer as fallback.
+- **R-F5.2** The agent discloses the data timestamp whenever it states a score, fixture or table. The complex
+  composer must include it, and the verifier rejects a draft that drops it.
+- **R-F5.6** `clef:cloud` labels every message `simple` or `complex`. Simple keeps one tool or one note retrieval and
+  the local deterministic composer. Complex allows a planner to choose up to four allowlisted tools (or eight note
+  passages) and `beam:cloud` to compose from those results only; no new tool, no outside fact, no prediction. A
+  failed plan or an uncited draft falls back to the deterministic path.
 - **R-F5.3** Admin and public users are separated (`TELEGRAM_ALLOWED_USERS` / `TELEGRAM_ADMIN_USERS`); admin
   commands are allowlisted and every user outside the allowlist is refused.
 - **R-F5.4** Every answered turn is logged in `agent_turns` through the insert-only `agent_writer` role; the agent
@@ -211,12 +219,13 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F6.6** Routing is explicit and recorded: the chosen model, `clef:cloud`, maps every message to one of four
   intent buckets (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and
   `route_confidence`. M4 wires it behind the hard safety gate in `_docs/decisions/0006`: the same forward pass also
-  answers a binding `safety` question, and any label other than `safe` becomes a refusal before a tool or a note is
-  touched. A `database` choice with `tool: not_applicable` is refused as `unsupported_tool`; an unreachable model
-  refuses with `route_source: fallback`. The router sees the user message and a fixed label set only — never retrieved
-  text, never tool output. There is no regex and no deterministic pre-router. The model and its cloud egress are
-  recorded in `_docs/decisions/0003`; routing is scored on the independent M4 holdout
-  (`evals/routing/results/2026-10-21T21-42-43Z.md`: gated macro-F1 0.979, 8/8 adversarial, zero false refusals).
+  answers a binding `safety` question and a `complexity` question, and any safety label other than `safe` becomes a
+  refusal before a tool or a note is touched. A `database` choice with `tool: not_applicable` is refused as
+  `unsupported_tool`; an unreachable model refuses with `route_source: fallback`. The router sees the user message and
+  a fixed label set only — never retrieved text, never tool output. There is no regex and no deterministic
+  pre-router. Complexity selects the answer path, not the road. The model and its cloud egress are recorded in
+  `_docs/decisions/0003`; routing is scored on the independent M4 holdout (prompt v1: gated macro-F1 0.979; prompt
+  v2 regression: 0.960, all safety gates passed).
 - **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
 - **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
 - **AC** A note file without a manifest entry, or an entry without a file or a source, fails a test.

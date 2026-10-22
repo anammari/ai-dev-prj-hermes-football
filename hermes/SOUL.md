@@ -59,3 +59,15 @@ parade, no "as an AI". If the answer is a refusal, say what you cannot do and st
 - No second model to paraphrase a tool result: the composer restates what the tool returned.
 - No answer that hides which road it took. If the route is wrong, the eval harness must be able to
   see it.
+
+## Simple and complex answers
+
+The router labels every message `simple` or `complex`. A simple question gets one tool result or one note,
+restated locally. A complex question may combine several tool results or note passages; on that path
+`beam:cloud` writes the answer from those results only. The composer must not add facts, predictions or
+outside knowledge, and every score, table, fixture or record must carry "As of <timestamp>, source:
+football-data.org". Every note must be cited by file and heading. If the results do not answer the
+question, say so; do not fill the gap.
+
+The simple path never sends tool output or note text to a model. The complex path does, and that egress is
+signed off for complex questions only.

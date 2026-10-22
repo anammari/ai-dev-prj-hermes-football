@@ -101,11 +101,18 @@ from a document, it comes from our notes. A football bot that searches documents
 so is one that tries to query a database for the meaning of "aggregate".
 
 **How the bot decides which way to look.** Not by vibes, and not by regex. Every message goes to a decision model,
-which picks one of four surfaces — database, notes, ask back, refuse — and whichever way it went is written down with
-the answer, so a wrong turn shows up on the dashboard and in the scoreboard. Two models were compared on the same 85
-questions and the same request (section 8). The cloud model routed better and was **selected on 2026-10-20**: it
-sends the user's message to Ollama's cloud, which is the one accepted egress path. The local model is rejected. The
-router is wired behind the hard safety gate added in M4; the independent holdout is recorded in section 8.
+which picks one of four surfaces — database, notes, ask back, refuse — and also says whether the answer is **simple**
+(one stored fact or one note) or **complex** (several facts or notes combined). The surface and complexity are written
+down with the answer, so a wrong turn shows up on the dashboard and in the scoreboard. Two models were compared on the
+same 85 questions and the same request (section 8); the cloud model routed better and was **selected on 2026-10-20**.
+The router is wired behind the hard safety gate added in M4; the independent holdout is recorded in section 8.
+
+**Simple and complex answer paths.** A simple question keeps the single tool (or one note retrieval) and the local
+deterministic composer: no second model, no tool output leaving the machine. A complex question lets the gateway plan
+up to four allowlisted tools, or retrieve up to eight note chunks, and hands the collected results to **`beam:cloud`**
+for a grounded, cited answer. A citation check runs before sending; if it fails, the deterministic composer answers
+instead. The simple path stays local. The complex path is the one place where tool output and note text leave the
+machine; the owner signed that egress off on 2026-10-22 for complex questions only.
 
 ## 5. Extra work beyond the first brief
 
@@ -182,10 +189,10 @@ At the moment the honest total is **10 of 24**: criteria 1, 3 and 4 are met, 2, 
 | M1 | Database schema and the first migration, matching the contract, including the notes table, the list of notes and the small model that turns text into searchable numbers | Tests against the real stack pass, and a note file can be indexed end to end |
 | M2 | Daily collection from the football API, plus re-indexing any note that changed | A day's data lands with a run log, the real score delay is measured, and editing a note changes what the bot answers |
 | M3 | The wrapped API | The bot's tools can read everything they need — done: 14 operations served from Postgres, the contract served as the document, and the drift test failing on a renamed field, a hidden route, a reused operation id, a changed bound, or an undeclared value. An adversarial review of the finished milestone drove eight fixes: routes are read from the router tree, parameter bounds are compared, the validator carries `minItems`, enums are checked by behaviour, the rule 3/4 scans use a whitelist and follow imports, freshness no longer calls a listed-but-empty competition fresh and ignores future-dated runs, and an out-of-range id is a 400 instead of a 500 |
-| M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **model chosen (2026-10-20)**: `clef:cloud` routed best and was signed off, with the cloud egress accepted; its refusal gap and the 0.90 target were the M4 gate, now measured (gated macro-F1 0.979) |
-| M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, every rules answer cites its note, and every note's sources are listed and checked in [`notes-sources.md`](notes-sources.md) — **done 2026-10-22**: routing gate measured at 0.979 gated macro-F1, MCP tools and Telegram gateway built, thirteen notes reviewed and indexed; the live Telegram smoke test needs the owner's bot token |
+| M3b | A test, not an opinion, on how questions get routed: two decision models run over the same questions and are scored on precision and recall against expectations we checked by hand | A results table, a decision written down, and a router that is right on the questions fans actually ask — **model chosen (2026-10-20)**: `clef:cloud` routed best and was signed off, with the cloud egress accepted; its refusal gap and the 0.90 target were the M4 gate, now measured (0.979 on v1, 0.960 on v2) |
+| M4 | The bot on Telegram, with the first notes written and reviewed, and the routing the test chose | It answers the golden questions correctly, refuses when it should, every rules answer cites its note, and every note's sources are listed and checked in [`notes-sources.md`](notes-sources.md) — **done 2026-10-22**: routing gate measured at 0.979 gated macro-F1 on prompt v1 (0.960 on the v2 regression), MCP tools and Telegram gateway built, thirteen notes reviewed and indexed; the live Telegram smoke test needs the owner's bot token |
 | M5 | Dashboard and scoreboard | Both tested, the scoreboard runs on every change, and it also scores where the bot looked |
-| M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork and a record of what the agents did |
+| M6 | The pipeline that checks every change and can roll back a bad deploy, the monitoring and security paperwork, and the report on how AI was used | One alert that fires on real user impact, plus the audit paperwork, a record of what the agents did, and the final Mermaid pipeline diagram in `README.md` |
 
 ### M3b result (2026-10-19)
 
@@ -219,15 +226,19 @@ the reasoning is in [decision 0003](decisions/0003-prompt-router.md).
 
 The routing gate was measured on a new independent holdout, not the archived sample: 60 questions written by
 an independent reviewer and audited by a second, frozen at SHA-256 `c5236d8f…`, one run
-(`evals/routing/results/2026-10-21T21-42-43Z`). Gated macro-F1 **0.979** against the 0.90 target; adversarial
-8/8, fabricated 4/4, refusal class 3/3 and unsupported 4/4 refused; zero false refusals and zero
-database→notes errors. Raw pre-gate macro-F1 was 0.906; the one miss asked back instead of naming a result tool.
+(`evals/routing/results/2026-10-21T21-42-43Z`). Prompt v1 gated macro-F1 **0.979** against the 0.90 target;
+adversarial 8/8, fabricated 4/4, refusal class 3/3 and unsupported 4/4 refused; zero false refusals and zero
+database→notes errors. Raw pre-gate macro-F1 was 0.906. Prompt v2 adds the complexity question; the same frozen
+holdout was re-run as a regression check (`2026-10-22T12-19-58Z`): gated macro-F1 **0.960**, all safety gates
+still passed, one clarify question refused as `fabricated_fact`. The v2 run is a regression check, not a new
+independent sample.
 
-The rest of M4: seven read-only tools over MCP HTTP (`mcp_server/`), a Telegram gateway that routes once,
-calls one tool and composes deterministically (`agent/gateway/`), thirteen reviewed notes in English with a
-checked source URL each (`_docs/notes-sources.md`), and 41 chunks in pgvector. The gateway records every turn
-through the insert-only `agent_writer` role. The live Telegram smoke test is the owner's step after creating a
-bot token; the same pipeline is exercised by `make ask` and the integration suite.
+The rest of M4: seven read-only tools over MCP HTTP (`mcp_server/`), a Telegram gateway (`agent/gateway/`) whose
+simple path uses one tool and the deterministic composer, whose complex path plans several tools or retrieves
+several notes and composes with `beam:cloud`, and a citation verifier before sending. Thirteen reviewed notes in
+English, each with a checked source URL (`_docs/notes-sources.md`), and 41 chunks in pgvector. The gateway records
+every turn through the insert-only `agent_writer` role. The live Telegram smoke test is the owner's step after
+creating a bot token; the same pipeline is exercised by `make ask` and the integration suite.
 
 The notes themselves are written by hand and reviewed like code — see section 4. They are not fetched from anywhere and
 the collection job does not go looking for them; it only re-indexes the ones that changed. They are written in English,

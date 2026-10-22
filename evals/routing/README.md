@@ -112,3 +112,11 @@ binding `safety` question, so a new independent holdout was written for M4 rathe
   effect is visible rather than hidden.
 - **Reproduce.** `python -m evals.routing.run_holdout --base-url http://localhost:11434`. The runner refuses to
   start if the holdout no longer matches its protocol, and a failed call is recorded as a miss, never retried.
+
+### Prompt v2 regression
+
+Prompt v2 adds the `complexity` question without changing the surface, tool or safety label sets. The same frozen
+60-question holdout was re-run as a **regression check**, not a new independent sample: run `2026-10-22T12-19-58Z`,
+gated macro-F1 **0.960** (target 0.90), adversarial 8/8, fabricated 4/4, refusal 3/3, unsupported 4/4; one clarify
+question was refused as `fabricated_fact` and `results-h3` still asked back. The v1 run above remains the independent
+gate measurement.
