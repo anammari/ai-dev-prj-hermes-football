@@ -7,13 +7,14 @@ This file adds the operational rule that is easy to forget after a milestone lan
 
 ## Post-milestone Docker cleanup (required)
 
-Run this after a milestone's implementation is complete and before the final commit and push. Do not wait for
-the owner to ask for it.
+Run this after the **final** build of the milestone, before the final commit and push. Do not wait for the owner
+to ask for it.
 
-1. **Recreate services on stale images first.** If a container is still running an image that a rebuild has
-   replaced, `docker compose up -d --force-recreate <service>` so it runs the current image. Never delete an
-   image that a running container uses.
-2. **Remove dangling images.** `docker image prune -f`. Report the reclaimed size.
+1. **Recreate services on stale images first.** Run `docker ps --format '{{.Names}} {{.Image}}'`; a container
+   showing `<none>` or an image ID is running a replaced image. `docker compose up -d --force-recreate <service>`
+   so it runs the current tag. Never delete an image that a running container uses.
+2. **Remove dangling images.** `docker image prune -f`. Report the reclaimed size. `prune` removes images with no
+   tag and no child; an image shown as `repo/name:<none>` is digest-only, is not dangling, and is not removed.
 3. **Prune the build cache.** `docker builder prune -f`. The next build is slower; that is the trade.
 4. **Check volumes.** `docker volume ls -f dangling=true` and `docker system df -v`. Both project volumes
    (`hermes-football_pgdata`, `hermes-football_ollama-data`) hold real state and must never be removed as part
