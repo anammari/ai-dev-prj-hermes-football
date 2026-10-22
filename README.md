@@ -149,11 +149,46 @@ the 12 criteria are in [`_docs/scoping.md`](_docs/scoping.md) §7.
 - [`prompts/`](prompts/README.md) — the versioned prompt bank
 - [`evals/routing/results/`](evals/routing/results/) — the routing comparison's evidence
 
+## Docker services
+
+One Compose project, one command. `make up` starts six services:
+
+| Service | What it does |
+| --- | --- |
+| `db` | Postgres 16 with pgvector. Stores matches, tables, the notes vectors and the agent's turn log. |
+| `ollama` | Local embedding server. Turns English note text into 768-number vectors; no cloud call. |
+| `backend` | Read-only FastAPI over Postgres. The only published port (`8000`); serves data to the tools and the dashboard. |
+| `mcp-server` | Seven read-only football tools over MCP HTTP. Translates a tool call into a backend request. |
+| `hermes` | Telegram gateway. Routes each message, applies the safety gate, calls one tool, answers, records the turn. |
+| `ingest` | Daily scheduler. Pulls football-data.org into the database and re-indexes notes that changed. |
+
+Only `backend` publishes a host port. `hermes` uses Telegram long polling, so it needs no inbound port. No
+service mounts the Docker socket, and the knowledge corpus is mounted read-only.
+
+Two volumes hold state: `pgdata` (the database) and `ollama-data` (the embedding model). `make down` keeps both;
+`docker compose down -v` deletes them, so use that only when you mean to start with an empty database.
+
+The tools profile runs on demand, not as part of `make up`: `migrate` applies Alembic, `tests` runs pytest,
+`models` pulls the embedding model, and `swagger` serves the OpenAPI file.
+
+### Build and run
+
+```bash
+make setup    # copy .env.example to .env and build the app image
+make build    # rebuild after changing db/, backend/, ingest/, agent/, mcp_server/, tests/ or notes
+make up       # db + ollama, migrations, backend, mcp-server, hermes, ingest
+make ask Q="where are Arsenal in the table?"
+make down     # stop everything, keep the data volumes
+```
+
+The containers bake the code in, so rebuild the image after a source change. On a machine where buildx cannot
+write its state directory, prefix the build with `DOCKER_BUILDKIT=0`.
+
 ## Commands
 
 ```bash
 make setup     # create .env from .env.example and build the app image
-make up        # start db, ollama, the backend API and the ingest scheduler; apply migrations
+make up        # start db, ollama, backend, mcp-server, the hermes gateway and ingest; migrate
 make down      # stop everything, keep the volumes
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the retained stack
