@@ -105,7 +105,7 @@ seven knowledge classes have a note today.
   precision/recall arithmetic without calling a model.
 - The run artifact holds every choice, timing, model digest, prompt version, sample hash and the egress note.
 
-## M4 outcome (2026-10-22)
+## Agent outcome (2026-10-22)
 
 The gate this record asked for is implemented in [decision 0006](0006-routing-safety-gate.md) and measured on a
 new independent 60-question holdout: gated macro-F1 0.979, adversarial 8/8, fabricated 4/4, refusal class 3/3,

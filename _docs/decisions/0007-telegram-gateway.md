@@ -1,4 +1,4 @@
-# 0007 — The M4 Telegram gateway is our own thin client
+# 0007 — The Telegram gateway is our own thin client
 
 - **Status:** Accepted (2026-10-22)
 - **Milestone:** M4
@@ -58,9 +58,9 @@ our gate, and its model provider would need a separate data-egress decision for 
   question, an instruction override, a scorer refusal and a vague question against the real router,
   MCP server, corpus and writer role.
 - Manual: `make ask Q="where are Arsenal in the table?"` and a rules question; Telegram smoke test is
-  the owner's step after setting a bot token (guide in `_docs/m4-guide.md`).
+  the owner's step after setting a bot token (guide in `_docs/setup-and-review.md`).
 
-## M4 extension (2026-10-22): the complexity split and `beam:cloud`
+## Extension (2026-10-22): the complexity split and `beam:cloud`
 
 The first M4 gateway had one answer path: one tool, one deterministic sentence. That cannot answer a question that
 combines standings with form, or several notes. The owner rejected it and chose a split rather than a rewrite:
@@ -80,5 +80,5 @@ is the composer; the planner uses the same model. The complexity extension added
 path; the separate scorer close added `get_top_scorers` over the existing read-only API.
 
 Verification: `tests/test_complex_path.py` (planner, composer, verifier, fallback), the complex cases in
-`tests/integration/test_gateway_stack.py`, and the real `make ask` runs recorded in the M4 guide. Prompt v2 was run
+`tests/integration/test_gateway_stack.py`, and the real `make ask` runs recorded in the setup and review guide. Prompt v2 was run
 on the frozen holdout as a regression check: gated macro-F1 0.960, all safety gates passed.

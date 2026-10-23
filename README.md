@@ -1,209 +1,117 @@
 # Hermes Football
 
-A Telegram bot that answers football questions **accurately** — from a local database refreshed every day from
-football-data.org, plus a small hand-written set of notes about the rules, which the bot searches rather than guesses
-from ([how that works, and how it is scored](_docs/rag.md)). When the data does not support an answer, it says so
-instead of guessing. Everything runs on your own machine in Docker; there is no server to rent.
+A Telegram agent that answers football questions accurately. Facts come from a local Postgres database refreshed
+daily from the free football-data.org API; rules and definitions come from a small hand-written notes corpus. Every
+answer says how old the data is and cites its source. When the data cannot support an answer, the bot says so.
 
-Status: **M1–M4 done; M5 next.** The routing gate is wired around `clef:cloud` and measured on an independent
-holdout (gated macro-F1 0.979 on prompt v1 and 0.960 on the prompt-v2 regression; 8/8 adversarial, 4/4
-fabricated, 3/3 refusal and 4/4 unsupported refused). M4 also
-adds the eight read-only MCP tools, the Telegram gateway, thirteen reviewed notes and 41 indexed chunks. The live
-Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same pipeline.
-The review bot is [@review_soccer_bot](https://t.me/review_soccer_bot) (`reviewsoccerbot`); it is the public bot for project review.
-The dashboard, eval scoreboard, CI/CD and observability are M5–M6.
+Status: **built through the Telegram agent; dashboard and operations next.** The routing gate is measured on an
+independent holdout, the MCP tools and Telegram gateway work end to end, and the notes corpus is indexed. The public
+review bot is [@review_soccer_bot](https://t.me/review_soccer_bot) (`reviewsoccerbot`).
 
-## How to read this README
+Try it: open the bot, send `/start`, then ask:
+- `where are Arsenal in the table?` — a database answer with a timestamp.
+- `how does the championship playoff work?` — a notes answer with a public link.
+- `Compare Arsenal's league position with their recent form and say whether they are in the title race.` — a
+  complex answer that combines two tools.
 
-One short section per course criterion, using the current names from the
-[course project brief](https://github.com/anammari/ai-dev-tools-zoomcamp/tree/main/project). Each starts with its
-status: **Met**, **Partly**, or **Open**. The evidence-and-gap table is
-[`_docs/scoping.md` §7](_docs/scoping.md#7-how-the-12-course-criteria-are-covered).
+Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#local-test-runbook).
 
-## 1. Problem Description
+## Repository map
 
-**Met.** Football answers are easy to find and often wrong: scores arrive late, tables go stale, and a confident
-model will invent both. This bot answers fixtures, results, standings and competition rules from the free
-football-data.org API plus a small hand-written corpus, and puts the data's own timestamp on every answer. When the
-data cannot support an answer — a missing competition, an unplayed match, a rule nobody wrote down — it says so.
-Predictions, betting tips and live scores are out of scope on purpose. The full problem statement is in
-[`_docs/scoping.md`](_docs/scoping.md) and [`_docs/product-spec.md`](_docs/product-spec.md).
-
-## 2. Product Specification
-
-**Partly.** [`_docs/product-spec.md`](_docs/product-spec.md) is the source of truth, [`openapi.yaml`](openapi.yaml)
-(v0.3.0) is the API contract, and [`_docs/scoping.md`](_docs/scoping.md) §8 is the milestone plan with acceptance
-criteria. The gap is a **public task tracker**: the course wants tasks with acceptance criteria and evidence that
-the agents used the tracker. The milestone plan and pull-request record are not a tracker; moving the plan to
-GitHub Issues is on the M6 list.
-
-## 3. Agent Team Specification
-
-**Met.** [`_docs/agent-team.md`](_docs/agent-team.md) defines the owner, the coding agent, the independent
-reviewers, the planned verifier, and the hand-off process: plan before code, one milestone branch, evidence not
-confidence, decisions recorded, the human signs policy changes. [`prompts/`](prompts/README.md) and
-[`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) make the process inspectable.
-
-## 4. Context Management
-
-**Met.** [`AGENTS.md`](AGENTS.md) is the entry point and links the modular docs: scope, product spec, data model,
-agent team, decisions, RAG notes, API contract, AI-usage report and the routing comparison. It stays short enough to
-read first, and a change to a hard rule lands in the same pull request as the behaviour.
-
-## 5. Application
-
-**Open.** The backend, Postgres, ingestion and the Telegram agent work end to end: 14 read-only operations, the
-MCP tool server, a routed gateway, freshness on every factual answer, a daily collector and a turn log. The
-dashboard does not exist yet, so this is not the full-stack application the criterion asks for. Backend:
-[`backend/`](backend); tools: [`mcp_server/`](mcp_server); agent: [`agent/gateway/`](agent/gateway); database:
-[`db/`](db), [`_docs/data-model.md`](_docs/data-model.md); collection: [`ingest/`](ingest).
-
-## 6. Testing
-
-**Partly.** Unit tests and integration tests exist and pass:
-`make test` (256 unit tests, no network) and `make itest` (the real Compose stack, from collection to the API). The
-gap is one command for both: the course asks for unit **and** integration tests with a single command, and these
-are deliberately separate so the fast suite stays fast. Contract drift is covered by
-[`tests/test_api_contract.py`](tests/test_api_contract.py), which fails on a renamed field, a hidden route, a reused
-`operationId`, a changed bound or an undeclared enum value.
-
-## 7. Containerization
-
-**Partly.** One `make up` starts `db`, `ollama`, `backend`, `mcp-server`, the `hermes` gateway and the ingest
-scheduler, with health checks and one published port; `make down` leaves no orphans. The gap is the dashboard,
-so "the full system" is not one command yet — [`docker-compose.yml`](docker-compose.yml), [`Makefile`](Makefile).
-
-## 8. Deployment
-
-**Partly.** The deployment is demo-scoped: the Telegram bot uses long polling (no inbound port) and the dashboard
-is exposed through a temporary Cloudflare tunnel for the recorded demo, then stopped ([`_docs/scoping.md`](_docs/scoping.md)
-§6). The steps are written down; no working public deployment is shown yet, so this is not the "reachable at a
-public URL" level.
-
-## 9. CI/CD
-
-**Open.** No workflows yet. The local gates are `make test` and `make lint`; pull requests do not run them
-automatically and there is no deploy or rollback path. `.github/workflows/` and the rollback drill are M6.
-
-## 10. Observability
-
-**Open.** No telemetry yet. The plan is OpenTelemetry from backend and ingest to a collector, Prometheus/Loki/Tempo,
-and a Grafana view keyed by the request id the API already returns; nothing is instrumented today.
-
-## 11. Alerting on User Impact
-
-**Open.** No alert yet. The planned alert is data staleness or repeated agent failures, with the impact in the
-payload; it lands with M6 and the observability stack.
-
-## 12. On-Call Agent
-
-**Open.** No agent wakes on an alert yet. The gateway answers and records turns, but the cron jobs (daily digest,
-owner report, weekly evals) and the `answer-verifier` subagent are M6; until then a human is on call.
-
-## Supporting work (not a separate criterion)
-
-- **Routing gate:** `clef:cloud` is wired behind a binding safety question. On a new 60-question independent holdout
-  the gated result is macro-F1 0.979 on prompt v1 (0.960 on the prompt-v2 regression), with 8/8 adversarial,
-  4/4 fabricated, 3/3 refusal and 4/4 unsupported refused, zero false refusals on the v1 run. [Result report](evals/routing/results/2026-10-21T21-42-43Z.md). The archived
-  comparison remains at [2026-10-19](evals/routing/results/2026-10-19T12-40-46Z.md).
-- **Agent and tools:** eight read-only MCP tools over HTTP, a Telegram gateway with two answer paths — one tool and a
-  deterministic composer for simple questions; a planner, several tools or notes, and `beam:cloud` composition with a
-  citation check for complex ones — an insert-only turn writer, and thirteen reviewed notes with 41 indexed chunks.
-- **API contract:** `openapi.yaml` is written before the backend, served verbatim at `/openapi.yaml`, and a test
-  fails when the two drift apart. Every agent-facing endpoint needs `API_AGENT_TOKEN`; with no token configured it
-  refuses everything.
-- **Data discipline:** the collector paces on the provider's own headers (10 requests/minute), stores bronze
-  payloads, upserts idempotently and writes a run ledger. The retained volume holds 13 competitions, ~9.9k matches
-  and standings from a real run.
-- **Security:** the agent's data path is read-only; no Docker socket; the corpus is mounted read-only; secrets stay
-  in `.env`; Telegram input is treated as untrusted. The capability and threat tables are M6 artifacts.
-- **Reproducibility:** `make setup`, `make up`, `make test` and `make itest` are the entry points; the working-copy
-  and branch rules are in [`AGENTS.md`](AGENTS.md).
-
-## Milestone tracker
-
-| M# | Item | Stage |
-| --- | --- | --- |
-| M0 | Empty repo, scope, product spec, API contract | Done |
-| M1 | Database schema and first migration, notes table with vectors, corpus manifest and local embedding | Done |
-| M2 | Daily collection from football-data.org: run ledger, idempotent loads, re-indexing changed notes | Done |
-| M3 | Backend API against `openapi.yaml`: fourteen read-only operations, read-only role, freshness report, drift test | Done |
-| M3b | Routing comparison: `tev1:0.8b` (local) vs `clef:cloud`, scored on precision/recall; clef selected | Done |
-| M4 | Telegram agent: `SOUL.md`, first notes reviewed, clef routing wired behind the safety gate, refusal and freshness behaviour | **Done** |
-| M5 | Dashboard and eval scoreboard, including routing precision/recall over time | **Next** |
-| M6 | CI/CD, observability, alerting, on-call agent, security artifacts and the AI-usage report close-out | Later |
-
-Each milestone's meaning and "done when" are in [`_docs/scoping.md`](_docs/scoping.md) §8. The current gaps against
-the 12 criteria are in [`_docs/scoping.md`](_docs/scoping.md) §7.
-
-## Project documents
-
-- [`_docs/scoping.md`](_docs/scoping.md) — start here: what we are building, what the free API allows, how the 12
-  criteria are covered, and the milestone plan
-- [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, data model
-- [`_docs/agent-team.md`](_docs/agent-team.md) — the agent roles and the hand-off process
-- [`_docs/data-model.md`](_docs/data-model.md) — the tables, how they map onto the contract, and what is still open
-- [`_docs/rag.md`](_docs/rag.md) — the notes the bot can search: chunking, embedding, storage and scoring
-- [`_docs/notes-sources.md`](_docs/notes-sources.md) — the checked source URLs behind every note, one row per planned file
-- [`openapi.yaml`](openapi.yaml) — the API contract, written before the code
-- [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, routing model
-- [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what was delegated to agents, and what a human caught
-- [`_docs/m4-guide.md`](_docs/m4-guide.md) — what M4 built, and how to launch and test the agent
-- [M4 local test runbook](_docs/m4-guide.md#local-test-runbook) — ordered steps for a reviewer to test the simple and
-  complex database and notes paths, refusals, the turn log and Telegram
-- [`prompts/`](prompts/README.md) — the versioned prompt bank
-- [`evals/routing/results/`](evals/routing/results/) — the routing comparison's evidence
-
-## Docker services
-
-One Compose project, one command. `make up` starts six services:
-
-| Service | What it does |
-| --- | --- |
-| `db` | Postgres 16 with pgvector. Stores matches, tables, the notes vectors and the agent's turn log. |
-| `ollama` | Local embedding server. Turns English note text into 768-number vectors; no cloud call. |
-| `backend` | Read-only FastAPI over Postgres. The only published port (`8000`); serves data to the tools and the dashboard. |
-| `mcp-server` | Seven read-only football tools over MCP HTTP. Translates a tool call into a backend request. |
-| `hermes` | Telegram gateway. Routes each message, applies the safety gate, answers on the simple or complex path, records the turn. |
-| `ingest` | Daily scheduler. Pulls football-data.org into the database and re-indexes notes that changed. |
-
-Only `backend` publishes a host port. `hermes` uses Telegram long polling, so it needs no inbound port. No
-service mounts the Docker socket, and the knowledge corpus is mounted read-only.
-
-Two volumes hold state: `pgdata` (the database) and `ollama-data` (the embedding model). `make down` keeps both;
-`docker compose down -v` deletes them, so use that only when you mean to start with an empty database.
-
-The tools profile runs on demand, not as part of `make up`: `migrate` applies Alembic, `tests` runs pytest,
-`models` pulls the embedding model, and `swagger` serves the OpenAPI file.
-
-### Build and run
-
-```bash
-make setup    # copy .env.example to .env and build the app image
-make build    # rebuild after changing db/, backend/, ingest/, agent/, mcp_server/, tests/ or notes
-make up       # db + ollama, migrations, backend, mcp-server, hermes, ingest
-make ask Q="where are Arsenal in the table?"
-make down     # stop everything, keep the data volumes
+```text
+.
+├── README.md, AGENTS.md, CLAUDE.md        entry point, agent rules, operational rules
+├── openapi.yaml                          API contract, v0.3.0
+├── docker-compose.yml, Dockerfile, Makefile
+├── _docs/
+│   ├── setup-and-review.md               launch, test, review, troubleshooting
+│   ├── scoping.md                        problem, data limits, criteria map, plan
+│   ├── product-spec.md                   requirements and acceptance criteria
+│   ├── rag.md                            notes corpus, retrieval and evaluation
+│   ├── data-model.md                     tables and open data-model items
+│   ├── notes-sources.md                  public source URL per note
+│   ├── agent-team.md                     roles and hand-offs
+│   ├── ai-usage-report.md                delegated, reviewed, rejected, evidence
+│   └── decisions/                        one-page records 0001–0007
+├── backend/                              FastAPI read-only API over Postgres
+├── db/                                   SQLAlchemy models, Alembic migrations
+├── ingest/                               football-data.org client, loaders, scheduler, knowledge index
+├── mcp_server/                           eight read-only MCP tools over HTTP
+├── agent/                                router, hard safety gate, planner/composer, turn writer, Telegram gateway
+├── hermes/                               SOUL.md, config.yaml, notes and manifest
+├── prompts/                              versioned prompt bank
+├── evals/routing/                        routing holdout and results
+└── tests/                                unit and integration tests
 ```
 
-The containers bake the code in, so rebuild the image after a source change. On a machine where buildx cannot
-write its state directory, prefix the build with `DOCKER_BUILDKIT=0`.
+`frontend/` (dashboard), `observability/`, `security/` and `ops/` are planned, not present yet.
 
-## Commands
+## How the 12 criteria are covered
+
+| # | Criterion | Status | Evidence |
+| --- | --- | --- | --- |
+| 1 | Problem description | Met | [`_docs/scoping.md`](_docs/scoping.md) §1–3 |
+| 2 | Product specification | Partly | [`_docs/product-spec.md`](_docs/product-spec.md), [`openapi.yaml`](openapi.yaml), [`_docs/scoping.md`](_docs/scoping.md) §8. Gap: no public task tracker |
+| 3 | Agent team | Met | [`_docs/agent-team.md`](_docs/agent-team.md), [`prompts/`](prompts/README.md), [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) |
+| 4 | Context management | Met | [`AGENTS.md`](AGENTS.md), [`_docs/`](_docs), decisions |
+| 5 | Application | Open | Backend, MCP tools, agent and ingestion work; dashboard missing. Start at [`backend/`](backend), [`agent/gateway/`](agent/gateway), [`mcp_server/`](mcp_server) |
+| 6 | Testing | Partly | `make test` **358 passed**, `make itest` **38 passed**, lint clean. No e2e until the dashboard exists |
+| 7 | Containerization | Partly | `make up` starts six services with health checks; dashboard missing. [`docker-compose.yml`](docker-compose.yml) |
+| 8 | Deployment | Partly | Telegram long polling; dashboard tunnel planned, no public deployment yet |
+| 9 | CI/CD | Open | Local gates only; workflows are next |
+| 10 | Observability | Open | OTel stack planned |
+| 11 | Alerting | Open | Staleness/failure alert planned |
+| 12 | On-call agent | Open | Cron digests and verifier planned |
+
+The detailed map with gaps is [`_docs/scoping.md`](_docs/scoping.md#5-how-the-12-course-criteria-are-covered).
+
+## The agent in one minute
+
+1. `clef:cloud` reads the message and labels the road (`tool`, `knowledge`, `clarify`, `refuse`), the tool, safety,
+   and `simple` or `complex`.
+2. Any safety label other than `safe` refuses before a tool or note is touched.
+3. Simple: one tool or one note retrieval, deterministic answer.
+4. Complex: planner chooses up to four tools, or retrieves eight notes, and `beam:cloud` composes with a citation
+   check and a deterministic fallback.
+5. The turn is written to `agent_turns` through an insert-only role, then sent.
+
+Only the user message goes to `clef:cloud`. Simple answers stay local; complex answers send the collected results to
+`beam:cloud`. Embeddings and note retrieval stay local.
+
+## Run it
+
+Prerequisite: Docker, repository, `.env` (`make setup` once).
 
 ```bash
-make setup     # create .env from .env.example and build the app image
-make up        # start db, ollama, backend, mcp-server, the hermes gateway and ingest; migrate
-make down      # stop everything, keep the volumes
-make test      # unit tests (fast, no network)
-make itest     # integration tests against the retained stack
-make itest-isolated # same tests against a throwaway Compose project
-make lint      # ruff over the repository
-make ingest    # trigger one ingestion run manually
-make ask Q="where are Arsenal in the table?" # ask the agent through the real pipeline
-make score-delay [MATCH_ID=…] # measure the provider's data age for a live or recent match
-make logs S=hermes # tail the gateway
+make up
+make ask Q="how does the championship playoff work?"
+make test
+make lint
+make itest
+make check-notes
+make down
 ```
 
-`make e2e` and `make eval` arrive with the dashboard and the eval harness (M5). On a machine where buildx cannot
-write its state directory, prefix a build with `DOCKER_BUILDKIT=0`.
+One `make up` starts `db`, `ollama`, `backend`, `mcp-server`, `hermes` and `ingest`. Only `backend` publishes port
+`8000`. Review bot setup and the Telegram test steps are in
+[`_docs/setup-and-review.md`](_docs/setup-and-review.md).
+
+## Documents
+
+- [`_docs/setup-and-review.md`](_docs/setup-and-review.md) — launch, reviewer test, owner Telegram setup
+- [`_docs/scoping.md`](_docs/scoping.md) — problem, data limits, criteria map, plan
+- [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, milestones
+- [`_docs/rag.md`](_docs/rag.md) — notes, chunking, embeddings, retrieval
+- [`_docs/data-model.md`](_docs/data-model.md) — tables and open items
+- [`_docs/notes-sources.md`](_docs/notes-sources.md) — source URLs for every note
+- [`_docs/agent-team.md`](_docs/agent-team.md) — roles and process
+- [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what agents did, what humans caught
+- [`_docs/decisions/`](_docs/decisions/README.md) — decisions not to re-litigate
+- [`evals/routing/results/`](evals/routing/results/) — routing evidence
+
+## Limits, stated
+
+- Dashboard, golden-question scoreboard, CI/CD, observability and security artifacts are M5/M6.
+- No multi-turn memory; each message routes on its own.
+- Top-scorer data is served; lineups, odds, live scores and xG are not available on the free tier.
+- The free provider is delayed; never presented as live.

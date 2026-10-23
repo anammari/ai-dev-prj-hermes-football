@@ -91,7 +91,7 @@ The provider's own pages and the live API do not agree, and the notes must not p
 | --- | --- | --- | --- |
 | Free competitions | 12 ([pricing][fd-pricing], [coverage][fd-coverage]) | **13**, the extra being the Copa Libertadores | The list is plan-filtered and checked live; never hardcode 12 |
 | Squads | Paid ("Deep Data", €29/mo) | Returned on the free key (24 Arsenal players, 48 Fluminense) | Available today, but the plan page says otherwise; treat as plan-dependent |
-| Top scorers | Paid ("Deep Data") | Returned on the free key | Stored; exposed by `get_top_scorers` since M4 |
+| Top scorers | Paid ("Deep Data") | Returned on the free key | Stored; exposed by `get_top_scorers` |
 | Odds | Paid add-on | Field present but only "activate Odds-Package" | Never quote odds |
 | Head-to-head counts | Published by the endpoint | Win/draw/loss counts wrong (0–0–0 for a pair with three meetings) | Count meetings from stored results |
 | Score delay | Not documented | About 1.5–3 minutes; median 104 s over ten polls on match 555032 | Quote the measurement and `make score-delay`; never call the score live |
@@ -121,9 +121,9 @@ The provider's own pages and the live API do not agree, and the notes must not p
    the points; the tiebreak criteria are Article 10 of the RFEF's 2026/27 competition rules (Circular 84).
    Cite RFEF, not the LaLiga page, for the rule itself.
 
-## How this becomes an M4 task
+## How the sources are enforced
 
-- `_docs/scoping.md` §8, M4 "done when": every note's sources are listed and checked here.
+- `_docs/scoping.md` §6, agent stage: every note's sources are listed and checked here.
 - `_docs/product-spec.md` `R-F6.1a`: every note's sources are listed with URL, publisher, season and check date.
 - `AGENTS.md` next step 4: the notes are written against this table.
 - Each note is reviewed like code in the same pull request, and the PR links the row it used.

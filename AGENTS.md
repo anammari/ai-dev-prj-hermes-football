@@ -14,7 +14,7 @@ Everything runs locally in **Docker Compose**. There is no VPS and no cloud host
 interface is the Telegram bot itself, and the dashboard is exposed through a Cloudflare tunnel.
 
 Course context: this is the final project for the DataTalks.Club **AI Dev Tools Zoomcamp 2026**. The 12 project
-criteria and how each is covered live in `_docs/scoping.md` §7 — that mapping is a deliverable, not decoration.
+criteria and how each is covered live in `_docs/scoping.md` §5 — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
 Status: **M1–M4 done; M5 next.** M4 wired the selected router behind a binding safety gate, measured it on a new
@@ -28,8 +28,8 @@ pipeline. M3b compared two model-first routers on the same 85 hand-labelled ques
 routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
 and note text stay local. tev1 is rejected. Selection is not adoption: the refusal gap (3/5 across all 85) and the
 0.90 target were the M4 gate, now measured on a new independent holdout (0.979 on v1, 0.960 on v2). The numbers are in
-`_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
-pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
+`_docs/scoping.md` §6 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
+pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 15
 read-only operations against `openapi.yaml` (v0.3.0), the freshness report, the contract's own error semantics, and a
 test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
 document, a reused `operationId`, a changed parameter bound, and an enum value the contract does not list. An
@@ -71,8 +71,8 @@ Supporting, all in the same Compose project: `observability/` (OTel collector ->
 ```text
 README.md               product-spec.md        openapi.yaml      docker-compose.yml   Makefile
 AGENTS.md               .env.example          Dockerfile
-_docs/                  scoping.md (12-criteria map), product-spec.md, architecture.md,
-                        data-model.md, agent-team.md, decisions/, ai-usage-report.md
+_docs/                  setup-and-review.md, scoping.md (criteria map), product-spec.md, rag.md,
+                        data-model.md, notes-sources.md, agent-team.md, decisions/, ai-usage-report.md
 db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
 backend/                FastAPI app
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
@@ -209,10 +209,9 @@ configured it refuses everything instead of opening up. It reads through the `ag
 (`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
 
 Next, in order:
-1. M4 owner step: create a Telegram bot with @BotFather, set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS` and
-   `TELEGRAM_ADMIN_USERS`, recreate the `hermes` service and run the smoke script in
-   [`_docs/m4-guide.md`](_docs/m4-guide.md), including one simple and one complex question. The pipeline itself is
-   already exercised by `make ask` and the integration suite.
+1. Telegram is live: the public review bot is [@review_soccer_bot](https://t.me/review_soccer_bot), and the reviewer
+   steps are in [`_docs/setup-and-review.md`](_docs/setup-and-review.md). The main bot remains allowlisted. The pipeline
+   is also exercised by `make ask` and the integration suite.
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
