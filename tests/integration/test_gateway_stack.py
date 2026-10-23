@@ -22,6 +22,14 @@ def runtime() -> Runtime:
     if not settings.chat_hash_salt:
         pytest.skip("CHAT_HASH_SALT is unset: the test would not record a chat hash")
     built = build_runtime(settings)
+    try:
+        freshness = built.tools.call("get_data_freshness", {})
+    except Exception:
+        built.close()
+        pytest.skip("the tool server is not reachable")
+    if not freshness.get("competitions"):
+        built.close()
+        pytest.skip("this database holds no ingested data: run `make ingest` or use the retained volume")
     yield built
     built.close()
 

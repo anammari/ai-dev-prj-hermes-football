@@ -39,7 +39,9 @@ def hash_chat_id(chat_id: int | str, salt: str | None) -> str:
 
 
 def create_writer_engine(dsn: str) -> Engine:
-    kwargs: dict = {"future": True, "pool_pre_ping": True}
+    # Bound values include the user message and the answer. SQLAlchemy renders them in driver errors
+    # by default, and the gateway logs exceptions; hide them so a failed insert cannot leak a turn.
+    kwargs: dict = {"future": True, "pool_pre_ping": True, "hide_parameters": True}
     if dsn.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     return create_engine(dsn, **kwargs)

@@ -83,7 +83,7 @@ itest-isolated: ## Integration tests against a throwaway Postgres + Ollama (own 
 	  $(ISOLATED) docker compose up -d db ollama; \
 	  $(ISOLATED) docker compose --profile tools run --rm models; \
 	  $(ISOLATED) docker compose --profile tools run --rm migrate; \
-	  $(ISOLATED) docker compose up -d backend; \
+	  $(ISOLATED) docker compose up -d backend mcp-server; \
 	  $(ISOLATED) docker compose --profile tools run --rm \
 	    -e BACKEND_BASE_URL=http://backend:8000 \
 	    tests pytest -q -m integration

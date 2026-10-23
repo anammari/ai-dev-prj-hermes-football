@@ -152,7 +152,7 @@ def head_to_head(payload: dict) -> tuple[str, bool]:
 def freshness(payload: dict) -> tuple[str, bool]:
     rows = payload.get("competitions") or []
     as_of = _utc(payload.get("as_of"))
-    prefix = f"The newest stored data is as of {as_of:%Y-%m-%d %H:%M} UTC." if as_of else "Freshness is unknown."
+    prefix = f"Freshness report generated at {as_of:%Y-%m-%d %H:%M} UTC." if as_of else "Freshness is unknown."
     if not rows:
         return prefix, False
     parts = []

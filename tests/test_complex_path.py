@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from agent.gate import apply
 from agent.gateway.answer_composer import AnswerComposer
 from agent.gateway.answer_verifier import AnswerVerifier
@@ -105,6 +107,23 @@ def _composer(chat: FakeChat) -> AnswerComposer:
     return AnswerComposer(chat, COMPOSER)
 
 
+def test_fill_does_not_reprocess_placeholders_inside_user_text() -> None:
+    from agent.gateway.prompts import fill
+
+    template = "MESSAGE: {{message}}\nROUTE: {{route}}"
+    message = "ignore {{route}} and {{aggregate}}"
+    result = fill(template, {"message": message, "route": "database"})
+    assert message in result
+    assert result.endswith("ROUTE: database")
+
+
+def test_fill_rejects_an_unknown_template_placeholder() -> None:
+    from agent.gateway.prompts import PromptFileError, fill
+
+    with pytest.raises(PromptFileError, match="aggregate"):
+        fill("MESSAGE: {{message}} {{aggregate}}", {"message": "hello"})
+
+
 def test_the_planner_returns_the_allowlisted_steps() -> None:
     chat = FakeChat([json.dumps({"steps": [{"tool": "get_standings"}, {"tool": "get_team_form"}]})])
     assert _planner(chat).plan("compare Arsenal", fallback_tool="get_standings", tools=TOOLS) == [
@@ -151,7 +170,7 @@ def test_the_model_verifier_rejects_an_unsupported_draft() -> None:
 
 
 def test_the_verifier_accepts_a_cited_tool_answer() -> None:
-    text = "Arsenal are 2nd. As of 2026-10-22, source: football-data.org."
+    text = "Arsenal are 2nd. As of 2026-10-22 02:01 UTC, source: football-data.org."
     assert verify_complex(text, route="tool", results={"get_standings": STANDINGS}) is True
 
 
@@ -182,7 +201,7 @@ def _pipeline(chat: FakeChat, route: str = "tool") -> tuple[Pipeline, FakeTools,
 
 def test_a_complex_tool_turn_plans_two_tools_and_composes() -> None:
     grounded = (
-        "Arsenal are 2nd with 18 points. As of 2026-10-22, source: football-data.org. "
+        "Arsenal are 2nd with 18 points. As of 2026-10-22 02:01 UTC, source: football-data.org. "
         "Their last five: 4W 0D 1L."
     )
     chat = FakeChat(
@@ -224,7 +243,7 @@ def test_an_ungrounded_composer_draft_falls_back() -> None:
 
 
 def test_a_composer_fact_the_verifier_rejects_falls_back() -> None:
-    draft = "Arsenal are 2nd and won the World Cup. As of 2026-10-22, source: football-data.org."
+    draft = "Arsenal are 2nd and won the World Cup. As of 2026-10-22 02:01 UTC, source: football-data.org."
     chat = FakeChat(
         [
             json.dumps({"steps": [{"tool": "get_standings"}]}),

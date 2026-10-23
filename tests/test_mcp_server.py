@@ -188,6 +188,13 @@ def test_resolver_finds_a_club_nickname_and_its_competition() -> None:
     assert registry.team_competition(spurs.id).code == "PL"
 
 
+def test_resolver_finds_an_ordinary_short_club_name() -> None:
+    registry = _ctx().cache.get()
+    brighton = registry.find_team("What's Brighton's recent run been like")
+    assert brighton is not None
+    assert brighton.id == 397
+
+
 def test_resolver_finds_a_competition_by_alias() -> None:
     registry = _ctx().cache.get()
     assert registry.find_competition("where are Napoli in Serie A?").code == "SA"
@@ -312,6 +319,14 @@ def test_tools_call_returns_text_content() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["focus"]["team"] == "Arsenal FC"
     assert response["result"]["isError"] is False
+
+
+def test_a_missing_required_argument_is_an_invalid_params_error() -> None:
+    response = _rpc(
+        _client(),
+        {"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "get_standings", "arguments": {}}},
+    ).json()
+    assert response["error"]["code"] == -32602
 
 
 def test_an_unknown_tool_is_a_protocol_error() -> None:

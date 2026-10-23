@@ -236,7 +236,8 @@ independent sample.
 The rest of M4: eight read-only tools over MCP HTTP (`mcp_server/`), a Telegram gateway (`agent/gateway/`) whose
 simple path uses one tool and the deterministic composer, whose complex path plans several tools or retrieves
 several notes and composes with `beam:cloud`, and a citation verifier before sending. Thirteen reviewed notes in
-English, each with a checked source URL (`_docs/notes-sources.md`), and 41 chunks in pgvector. The four
+English, each with a checked source URL (`_docs/notes-sources.md`), and 41 chunks in pgvector. The UCL
+qualification note was corrected after review: domestic cups do not carry a Champions League place. The four
 `unsupported` holdout questions predate the scorer tool: a scorer question now routes `tool` to
 `get_top_scorers`, so those old labels are historical, not a current gate. The gateway records
 every turn through the insert-only `agent_writer` role. The live Telegram smoke test is the owner's step after

@@ -101,5 +101,6 @@ def test_the_writer_uses_a_separate_engine(migrated_url: str, engine: Engine) ->
     log = TurnLog(migrated_url)
     try:
         assert log._engine is not engine
+        assert log._engine.hide_parameters is True
     finally:
         log.close()

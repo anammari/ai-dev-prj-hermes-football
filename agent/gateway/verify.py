@@ -8,12 +8,18 @@ deterministic composer.
 
 from __future__ import annotations
 
+from datetime import datetime
 
-def _stamp_date(payload: dict) -> str | None:
+
+def _stamp_parts(payload: dict) -> tuple[str, str] | None:
     raw = payload.get("data_as_of") or payload.get("as_of")
     if not raw:
         return None
-    return str(raw)[:10]
+    try:
+        moment = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment.strftime("%Y-%m-%d"), moment.strftime("%H:%M")
 
 
 def verify_complex(text: str, *, route: str, results: dict) -> bool:
@@ -21,10 +27,12 @@ def verify_complex(text: str, *, route: str, results: dict) -> bool:
         return False
     lowered = text.lower()
     if route == "tool":
-        dates = [date for date in (_stamp_date(payload) for payload in results.values()) if date]
-        if not dates:
+        stamps = [stamp for stamp in (_stamp_parts(payload) for payload in results.values()) if stamp]
+        if not stamps:
             return False
-        return "source: football-data.org" in lowered and any(date in text for date in dates)
+        return "as of" in lowered and "source: football-data.org" in lowered and any(
+            date in text and time in text for date, time in stamps
+        )
     if route == "knowledge":
         files = []
         for payload in results.values():

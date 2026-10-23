@@ -11,6 +11,7 @@ Authentication reuses the backend's agent token (`MCP_SERVER_TOKEN` if set, othe
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Annotated
 
@@ -69,6 +70,9 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
             return False
         return header == f"Bearer {expected}"
 
+    def handle_batch(messages: list) -> list[dict]:
+        return [response for response in (handle(item) for item in messages) if response is not None]
+
     def handle(message: object) -> dict | None:
         if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
             return _error(None, -32600, "invalid JSON-RPC request")
@@ -110,7 +114,7 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
                 return _error(request_id, -32602, "arguments must be an object")
             try:
                 payload = call(context(), name, arguments)
-            except ValueError as error:
+            except (ValueError, TypeError) as error:
                 return _error(request_id, -32602, str(error))
             except BackendError as error:
                 payload = {"error": "backend_unavailable", "message": str(error)}
@@ -134,9 +138,9 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
         except ValueError:
             return JSONResponse(_error(None, -32700, "parse error"), status_code=200)
         if isinstance(body, list):
-            responses = [response for response in (handle(item) for item in body) if response is not None]
+            responses = await asyncio.to_thread(handle_batch, body)
             return JSONResponse(responses) if responses else Response(status_code=202)
-        response = handle(body)
+        response = await asyncio.to_thread(handle, body)
         if response is None:
             return Response(status_code=202)
         return JSONResponse(response)

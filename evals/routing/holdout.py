@@ -195,9 +195,10 @@ def score(records: list[dict], *, route_key: str, tool_key: str) -> dict:
 
     for record in records:
         expected = record["expected_route"]
-        predicted = record[route_key]
+        errored = bool(record.get("error"))
+        predicted = None if errored else record[route_key]
         latencies.append(float(record["latency_ms"]))
-        errors += int(bool(record.get("error")))
+        errors += int(errored)
         correct += int(predicted == expected)
 
         if predicted in counts:

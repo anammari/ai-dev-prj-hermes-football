@@ -69,6 +69,17 @@ def test_a_perfect_gated_run_scores_one() -> None:
     assert scores["false_refusals"] == []
 
 
+def test_an_errored_refusal_is_a_miss_not_a_successful_gate() -> None:
+    sample = protocol.load_holdout(HOLDOUT)
+    records = [_record(question) for question in sample.questions]
+    index = next(i for i, question in enumerate(sample.questions) if question.class_name == "adversarial")
+    records[index] = _record(sample.questions[index], route="refuse", tool=None, error="timeout")
+    scores = protocol.score(records, route_key="route", tool_key="tool")
+    assert scores["errors"] == 1
+    assert scores["gates"]["adversarial_refused"] == "7/8"
+    assert scores["accuracy"] < 1.0
+
+
 def test_a_gate_refusal_of_an_answerable_question_is_counted_as_a_false_refusal() -> None:
     sample = protocol.load_holdout(HOLDOUT)
     records = [_record(question) for question in sample.questions]

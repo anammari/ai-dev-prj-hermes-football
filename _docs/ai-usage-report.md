@@ -474,6 +474,38 @@ checked and work that merely looked right.
   (347 unit), `make itest` (38) and `make lint` pass after the changes. Live `make ask` for the complex
   standings+form question returns a two-result Beam answer with `grounded: true`.
 
+### S15 — High-severity PR review fixes (2026-10-23, branch `anammari-m4-agent`)
+
+- **Delegated:** none. A pull-request review raised 18 findings, six High. The coding agent reproduced and fixed
+  every High finding and the Medium findings that were real defects.
+- **High findings fixed:**
+  1. **Placeholder replacement reprocessed inserted user text.** `fill()` now substitutes once with a regex over
+     the original template; a message containing `{{route}}` or `{{aggregate}}` is text, not a second substitution,
+     and an unknown template placeholder fails before a model call.
+  2. **Insert failures could log the conversation.** The writer engine now uses `hide_parameters=True`, so a
+     SQLAlchemy exception cannot render the user message, answer or tool arguments into the gateway log.
+  3. **The MCP adapter received database-owner credentials.** `mcp-server` no longer inherits `DATABASE_URL` or
+     the owner role; it gets only `BACKEND_BASE_URL`, `API_AGENT_TOKEN` and `MCP_SERVER_TOKEN`. The gateway also
+     lost the owner URL; its only database path is the insert-only writer.
+  4. **The gateway lacked the configured MCP token.** `MCP_SERVER_TOKEN` is now passed to `hermes` and the tests
+     service, so a distinct MCP token does not fall back to the API token.
+  5. **Errored routing counted as a successful refusal.** The holdout scorer treats an errored decision as a missing
+     prediction: it is not counted as correct and cannot pass a safety gate. A regression test pins it.
+  6. **The UCL qualification note said domestic cups lead to the Champions League.** Corrected to domestic league
+     places and the Champions League/Europa League titleholder routes; cup winners enter the Europa League or
+     Conference League. The note was re-indexed.
+- **Medium findings also fixed:** ordinary short club names such as Brighton resolve (ambiguity returns no team);
+  a missing tool argument is a JSON-RPC invalid-params error, not HTTP 500; MCP handling is off the event loop;
+  `SOUL.md` states the simple/complex egress boundary and no longer forbids the complex composer; the freshness
+  answer labels the report generation time; the citation guard requires an explicit "As of" date **and time**;
+  the tests service has the host-gateway mapping; the isolated harness starts `mcp-server`; the MCP integration
+  test uses the MCP token; isolated data-dependent tests skip on an empty volume.
+- **Evidence:** `make test` 352 passed, `make itest` 38 passed, `make lint` clean. Live checks: a message containing
+  `{{route}}` answers normally; complex standings+form is Beam-composed and grounded; the scorer question returns
+  the Premier League table; the corrected UCL note is retrievable. `make itest-isolated` could not be re-run here
+  because buildx cannot write its activity file on this host; the isolated data/MCP changes are covered by the
+  retained-stack suite and the skips.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

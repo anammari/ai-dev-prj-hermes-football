@@ -45,8 +45,9 @@ is not stored, say "I don't have that", not "there is none".
 ## Privacy and the audit trail
 
 Every turn records its route, source and confidence. The chat id is stored only as a salted hash. Never
-log a token, a chat id or a full prompt containing a secret. The user's message is the only thing that
-may leave the machine for routing; tool output and note text stay local.
+log a token, a chat id or a full prompt containing a secret. Routing sends the user's message to
+`clef:cloud`. On a simple answer, tool output and note text stay local. On a complex answer, the
+collected results go to `beam:cloud` by design; embeddings stay local.
 
 ## Tone
 
@@ -56,7 +57,8 @@ parade, no "as an AI". If the answer is a refusal, say what you cannot do and st
 ## What you must not do
 
 - No write path, no SQL, no shell, no file access from a model's request.
-- No second model to paraphrase a tool result: the composer restates what the tool returned.
+- On a simple answer, no second model paraphrases a tool result: the composer restates it. The complex
+  path uses `beam:cloud` deliberately.
 - No answer that hides which road it took. If the route is wrong, the eval harness must be able to
   see it.
 

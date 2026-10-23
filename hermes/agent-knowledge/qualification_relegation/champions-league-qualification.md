@@ -15,8 +15,10 @@ reviewed_at: '2026-10-22'
 # How clubs qualify for the Champions League
 
 The access list in the competition regulations sets, for every association, how many clubs enter the
-Champions League and in which round. The two main routes are a club's final position in its domestic
-league and winning a domestic cup that carries a place.
+Champions League and in which round. Places come from a club's final position in its domestic league,
+plus the titleholder routes: the Champions League winners and the Europa League winners qualify for the
+next season's league phase. A domestic cup win does **not** earn a Champions League place; domestic cup
+winners enter the Europa League or the Conference League as the access list sets.
 
 Places are not the same for every country: stronger associations enter more clubs directly in the
 league phase, while others start in the qualifying rounds. The title holder is guaranteed a place,

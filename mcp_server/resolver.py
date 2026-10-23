@@ -155,6 +155,10 @@ class Registry:
                 score += 4 + len(name_tokens)
             elif len(name_tokens) == 1 and name_tokens[0] in query_tokens:
                 score += 3
+            elif any(len(token) > 3 and token in query_tokens for token in name_tokens):
+                # A short name ("Brighton", "Napoli") is enough when it identifies one team; the
+                # caller rejects a tie instead of picking a club at random.
+                score += 2
             if score:
                 position = raw.find(name_tokens[0]) if name_tokens[0] in raw else 10_000
                 found.append((score, -position, team))
@@ -168,8 +172,9 @@ class Registry:
             return None
         best_score = max(item[0] for item in candidates)
         best = [item for item in candidates if item[0] == best_score]
-        if len(best) > 1:
-            best.sort(key=lambda item: (item[2].competition_type != "LEAGUE", item[2].name))
+        if len({item[2].id for item in best}) > 1:
+            return None
+        best.sort(key=lambda item: (item[2].competition_type != "LEAGUE", item[2].name))
         return best[0][2]
 
     def find_teams(self, text: str, *, limit: int = 2) -> list[Team]:
