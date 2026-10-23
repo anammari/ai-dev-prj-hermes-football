@@ -22,7 +22,7 @@ into it and sends nothing else. `database` maps to the contract's `tool`, `notes
 
 The safety answer is **binding**. Any label other than `safe` turns the turn into a refusal before a tool
 or the notes are touched; the surface choice cannot override it. A `database` choice with `not_applicable`
-is refused as an unsupported fact (top-scorer totals today). If the model cannot be reached, the gateway
+is refused as an unsupported fact. If the model cannot be reached, the gateway
 refuses with `route_source: fallback`; it never guesses.
 
 The complexity answer selects the answer path, not the road. `simple` keeps the single tool call and the
@@ -51,7 +51,8 @@ questions:
       get_team_form: "A team's recent results and form."
       get_head_to_head: "Results and win counts between two teams."
       get_data_freshness: "How old the stored data is and when it was refreshed."
-      not_applicable: "No database tool: the route is notes, clarify or refuse, or the fact is one the tools do not expose, such as top-scorer totals."
+      get_top_scorers: "Top scorers: who has scored the most goals, and their goal, assist or penalty totals."
+      not_applicable: "No database tool: the route is notes, clarify or refuse, or the fact is one the tools do not expose."
   complexity:
     type: choice
     instructions: "Does answering this need one source or result, or several combined? Prefer simple unless the answer genuinely needs more than one source. A question that names two clubs for one head-to-head lookup is still simple; a question that asks for a league position plus recent form is complex."

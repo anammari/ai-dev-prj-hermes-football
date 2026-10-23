@@ -8,7 +8,7 @@ instead of guessing. Everything runs on your own machine in Docker; there is no 
 Status: **M1–M4 done; M5 next.** The routing gate is wired around `clef:cloud` and measured on an independent
 holdout (gated macro-F1 0.979 on prompt v1 and 0.960 on the prompt-v2 regression; 8/8 adversarial, 4/4
 fabricated, 3/3 refusal and 4/4 unsupported refused). M4 also
-adds the seven read-only MCP tools, the Telegram gateway, thirteen reviewed notes and 41 indexed chunks. The live
+adds the eight read-only MCP tools, the Telegram gateway, thirteen reviewed notes and 41 indexed chunks. The live
 Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same pipeline.
 The dashboard, eval scoreboard, CI/CD and observability are M5–M6.
 
@@ -31,7 +31,7 @@ Predictions, betting tips and live scores are out of scope on purpose. The full 
 ## 2. Product Specification
 
 **Partly.** [`_docs/product-spec.md`](_docs/product-spec.md) is the source of truth, [`openapi.yaml`](openapi.yaml)
-(v0.2.0) is the API contract, and [`_docs/scoping.md`](_docs/scoping.md) §8 is the milestone plan with acceptance
+(v0.3.0) is the API contract, and [`_docs/scoping.md`](_docs/scoping.md) §8 is the milestone plan with acceptance
 criteria. The gap is a **public task tracker**: the course wants tasks with acceptance criteria and evidence that
 the agents used the tracker. The milestone plan and pull-request record are not a tracker; moving the plan to
 GitHub Issues is on the M6 list.
@@ -105,7 +105,7 @@ owner report, weekly evals) and the `answer-verifier` subagent are M6; until the
   the gated result is macro-F1 0.979 on prompt v1 (0.960 on the prompt-v2 regression), with 8/8 adversarial,
   4/4 fabricated, 3/3 refusal and 4/4 unsupported refused, zero false refusals on the v1 run. [Result report](evals/routing/results/2026-10-21T21-42-43Z.md). The archived
   comparison remains at [2026-10-19](evals/routing/results/2026-10-19T12-40-46Z.md).
-- **Agent and tools:** seven read-only MCP tools over HTTP, a Telegram gateway with two answer paths — one tool and a
+- **Agent and tools:** eight read-only MCP tools over HTTP, a Telegram gateway with two answer paths — one tool and a
   deterministic composer for simple questions; a planner, several tools or notes, and `beam:cloud` composition with a
   citation check for complex ones — an insert-only turn writer, and thirteen reviewed notes with 41 indexed chunks.
 - **API contract:** `openapi.yaml` is written before the backend, served verbatim at `/openapi.yaml`, and a test

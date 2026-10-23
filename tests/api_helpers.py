@@ -38,6 +38,7 @@ from db.models import (
     Standing,
     Team,
     TeamCompetition,
+    TopScorer,
     new_id,
 )
 from db.settings import REPO_ROOT
@@ -426,6 +427,34 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
             for index, (name, position) in enumerate(
                 [("David Raya", "Goalkeeper"), ("Bukayo Saka", "Right Winger"), ("Declan Rice", "Central Midfield")]
             )
+        ]
+    )
+    session.flush()
+
+    session.add_all(
+        [
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=now.date() - timedelta(days=1),
+                player_id=1001,
+                team_id=TEAM,
+                played_matches=7,
+                goals=5,
+                assists=2,
+                penalties=1,
+            ),
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=now.date() - timedelta(days=1),
+                player_id=1002,
+                team_id=TEAM,
+                played_matches=7,
+                goals=3,
+                assists=1,
+                penalties=0,
+            ),
         ]
     )
     session.flush()

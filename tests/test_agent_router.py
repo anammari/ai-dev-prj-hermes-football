@@ -57,6 +57,12 @@ def test_a_database_choice_keeps_its_tool() -> None:
     assert decision.reason is None
 
 
+def test_a_top_scorer_choice_keeps_the_scorer_tool() -> None:
+    router, _ = _router(_answers("database", "get_top_scorers", "safe"))
+    decision = router.route("who is the top scorer in the Premier League?")
+    assert (decision.route, decision.tool) == ("tool", "get_top_scorers")
+
+
 def test_a_notes_choice_keeps_no_tool() -> None:
     router, _ = _router(_answers("notes", "get_standings", "safe"))
     decision = router.route("what happens if two teams finish level on points?")

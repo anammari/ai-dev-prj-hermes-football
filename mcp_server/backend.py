@@ -68,6 +68,12 @@ class Backend:
         query = {key: value for key, value in params.items() if value is not None}
         return self._get(f"/competitions/{code}/matches", query)
 
+    def top_scorers(self, code: str, *, season: int | None = None, limit: int = 10) -> Envelope:
+        params = {"limit": limit}
+        if season:
+            params["season"] = season
+        return self._get(f"/competitions/{code}/top-scorers", params)
+
     def match(self, match_id: int) -> Envelope:
         return self._get(f"/matches/{match_id}")
 

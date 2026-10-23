@@ -75,7 +75,8 @@ combines standings with form, or several notes. The owner rejected it and chose 
 
 The complex path is a second signed-off egress: tool results and note passages go to Ollama's cloud on complex
 questions only. The owner signed that off on 2026-10-22. The simple path and all embeddings stay local. `beam:cloud`
-is the composer; the planner uses the same model. No new tool, SQL, shell or write path is added.
+is the composer; the planner uses the same model. The complexity extension added no new tool, SQL, shell or write
+path; the separate scorer close added `get_top_scorers` over the existing read-only API.
 
 Verification: `tests/test_complex_path.py` (planner, composer, verifier, fallback), the complex cases in
 `tests/integration/test_gateway_stack.py`, and the real `make ask` runs recorded in the M4 guide. Prompt v2 was run

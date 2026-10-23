@@ -17,6 +17,7 @@ from mcp_server.tools import (
     get_match_result,
     get_standings,
     get_team_form,
+    get_top_scorers,
     search_knowledge,
 )
 
@@ -93,6 +94,26 @@ class FakeBackend:
         if team_id is not None:
             matches = [m for m in matches if team_id in {m["home_team"]["id"], m["away_team"]["id"]}]
         return Envelope(data=matches, meta={"data_as_of": "2026-10-12T00:20:33Z"})
+
+    def top_scorers(self, code: str, *, season: int | None = None, limit: int = 10) -> Envelope:
+        return Envelope(
+            data={
+                "competition": {"code": code, "name": "Premier League"},
+                "season": 2026,
+                "snapshot": "2026-10-22",
+                "scorers": [
+                    {
+                        "player": {"id": 1001, "name": "Bukayo Saka"},
+                        "team": {"id": 57, "name": "Arsenal FC"},
+                        "goals": 5,
+                        "assists": 2,
+                        "penalties": 1,
+                        "played": 7,
+                    }
+                ],
+            },
+            meta={"data_as_of": "2026-10-22T00:00:00Z"},
+        )
 
     def match(self, match_id: int) -> Envelope:
         return Envelope(data={}, meta={})
@@ -207,6 +228,25 @@ def test_knowledge_returns_a_citation_and_an_empty_result_is_real() -> None:
     assert search_knowledge(_ctx(), "offside rule")["hits"] == []
 
 
+def test_top_scorers_returns_the_snapshot_and_the_player() -> None:
+    result = get_top_scorers(_ctx(), "who is the top scorer in the premier league?")
+    assert result["competition"]["code"] == "PL"
+    assert result["scorers"][0]["player"]["name"] == "Bukayo Saka"
+    assert result["scorers"][0]["goals"] == 5
+    assert result["data_as_of"] == "2026-10-22T00:00:00Z"
+
+
+def test_a_scorer_question_without_a_competition_matches_the_player() -> None:
+    result = get_top_scorers(_ctx(), "how many goals has Saka scored this season?")
+    assert result["competition"]["code"] == "PL"
+    assert result["scorers"][0]["player"]["name"] == "Bukayo Saka"
+    assert result["data_as_of"] == "2026-10-22T00:00:00Z"
+
+
+def test_an_unknown_scorer_question_asks_for_more() -> None:
+    assert get_top_scorers(_ctx(), "who has scored the most?")["error"] == "not_found"
+
+
 def test_freshness_can_be_filtered_to_one_competition() -> None:
     result = get_data_freshness(_ctx(), "how fresh is the premier league?")
     assert [row["code"] for row in result["competitions"]] == ["PL"]
@@ -231,7 +271,7 @@ def _rpc(client: TestClient, payload: dict, *, token: str = TOKEN):
 def test_health_is_open_and_reports_the_tool_count() -> None:
     response = _client().get("/health")
     assert response.status_code == 200
-    assert response.json()["tools"] == 7
+    assert response.json()["tools"] == 8
 
 
 def test_mcp_requires_the_bearer_token() -> None:
@@ -245,7 +285,7 @@ def test_initialize_and_tools_list_are_protocol_shaped() -> None:
     assert init["result"]["protocolVersion"] == "2024-11-05"
     assert init["result"]["serverInfo"]["name"] == "hermes-football-mcp"
     listing = _rpc(client, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}).json()
-    assert len(listing["result"]["tools"]) == 7
+    assert len(listing["result"]["tools"]) == 8
     assert {tool["name"] for tool in listing["result"]["tools"]} == {
         "get_standings",
         "get_fixtures",
@@ -254,6 +294,7 @@ def test_initialize_and_tools_list_are_protocol_shaped() -> None:
         "get_head_to_head",
         "search_knowledge",
         "get_data_freshness",
+        "get_top_scorers",
     }
 
 

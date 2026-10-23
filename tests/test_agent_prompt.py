@@ -32,6 +32,7 @@ def test_each_question_has_exactly_its_reviewed_labels() -> None:
         "get_team_form",
         "get_head_to_head",
         "get_data_freshness",
+        "get_top_scorers",
         "not_applicable",
     }
     assert set(prompt.questions["safety"]["criteria"]) == {"safe", "instruction_override", "fabricated_fact"}

@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: Hermes Football API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Read-mostly HTTP API that wraps the Hermes Football database: the single source of factual
     football data that the Telegram agent (Hermes) and the dashboard are allowed to state.
@@ -98,7 +98,7 @@ paths:
                 $ref: '#/components/schemas/HealthCheck'
               example:
                 status: ok
-                version: 0.2.0
+                version: 0.3.0
                 uptime_seconds: 1284
                 db:
                   status: ok
@@ -300,6 +300,56 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/StandingsTable'
+                  meta:
+                    $ref: '#/components/schemas/ResponseMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /competitions/{code}/top-scorers:
+    get:
+      tags: [competitions]
+      operationId: getTopScorers
+      summary: Top scorers for a competition
+      description: |
+        The newest stored scorer snapshot for the competition and season, ordered by goals and then
+        assists. A snapshot date is the precision of the data; 'meta.data_as_of' is that date at
+        midnight UTC, not the moment of the request.
+      x-mcp-tool: get_top_scorers
+      parameters:
+        - $ref: '#/components/parameters/CompetitionCode'
+        - $ref: '#/components/parameters/Season'
+        - name: snapshot
+          in: query
+          description: Return the newest snapshot on or before this date
+          schema:
+            type: string
+            format: date
+            example: '2026-10-22'
+        - name: limit
+          in: query
+          description: How many scorers to return, best first
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Top-scorer snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/TopScorersTable'
                   meta:
                     $ref: '#/components/schemas/ResponseMeta'
         '400':
@@ -1122,6 +1172,59 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StandingRow'
+
+    TopScorersTable:
+      type: object
+      required: [competition, season, snapshot, scorers]
+      properties:
+        competition:
+          type: object
+          required: [code, name]
+          properties:
+            code:
+              $ref: '#/components/schemas/CompetitionCode'
+            name:
+              type: string
+        season:
+          type: integer
+          example: 2026
+        snapshot:
+          type: string
+          format: date
+          description: The provider snapshot date the rows describe
+        scorers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopScorer'
+
+    TopScorer:
+      type: object
+      required: [player, team, goals]
+      properties:
+        player:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: integer
+              example: 158
+            name:
+              type: string
+              example: Erling Haaland
+        team:
+          $ref: '#/components/schemas/TeamSummary'
+        goals:
+          type: integer
+          example: 12
+        played:
+          type: integer
+          nullable: true
+        assists:
+          type: integer
+          nullable: true
+        penalties:
+          type: integer
+          nullable: true
 
     TeamSummary:
       type: object

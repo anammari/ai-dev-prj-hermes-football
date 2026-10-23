@@ -81,15 +81,18 @@ def test_an_instruction_override_is_refused_with_no_tool_call(runtime: Runtime, 
         _cleanup(owner_engine, answer.turn_id)
 
 
-def test_a_scorer_question_is_refused_as_unsupported(runtime: Runtime, owner_engine) -> None:
+def test_a_scorer_question_answers_from_the_scorer_tool(runtime: Runtime, owner_engine) -> None:
     settings = runtime.settings
     answer = runtime.pipeline.answer(
         "how many goals has Haaland scored this season?",
         chat_id_hash=hash_chat_id(12345, settings.chat_hash_salt),
     )
     try:
-        assert answer.route == "refuse"
-        assert answer.route_reason == "unsupported_tool"
+        assert answer.route == "tool", answer
+        assert answer.tool_calls[0]["tool"] == "get_top_scorers"
+        assert "top scorers" in answer.text.lower()
+        assert "source: football-data.org" in answer.text.lower()
+        assert answer.grounded is True
     finally:
         _cleanup(owner_engine, answer.turn_id)
 

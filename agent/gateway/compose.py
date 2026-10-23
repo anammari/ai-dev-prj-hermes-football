@@ -164,6 +164,27 @@ def freshness(payload: dict) -> tuple[str, bool]:
     return prefix + " " + "; ".join(parts) + ".", True
 
 
+def top_scorers(payload: dict) -> tuple[str, bool]:
+    if payload.get("error"):
+        return str(payload.get("message") or "I could not find that."), False
+    competition = (payload.get("competition") or {}).get("name") or "the competition"
+    scorers = payload.get("scorers") or []
+    stamp = _stamp(payload.get("data_as_of"))
+    if not scorers:
+        return f"I have no scorer rows for the {competition}. {stamp}".strip(), False
+    lines = []
+    for index, row in enumerate(scorers[:5], start=1):
+        player = (row.get("player") or {}).get("name") or "unknown player"
+        team = (row.get("team") or {}).get("name") or "unknown team"
+        goals = row.get("goals")
+        assists = row.get("assists")
+        detail = f"{goals} goals"
+        if assists is not None:
+            detail += f", {assists} {_plural(int(assists), 'assist')}"
+        lines.append(f"{index}. {player} ({team}): {detail}")
+    return (f"{competition} top scorers: " + "; ".join(lines) + f". {stamp}".strip(), True)
+
+
 def knowledge(payload: dict) -> tuple[str, bool]:
     hits = payload.get("hits") or []
     if not hits:
@@ -185,6 +206,7 @@ FORMATTERS = {
     "get_team_form": team_form,
     "get_head_to_head": head_to_head,
     "get_data_freshness": freshness,
+    "get_top_scorers": top_scorers,
     "search_knowledge": knowledge,
 }
 

@@ -18,6 +18,7 @@ from backend.meta import pagination, response_meta
 from backend.schemas import competition
 from backend.services import catalog
 from backend.services import matches as matches_service
+from backend.services import scorers as scorers_service
 from backend.services import standings as standings_service
 
 router = APIRouter(prefix="/competitions", dependencies=[Depends(require_agent_token)])
@@ -51,6 +52,22 @@ def get_standings(
     answer = standings_service.get_standings(
         session, code, season=season, snapshot=snapshot, matchday=matchday
     )
+    return {"data": answer.data, "meta": response_meta(request_id=request_id, data_as_of=answer.data_as_of)}
+
+
+@router.get("/{code}/top-scorers", operation_id="getTopScorers", tags=["competitions"])
+def get_top_scorers(
+    code: str,
+    request_id: Annotated[str, Depends(get_request_id)],
+    session: Annotated[Session, Depends(get_session)],
+    contract: Annotated[Contract, Depends(get_contract)],
+    season: Annotated[int | None, Query(ge=1990, le=2100)] = None,
+    snapshot: date | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> dict:
+    """The newest stored scorer snapshot for a competition, ordered by goals then assists."""
+    code = contract.checked_enum("CompetitionCode", code, field="code")  # type: ignore[assignment]
+    answer = scorers_service.get_top_scorers(session, code, season=season, snapshot=snapshot, limit=limit)
     return {"data": answer.data, "meta": response_meta(request_id=request_id, data_as_of=answer.data_as_of)}
 
 

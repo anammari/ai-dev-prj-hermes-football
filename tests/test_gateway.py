@@ -103,6 +103,21 @@ STANDINGS = {
     },
 }
 
+SCORERS = {
+    "competition": {"code": "PL", "name": "Premier League"},
+    "season": 2026,
+    "snapshot": "2026-10-22",
+    "data_as_of": "2026-10-22T00:00:00Z",
+    "scorers": [
+        {
+            "player": {"id": 1001, "name": "Bukayo Saka"},
+            "team": {"id": 57, "name": "Arsenal FC"},
+            "goals": 5,
+            "assists": 2,
+        }
+    ],
+}
+
 KNOWLEDGE = {
     "query": "how does the championship playoff work",
     "data_as_of": None,
@@ -122,6 +137,13 @@ def test_standings_composition_restates_the_row_and_the_timestamp() -> None:
     text, grounded = compose.compose("get_standings", STANDINGS)
     assert "Arsenal FC are 2nd in the Premier League with 15 points from 6 matches" in text
     assert "As of 2026-10-13 02:02 UTC, source: football-data.org." in text
+    assert grounded is True
+
+
+def test_scorer_composition_names_the_player_and_the_goals() -> None:
+    text, grounded = compose.compose("get_top_scorers", SCORERS)
+    assert "Bukayo Saka (Arsenal FC): 5 goals, 2 assists" in text
+    assert "As of 2026-10-22 00:00 UTC, source: football-data.org." in text
     assert grounded is True
 
 

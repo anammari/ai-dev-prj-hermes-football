@@ -161,8 +161,8 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 ### F4 — MCP tool server (`mcp-server/`)
 
 - **R-F4.1** Exposes read-only tools: `get_standings`, `get_fixtures`, `get_match_result`, `get_team_form`,
-  `get_head_to_head`, `search_knowledge`, `get_data_freshness`. A stored fact with no tool (top-scorer totals today)
-  is refused with `unsupported_tool`, never answered from the nearest table.
+  `get_head_to_head`, `get_top_scorers`, `search_knowledge`, `get_data_freshness`. A stored fact with no tool is
+  refused with `unsupported_tool`, never answered from the nearest table.
 - **R-F4.2** Tool outputs are compact and LLM-sized (top-N rows, no raw dumps) and always include the freshness stamp.
 - **R-F4.3** No arbitrary SQL, no write path, no filesystem access; per-call timeout and input validation.
 - **AC** Each tool has a unit test and one recorded example call; a prompt-injection test shows that no user text can
@@ -314,7 +314,7 @@ deliberate renames and the local-only tables live in `_docs/data-model.md`; this
 
 The two M3 gaps are closed: `AgentTurn` carries `route`/`route_source`/`route_confidence` since v0.2.0 and the M4
 writer populates them, and the `KnowledgeHit.source_file` example matches the corpus-relative paths. The remaining
-open items (scorer tool, `standings.group_label`, `standings.matchday`) are listed in `_docs/data-model.md`.
+open items (`standings.group_label`, `standings.matchday`, the admin write queue) are listed in `_docs/data-model.md`.
 
 ## 8. Milestones
 

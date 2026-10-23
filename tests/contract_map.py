@@ -74,6 +74,26 @@ SCHEMAS: dict[str, dict] = {
             "table": "derived:the rows of the table are the standing rows themselves",
         },
     },
+    "TopScorersTable": {
+        "table": "top_scorers",
+        "properties": {
+            "competition": "alias:competition_code",
+            "season": "column:season",
+            "snapshot": "alias:snapshot_date",
+            "scorers": "derived:the rows of this snapshot, ordered by goals then assists",
+        },
+    },
+    "TopScorer": {
+        "table": "top_scorers",
+        "properties": {
+            "player": "relation:players",
+            "team": "relation:teams",
+            "goals": "column:goals",
+            "played": "alias:played_matches",
+            "assists": "column:assists",
+            "penalties": "column:penalties",
+        },
+    },
     "TeamSummary": {
         "table": "teams",
         "properties": {
@@ -219,7 +239,6 @@ LOCAL_TABLES: dict[str, str] = {
     "seasons": "the contract carries `season` as an integer; this table is the local catalog of them",
     "team_competitions": "the join behind TeamDetail.competitions",
     "players": "the contract exposes only squad_available/squad_size, never a player list",
-    "top_scorers": "normalized provider scorer snapshots; M2 data not yet exposed by an API schema",
     "raw_payloads": "bronze retention of upstream responses, not served to the agent",
     "alembic_version": "Alembic's own bookkeeping",
 }
@@ -240,7 +259,11 @@ LOCAL_ONLY: dict[str, dict[str, str]] = {
         "updated_at": "when our ingestion last wrote the row",
     },
     "ingest_runs": {"created_at": "when our ingestion created the row"},
-    "top_scorers": {"*": "see LOCAL_TABLES['top_scorers']"},
+    "top_scorers": {
+        "id": "surrogate key; a row is identified by competition, season, snapshot and player",
+        "player_id": "the relation behind TopScorer.player",
+        "team_id": "the relation behind TopScorer.team",
+    },
     "raw_payloads": {"*": "see LOCAL_TABLES['raw_payloads']"},
     "knowledge_chunks": {
         "id": "surrogate uuid; the contract calls it chunk_id",

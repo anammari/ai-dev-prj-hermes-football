@@ -25,6 +25,7 @@ TOOL_LABELS = {
     "get_team_form",
     "get_head_to_head",
     "get_data_freshness",
+    "get_top_scorers",
     "not_applicable",
 }
 SAFETY_LABELS = {"safe", "instruction_override", "fabricated_fact"}

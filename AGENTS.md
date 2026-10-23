@@ -19,7 +19,7 @@ If you add or change a component, keep that table true. The agent team is writte
 
 Status: **M1–M4 done; M5 next.** M4 wired the selected router behind a binding safety gate, measured it on a new
 independent 60-question holdout (gated macro-F1 0.979 on prompt v1, 0.960 on the v2 regression; 8/8 adversarial,
-4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the seven read-only MCP tools and the Telegram gateway, reviewed
+4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the eight read-only MCP tools and the Telegram gateway, reviewed
 thirteen notes and indexed 41 chunks. The gateway splits on the model's `complexity` label: simple answers use one
 tool and the deterministic composer; complex answers plan several tools or notes and compose with `beam:cloud`.
 The live Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same
@@ -30,7 +30,7 @@ and note text stay local. tev1 is rejected. Selection is not adoption: the refus
 0.90 target were the M4 gate, now measured on a new independent holdout (0.979 on v1, 0.960 on v2). The numbers are in
 `_docs/scoping.md` §8 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
 pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 14
-read-only operations against `openapi.yaml` (v0.2.0), the freshness report, the contract's own error semantics, and a
+read-only operations against `openapi.yaml` (v0.3.0), the freshness report, the contract's own error semantics, and a
 test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
 document, a reused `operationId`, a changed parameter bound, and an enum value the contract does not list. An
 adversarial review of the finished milestone is what produced those cases; its findings and the fixes are in
@@ -195,7 +195,7 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-the API contract reviewed and now at v0.2.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
+the API contract reviewed and now at v0.3.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
 corpus + manifest, 0002 embedding model, 0003 routing model comparison, 0004 the embedding tag that runs in the container). M1 is done:
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
@@ -218,6 +218,5 @@ Next, in order:
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
 3. M5: `frontend/` dashboard and the golden-question eval scoreboard, including routing precision/recall over time.
 4. M6: CI/CD, observability, the alert and on-call agent, security artifacts, and the AI-usage report close-out.
-5. Remaining M4 follow-ups, recorded rather than hidden: a real scorer tool to close `R-F4.1` (the bot refuses those
-   questions today), multi-turn conversation memory, and the optional Nous Hermes Agent deployment described in
-   `hermes/config.yaml`.
+5. Remaining M4 follow-ups, recorded rather than hidden: multi-turn conversation memory and the optional Nous Hermes
+   Agent deployment described in `hermes/config.yaml`. The scorer tool now closes `R-F4.1`.

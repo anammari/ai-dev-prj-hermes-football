@@ -428,6 +428,31 @@ checked and work that merely looked right.
   - `make test` 335 unit tests and `make itest` 37 integration tests pass; `make lint` clean.
   - The simple path still returns the deterministic answer and no Beam model in `model`.
 
+### S13 — Close the scorer gap (2026-10-23, branch `anammari-m4-agent`)
+
+- **Delegated:** investigate whether the top-scorer refusal was a paid-data limit and, if not, close it: a backend
+  operation, a contract schema, an MCP tool, the router label, the composer and tests.
+- **Finding:** not a paid-data limit. The `top_scorers` table held **5,583** rows, and the free key returned scorer
+  totals on 2026-10-10 even though the pricing page advertises them as a paid feature. The gap was the missing
+  endpoint/tool, not access.
+- **Rejected or revised, and what made each visible:**
+  - *Querying `top_scorers` directly from the MCP server.* Rejected: the MCP server is an adapter over the API;
+    direct DB access would break the read-only path and the contract.
+  - *A scorer tool with no competition.* The first live run resolved Haaland to the Champions League (first
+    competition found) instead of the Premier League. Revised: a player-name lookup across competitions, preferring
+    a domestic league, then the bigger tally. The live run then returned the Premier League table with Haaland first.
+  - *Returning only the named player.* Kept the top-five list, because "who is top scorer" and "how many has X"
+    both need the ranking; the named player is first when the lookup matched.
+- **Evidence:**
+  - Contract v0.3.0 adds `GET /competitions/{code}/top-scorers` (`TopScorersTable`, `TopScorer`); the backend and
+    `openapi.yaml` versions moved together. Live endpoint returns PL, season 2026, snapshot 2026-10-22.
+  - MCP `get_top_scorers` is tool 8; the router prompt has the label; the composer prints the ranking and timestamp.
+  - `make ask Q="how many goals has Haaland scored this season?"` → `route: tool`, `get_top_scorers`, "Erling
+    Haaland (Manchester City FC): 8 goals", snapshot timestamp, `grounded: true`.
+  - `make test` 344 passed, `make itest` 38 passed, `make lint` clean.
+  - The four `unsupported` scorer questions in the frozen M4 holdout predate the tool; they are recorded as
+    historical labels, not re-run as a gate for this change.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

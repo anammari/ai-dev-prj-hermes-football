@@ -32,7 +32,7 @@ REFUSALS = {
         "I can answer football questions from the stored data and notes."
     ),
     "fabricated_fact": "I can't answer that from the data I have. I don't predict results or invent facts.",
-    "unsupported_tool": "I don't have a tool for top-scorer totals yet, so I can't answer that from the data.",
+    "unsupported_tool": "I don't have a tool for that fact yet, so I can't answer it from the data.",
     "model_refusal": "I can't help with that. I answer football questions from the stored data and notes.",
     "router_unavailable": "I can't check that right now. Please try again in a moment.",
 }

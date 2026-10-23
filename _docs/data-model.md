@@ -116,9 +116,8 @@ response envelopes (`ResponseMeta`, `Pagination`, `ErrorResponse`, the `*List` s
    `PATCH /admin/agent-turns/{turnId}/review` answer a contract-shaped 404 naming M5. Making the first one real needs
    a claimable queue the scheduler picks up; a request handler must not start an upstream run (`AGENTS.md` rule 3),
    so the write path is a scheduler concern before it is an API concern.
-7. **The scorer snapshots have no agent-facing tool — explicitly refused in M4.** M2 stores normalised top-scorer
-   rows, but `R-F4.1` exposes no scorer tool and the M3 API has no scorer operation. The router marks such a question
-   `database` with `tool: not_applicable`, and the gate refuses it with reason `unsupported_tool`; the M4 holdout
-   labels four scorer questions as `refuse` and the bot answers "I don't have a tool for top-scorer totals yet".
-   Closing the gap properly (a scorer endpoint, a contract operation and a `get_top_scorers` tool) is a named
-   follow-up, not silently faked.
+7. **The scorer snapshots now have an agent-facing tool.** `/competitions/{code}/top-scorers` (contract v0.3.0)
+   serves the newest stored snapshot, and the MCP `get_top_scorers` tool exposes it. A scorer question routes `tool`,
+   the tool resolves the player or competition, and the answer carries the snapshot date as `data_as_of`. The four
+   scorer questions in the frozen M4 holdout still carry the old `refuse`/`unsupported_tool` labels; they predate the
+   tool and are not reused as a gate for it.

@@ -12,9 +12,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from mcp_server.backend import Backend, BackendError
-from mcp_server.resolver import Competition, RegistryCache, Team
+from mcp_server.resolver import Competition, RegistryCache, Team, normalise
 
 FINISHED = {"FINISHED", "AWARDED"}
+PLAYER_STOPWORDS = {
+    "how", "many", "goals", "goal", "scored", "score", "scorer", "scorers", "top", "this", "the",
+    "season", "league", "has", "have", "who", "what", "which", "most", "does", "did", "and", "for",
+    "with", "from", "current", "campaign", "please", "numbers", "tally", "so", "far",
+}
 
 
 @dataclass
@@ -222,6 +227,79 @@ def get_head_to_head(ctx: ToolContext, query: str, *, limit: int = 5) -> dict:
     }
 
 
+def _player_tokens(query: str) -> list[str]:
+    return [
+        token
+        for token in normalise(query).split()
+        if len(token) > 3 and token not in PLAYER_STOPWORDS
+    ]
+
+
+def _find_scorer_competition(ctx: ToolContext, query: str) -> tuple[Competition, dict, dict] | None:
+    """A scorer question often names the player, not the competition.
+
+    Walk the stored competitions and match the player's name. Thirteen local backend calls, not
+    upstream calls; the first match wins. No competition named and no player matched stays a clarify.
+    """
+    tokens = _player_tokens(query)
+    if not tokens:
+        return None
+    registry = ctx.cache.get()
+    matches: list[tuple[Competition, dict, dict, int]] = []
+    for competition in registry.competitions:
+        try:
+            envelope = ctx.backend.top_scorers(competition.code, limit=50)
+        except BackendError:
+            continue
+        data = envelope.data or {}
+        for row in data.get("scorers") or []:
+            name = normalise(((row.get("player") or {}).get("name")) or "")
+            if any(token in name.split() for token in tokens):
+                matches.append((competition, data, envelope.meta, int(row.get("goals") or 0)))
+                break
+    if not matches:
+        return None
+    # A player appears in both a domestic league and a cup. Prefer the league; then the bigger tally.
+    matches.sort(key=lambda item: (item[0].type != "LEAGUE", -item[3]))
+    competition, data, meta, _goals = matches[0]
+    return competition, data, meta
+
+
+def get_top_scorers(ctx: ToolContext, query: str, *, competition: str | None = None, limit: int = 10) -> dict:
+    comp = _competition_for(ctx, query, None, competition)
+    if comp is None:
+        found = _find_scorer_competition(ctx, query)
+        if found is None:
+            return _missing("I could not tell which competition or player you mean.")
+        comp, data, meta = found
+        return {
+            "competition": data.get("competition") or {"code": comp.code, "name": comp.name},
+            "season": data.get("season"),
+            "snapshot": data.get("snapshot"),
+            "data_as_of": _as_of(meta),
+            "scorers": (data.get("scorers") or [])[:limit],
+        }
+    envelope = ctx.backend.top_scorers(comp.code, limit=limit)
+    data = envelope.data or {}
+    return {
+        "competition": data.get("competition") or {"code": comp.code, "name": comp.name},
+        "season": data.get("season"),
+        "snapshot": data.get("snapshot"),
+        "data_as_of": _as_of(envelope.meta),
+        "scorers": [
+            {
+                "player": row.get("player"),
+                "team": row.get("team"),
+                "goals": row.get("goals"),
+                "assists": row.get("assists"),
+                "penalties": row.get("penalties"),
+                "played": row.get("played"),
+            }
+            for row in (data.get("scorers") or [])
+        ],
+    }
+
+
 def search_knowledge(ctx: ToolContext, query: str, *, k: int = 3) -> dict:
     envelope = ctx.backend.search_knowledge(query, k=k)
     hits = []
@@ -332,6 +410,19 @@ TOOLS: dict[str, tuple[str, dict, Handler]] = {
             "required": ["query"],
         },
         get_head_to_head,
+    ),
+    "get_top_scorers": (
+        "Top scorers for a competition: goals, assists and penalties from the latest stored snapshot.",
+        {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "competition": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+            "required": ["query"],
+        },
+        get_top_scorers,
     ),
     "search_knowledge": (
         "The hand-written notes: competition rules, tiebreakers, definitions and policy, with a citation.",
