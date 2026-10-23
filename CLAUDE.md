@@ -28,3 +28,9 @@ to ask for it.
    `docker compose exec -T hermes python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8200/health').read().decode())"`.
 8. **Report the before/after** of `docker system df` in the final message, with what was removed and what was
    deliberately kept.
+
+## Review requests
+
+Never request a Copilot review. Do not use `gh pr edit --add-reviewer`, do not call the review-request API, and do
+not comment `@copilot review`. The owner decides whether Copilot reviews a pull request and requests it manually.
+This applies to every coding agent working in this repository.
