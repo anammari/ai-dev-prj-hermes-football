@@ -38,7 +38,7 @@ human; a scripted check sees only the app shell.
 
 | # | Note file | Class | What the source fixes | Source (official) | Also checked | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | `formats/championship-playoffs.md` | formats | Six-team play-off from 2026/27: QF 5th v 8th and 6th v 7th (higher club at home), two-legged semi-finals (3rd v lowest remaining, 4th v highest remaining), Wembley final; seven matches | [EFL Regulations 2026/27 (PDF)][efl-regs], Regulation 10.1.1 and its Guidance | [EFL statement, 5 Mar 2026][efl-statement]; [EFL regulations index][efl-index]; [EFL About the Play-Offs][efl-about] | 206 PDF |
+| 1 | `formats/championship-playoffs.md` | formats | Six-team play-off from 2026/27: QF 5th v 8th and 6th v 7th (higher club at home), two-legged semi-finals (3rd v lowest remaining, 4th v highest remaining), Wembley final; seven matches | [EFL Regulations 2026/27 (PDF)][efl-regs], Regulation 10.1.1 and its Guidance | [EFL statement, 5 Mar 2026][efl-statement]; [EFL regulations index][efl-index]; [EFL About the Play-Offs][efl-about]; [EFL play-off explainer, 4 May 2026][efl-news] | 206 PDF |
 | 2 | `formats/european-competitions.md` | formats | League phase: each club plays eight opponents, four home and four away; knockout ties are two legs decided on aggregate | [UEFA Champions League Regulations 2026/27, Article 17][uefa-art17] | [Article 20, knockout phase][uefa-art20]; [UEFA 2026/27 explainer][uefa-explainer] | 200 JS |
 | 3 | `tiebreakers/serie-a-level-points.md` | tiebreakers | 2026/27: level on points for 1st is a single play-off at the better-ranked club, penalties if level; 17th v 18th is two legs on aggregate, penalties if level; more than two clubs use the *classifica avulsa*; no play-off if a club is in a UEFA final | [FIGC Communiqué 244/A, 27 May 2026 (PDF)][figc-244] | [Lega Serie A documentazione][seriea-docs] | 206 PDF |
 | 4 | `tiebreakers/premier-league-goal-difference.md` | tiebreakers | Table order is points, then goal difference, then goals scored; if a decisive place is still level, Rule C.17 applies: head-to-head points, away goals in those matches, then a neutral play-off | [Premier League Handbook 2026/27 (PDF)][pl-handbook], Rule C.17 | [Premier League publications][pl-publications] | 206 PDF |
@@ -56,6 +56,7 @@ human; a scripted check sees only the app shell.
 [efl-statement]: https://www.efl.com/news/2026/march/05/efl-statement--sky-bet-championship-play-off-format/
 [efl-index]: https://www.efl.com/document/regulations/
 [efl-about]: https://www.efl.com/competitions/sky-bet-play-offs/about-the-play-offs/
+[efl-news]: https://www.efl.com/news/2026/may/04/everything-you-need-to-know-ahead-of-the-efl-play-offs/
 [uefa-art17]: https://documents.uefa.com/r/Regulations-of-the-UEFA-Champions-League-2026/27/Article-17-Match-system-league-phase-Online
 [uefa-art20]: https://documents.uefa.com/r/Regulations-of-the-UEFA-Champions-League-2026/27/Article-20-Match-system-knockout-phase-Online
 [uefa-annex-a]: https://documents.uefa.com/r/Regulations-of-the-UEFA-Champions-League-2026/27/II-Competition-System-Online
