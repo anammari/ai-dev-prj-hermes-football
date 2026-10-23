@@ -70,8 +70,9 @@ combines standings with form, or several notes. The owner rejected it and chose 
 - **Simple** keeps the original design: one tool (or one retrieval), deterministic composer, no tool output leaves
   the machine.
 - **Complex** lets a planner choose up to four allowlisted MCP tools, or retrieves up to eight note chunks, and
-  sends those results to **`beam:cloud`** (Ollama cloud, Reflection Beam) for the answer. A citation check runs
-  before sending; a failed plan or an uncited draft falls back to the deterministic composer.
+  sends those results to **`beam:cloud`** (Ollama cloud, Reflection Beam) for the answer. A citation check and a
+  focused second-model claim check run before sending; a failed plan, an uncited draft or a rejected claim falls
+  back to the deterministic composer.
 
 The complex path is a second signed-off egress: tool results and note passages go to Ollama's cloud on complex
 questions only. The owner signed that off on 2026-10-22. The simple path and all embeddings stay local. `beam:cloud`

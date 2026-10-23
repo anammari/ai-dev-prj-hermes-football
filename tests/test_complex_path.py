@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent.gate import apply
 from agent.gateway.answer_composer import AnswerComposer
+from agent.gateway.answer_verifier import AnswerVerifier
 from agent.gateway.chat import ChatError
 from agent.gateway.pipeline import Pipeline
 from agent.gateway.planner import Planner
@@ -14,6 +15,7 @@ from agent.gateway.verify import verify_complex
 
 PLANNER = Path(__file__).resolve().parents[1] / "prompts" / "0004-complex-planner.md"
 COMPOSER = Path(__file__).resolve().parents[1] / "prompts" / "0005-complex-composer.md"
+VERIFIER = Path(__file__).resolve().parents[1] / "prompts" / "0006-complex-verifier.md"
 TOOLS = [
     {"name": "get_standings", "description": "League table."},
     {"name": "get_team_form", "description": "Recent results."},
@@ -136,6 +138,18 @@ def test_the_composer_receives_only_the_results_and_route() -> None:
     assert "database" in sent
 
 
+def test_the_model_verifier_accepts_a_supported_draft() -> None:
+    chat = FakeChat([json.dumps({"supported": True, "unsupported": []})])
+    verifier = AnswerVerifier(chat, VERIFIER)
+    assert verifier.verify("question", route="database", results={"get_standings": STANDINGS}, draft="draft") is True
+
+
+def test_the_model_verifier_rejects_an_unsupported_draft() -> None:
+    chat = FakeChat([json.dumps({"supported": False, "unsupported": ["invented fact"]})])
+    verifier = AnswerVerifier(chat, VERIFIER)
+    assert verifier.verify("question", route="database", results={"get_standings": STANDINGS}, draft="draft") is False
+
+
 def test_the_verifier_accepts_a_cited_tool_answer() -> None:
     text = "Arsenal are 2nd. As of 2026-10-22, source: football-data.org."
     assert verify_complex(text, route="tool", results={"get_standings": STANDINGS}) is True
@@ -160,6 +174,7 @@ def _pipeline(chat: FakeChat, route: str = "tool") -> tuple[Pipeline, FakeTools,
         model="clef:cloud",
         planner=_planner(chat),
         composer=_composer(chat),
+        verifier=AnswerVerifier(chat, VERIFIER),
         composer_model="beam:cloud",
     )
     return pipeline, tools, turns
@@ -170,7 +185,13 @@ def test_a_complex_tool_turn_plans_two_tools_and_composes() -> None:
         "Arsenal are 2nd with 18 points. As of 2026-10-22, source: football-data.org. "
         "Their last five: 4W 0D 1L."
     )
-    chat = FakeChat([json.dumps({"steps": [{"tool": "get_standings"}, {"tool": "get_team_form"}]}), grounded])
+    chat = FakeChat(
+        [
+            json.dumps({"steps": [{"tool": "get_standings"}, {"tool": "get_team_form"}]}),
+            grounded,
+            json.dumps({"supported": True, "unsupported": []}),
+        ]
+    )
     pipeline, tools, turns = _pipeline(chat)
     answer = pipeline.answer("compare Arsenal's position with their form")
     assert [name for name, _ in tools.calls] == ["get_standings", "get_team_form"]
@@ -202,12 +223,27 @@ def test_an_ungrounded_composer_draft_falls_back() -> None:
     assert answer.text != "Arsenal are the best team in the world."
 
 
+def test_a_composer_fact_the_verifier_rejects_falls_back() -> None:
+    draft = "Arsenal are 2nd and won the World Cup. As of 2026-10-22, source: football-data.org."
+    chat = FakeChat(
+        [
+            json.dumps({"steps": [{"tool": "get_standings"}]}),
+            draft,
+            json.dumps({"supported": False, "unsupported": ["won the World Cup"]}),
+        ]
+    )
+    pipeline, _, _ = _pipeline(chat)
+    answer = pipeline.answer("where are Arsenal?")
+    assert "source: football-data.org" in answer.text
+    assert "World Cup" not in answer.text
+
+
 def test_a_complex_knowledge_turn_composes_with_the_note_citation() -> None:
     cited = (
         "Two clubs level on points for 1st play a single match. "
         "Source: tiebreakers/serie-a-level-points.md, Serie A tiebreakers."
     )
-    chat = FakeChat([cited])
+    chat = FakeChat([cited, json.dumps({"supported": True, "unsupported": []})])
     pipeline, tools, _ = _pipeline(chat, route="knowledge")
     answer = pipeline.answer("how is the Serie A title decided if two teams are level?")
     question = "how is the Serie A title decided if two teams are level?"

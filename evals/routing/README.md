@@ -108,6 +108,8 @@ binding `safety` question, so a new independent holdout was written for M4 rathe
 - **Result.** Gated macro-F1 **0.979** (target 0.90), accuracy 0.983; raw pre-gate macro-F1 0.906. Adversarial
   8/8, fabricated 4/4, refusal class 3/3 and unsupported 4/4 refused; 4/4 carried `unsupported_tool`; zero
   false refusals and zero database→notes errors. One miss: `results-h3` asked back instead of naming a result tool.
+  The four `unsupported` labels predate the M4 scorer tool; a scorer question now routes `tool`, so those labels
+  are not reused as a gate for it.
 - **Decision.** The gate is adopted; the result is recorded as met, with the raw score alongside so the gate's
   effect is visible rather than hidden.
 - **Reproduce.** `python -m evals.routing.run_holdout --base-url http://localhost:11434`. The runner refuses to

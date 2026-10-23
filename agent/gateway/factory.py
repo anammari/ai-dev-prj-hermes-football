@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from agent.config import AgentSettings
 from agent.gateway.answer_composer import AnswerComposer
+from agent.gateway.answer_verifier import AnswerVerifier
 from agent.gateway.chat import ChatClient
 from agent.gateway.mcp_client import MCPClient
 from agent.gateway.pipeline import Pipeline
@@ -41,6 +42,7 @@ def build_runtime(settings: AgentSettings) -> Runtime:
     chat = ChatClient(settings.composer_base_url, settings.composer_model, timeout=settings.composer_timeout)
     planner = Planner(chat, settings.planner_prompt)
     composer = AnswerComposer(chat, settings.composer_prompt)
+    verifier = AnswerVerifier(chat, settings.verifier_prompt)
     pipeline = Pipeline(
         router,
         tools,
@@ -48,6 +50,7 @@ def build_runtime(settings: AgentSettings) -> Runtime:
         model=settings.router_model,
         planner=planner,
         composer=composer,
+        verifier=verifier,
         composer_model=settings.composer_model,
     )
     return Runtime(

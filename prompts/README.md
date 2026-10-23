@@ -23,3 +23,4 @@ the change it makes, so a prompt can be diffed and blamed like code.
 | [`0003-agent-router.md`](0003-agent-router.md) | The M4 production routing request: surface, tool, a binding safety question and a simple/complex label in one pass | Reviewed; used by `agent/router.py` and the M4 holdout run |
 | [`0004-complex-planner.md`](0004-complex-planner.md) | Plan up to four allowlisted tools for a complex database question | Reviewed; used by `agent/gateway/planner.py` |
 | [`0005-complex-composer.md`](0005-complex-composer.md) | Compose a cited answer from the collected results with `beam:cloud` | Reviewed; used by `agent/gateway/answer_composer.py` |
+| [`0006-complex-verifier.md`](0006-complex-verifier.md) | Check a complex draft's factual claims against the results | Reviewed; used by `agent/gateway/answer_verifier.py` |

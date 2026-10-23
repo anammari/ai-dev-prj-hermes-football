@@ -8,6 +8,7 @@ whether the draft is acceptable; otherwise the gateway falls back to the determi
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from agent.gateway.chat import ChatClient
@@ -23,7 +24,7 @@ class AnswerComposer:
 
     def compose(self, message: str, *, route: str, results: dict) -> str:
         results_json = json.dumps(results, ensure_ascii=False, indent=2)
-        return self._chat.chat(
+        text = self._chat.chat(
             [
                 {"role": "system", "content": self._system},
                 {
@@ -32,3 +33,4 @@ class AnswerComposer:
                 },
             ]
         )
+        return re.sub(r"\s*No data_as_of provided\.?", "", text, flags=re.IGNORECASE).strip()

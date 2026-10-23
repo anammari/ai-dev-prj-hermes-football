@@ -35,6 +35,7 @@ class AgentSettings:
     router_prompt: Path = DEFAULT_PROMPT
     planner_prompt: Path = REPO_ROOT / "prompts" / "0004-complex-planner.md"
     composer_prompt: Path = REPO_ROOT / "prompts" / "0005-complex-composer.md"
+    verifier_prompt: Path = REPO_ROOT / "prompts" / "0006-complex-verifier.md"
     composer_base_url: str = "http://host.docker.internal:11434"
     composer_model: str = "beam:cloud"
     composer_timeout: float = 90.0
@@ -63,6 +64,7 @@ class AgentSettings:
             router_prompt=prompt,
             planner_prompt=Path(source.get("PLANNER_PROMPT") or REPO_ROOT / "prompts" / "0004-complex-planner.md"),
             composer_prompt=Path(source.get("COMPOSER_PROMPT") or REPO_ROOT / "prompts" / "0005-complex-composer.md"),
+            verifier_prompt=Path(source.get("VERIFIER_PROMPT") or REPO_ROOT / "prompts" / "0006-complex-verifier.md"),
             composer_base_url=(source.get("COMPOSER_BASE_URL") or source.get("ROUTER_BASE_URL") or "http://host.docker.internal:11434").rstrip("/"),
             composer_model=source.get("COMPOSER_MODEL") or "beam:cloud",
             composer_timeout=float(source.get("COMPOSER_TIMEOUT_SECONDS") or 90.0),

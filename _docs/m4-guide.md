@@ -38,8 +38,8 @@ there. The evidence and the decisions are in the linked files; this page is the 
    competition names itself.
 4. **Complex path.** The planner (`beam:cloud`) chooses up to four allowlisted tools, or the gateway
    retrieves up to eight note chunks. The gateway runs the tools and sends those results to
-   `beam:cloud` for a composed answer. A citation check runs before sending; a failed plan or an
-   uncited draft falls back to the deterministic composer.
+   `beam:cloud` for a composed answer. A citation check and a focused second-model claim check run before
+   sending; a failed plan, an uncited draft or a rejected claim falls back to the deterministic composer.
 5. **Compose.** Simple: the answer restates numbers, names and dates and adds the provider timestamp; a
    note answer quotes the passage and cites the file and heading. Complex: `beam:cloud` writes it from
    the results, and the verifier requires the timestamp or the note file.
@@ -211,7 +211,7 @@ Run these in order. Each step says what a pass looks like.
    `ingest` healthy. `make up` is not needed if they are already up.
 2. **Corpus.** `make check-notes` prints `corpus ok: ...`; `make index-notes` prints `13 notes: 13 unchanged`. A
    changed note here means a stale index.
-3. **Gates.** `make test` (335 passed), `make lint` (clean), `make itest` (37 passed).
+3. **Gates.** `make test` (347 passed), `make lint` (clean), `make itest` (38 passed).
 4. **Simple database.** `make ask Q="where are Arsenal in the table?"` → a table sentence with
    `As of <ts>, source: football-data.org`, then `"route": "tool"`, `"complexity": "simple"`, `"grounded": true`.
 5. **Simple notes.** `make ask Q="how does the championship playoff work?"` → the note passage, its

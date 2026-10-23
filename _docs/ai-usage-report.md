@@ -453,6 +453,27 @@ checked and work that merely looked right.
   - The four `unsupported` scorer questions in the frozen M4 holdout predate the tool; they are recorded as
     historical labels, not re-run as a gate for this change.
 
+### S14 — PR review findings: verifier strength and MCP token (2026-10-23, branch `anammari-m4-agent`)
+
+- **Delegated:** none. A pull-request review raised two Medium findings; the coding agent reproduced and fixed both.
+  The owner has since ruled that no agent may request Copilot reviews; this review arrived before that rule, and no
+  further review was requested.
+- **Reviewed and fixed:**
+  - *Complex-answer grounding could be bypassed.* The verifier checked only that the draft carried a real date/source
+    or a retrieved filename, so a fluent draft with a fabricated fact could pass. Added a focused second `beam:cloud`
+    call (`prompts/0006-complex-verifier.md`) that sees the question, results and draft and returns
+    `{"supported": true|false}`. A false or unparseable verdict falls back to the deterministic composer. The
+    deterministic citation check stays as the cheaper first gate.
+  - *A separate `MCP_SERVER_TOKEN` broke gateway calls.* The MCP server required it, but Compose passed only
+    `API_AGENT_TOKEN` to `hermes`; the gateway then used the API token and failed authentication. `MCP_SERVER_TOKEN`
+    is now passed to both `hermes` and the tests service, with the API token as the fallback when it is empty.
+- **Also fixed while reproducing:** the complex `get_team_form` tool crashed on `TeamForm.matches[].competition`,
+  which is a string, not an object. The tool now has a separate `_form_match` formatter. The live complex run now
+  returns both standings and form and is verified.
+- **Evidence:** `tests/test_complex_path.py` covers the verifier accept, reject and fallback; `make test`
+  (347 unit), `make itest` (38) and `make lint` pass after the changes. Live `make ask` for the complex
+  standings+form question returns a two-result Beam answer with `grounded: true`.
+
 ## Sessions that predate this log (backfill needed)
 
 These commits were made before this report existed. What is recorded here is only what the commit messages state;

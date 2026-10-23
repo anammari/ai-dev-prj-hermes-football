@@ -47,16 +47,33 @@ def _utc(value: object) -> datetime | None:
 def _match(match: dict) -> dict:
     score = match.get("score") or {}
     full_time = score.get("full_time") or {}
+    competition = match.get("competition")
+    home = match.get("home_team")
+    away = match.get("away_team")
     return {
         "id": match.get("id"),
         "utc_date": match.get("utc_date"),
         "status": match.get("status"),
-        "competition": (match.get("competition") or {}).get("name"),
-        "home": (match.get("home_team") or {}).get("name"),
-        "away": (match.get("away_team") or {}).get("name"),
+        "competition": competition.get("name") if isinstance(competition, dict) else competition,
+        "home": home.get("name") if isinstance(home, dict) else home,
+        "away": away.get("name") if isinstance(away, dict) else away,
         "home_goals": full_time.get("home"),
         "away_goals": full_time.get("away"),
         "last_updated": match.get("last_updated"),
+    }
+
+
+def _form_match(match: dict) -> dict:
+    opponent = match.get("opponent")
+    score = match.get("score") or {}
+    return {
+        "match_id": match.get("match_id"),
+        "utc_date": match.get("utc_date"),
+        "competition": match.get("competition"),
+        "opponent": opponent.get("name") if isinstance(opponent, dict) else opponent,
+        "home": match.get("home"),
+        "result": match.get("result"),
+        "score": {"home": score.get("home"), "away": score.get("away")},
     }
 
 
@@ -208,7 +225,7 @@ def get_team_form(ctx: ToolContext, query: str, *, team: str | None = None, last
         "data_as_of": _as_of(envelope.meta),
         "window": data.get("window"),
         "summary": data.get("summary"),
-        "matches": [_match(match) for match in (data.get("matches") or [])[:last]],
+        "matches": [_form_match(match) for match in (data.get("matches") or [])[:last]],
     }
 
 

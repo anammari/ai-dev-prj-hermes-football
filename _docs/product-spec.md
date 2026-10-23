@@ -179,7 +179,8 @@ Acceptance criteria are **checkable**: a reviewer should be able to answer yes/n
 - **R-F5.6** `clef:cloud` labels every message `simple` or `complex`. Simple keeps one tool or one note retrieval and
   the local deterministic composer. Complex allows a planner to choose up to four allowlisted tools (or eight note
   passages) and `beam:cloud` to compose from those results only; no new tool, no outside fact, no prediction. A
-  failed plan or an uncited draft falls back to the deterministic path.
+  citation check and a focused second-model claim check run before sending. A failed plan, an uncited draft or a
+  rejected claim falls back to the deterministic path.
 - **R-F5.3** Admin and public users are separated (`TELEGRAM_ALLOWED_USERS` / `TELEGRAM_ADMIN_USERS`); admin
   commands are allowlisted and every user outside the allowlist is refused.
 - **R-F5.4** Every answered turn is logged in `agent_turns` through the insert-only `agent_writer` role; the agent

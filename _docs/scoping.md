@@ -110,8 +110,8 @@ The router is wired behind the hard safety gate added in M4; the independent hol
 **Simple and complex answer paths.** A simple question keeps the single tool (or one note retrieval) and the local
 deterministic composer: no second model, no tool output leaving the machine. A complex question lets the gateway plan
 up to four allowlisted tools, or retrieve up to eight note chunks, and hands the collected results to **`beam:cloud`**
-for a grounded, cited answer. A citation check runs before sending; if it fails, the deterministic composer answers
-instead. The simple path stays local. The complex path is the one place where tool output and note text leave the
+for a grounded, cited answer. A citation check and a focused second-model claim check run before sending; if
+either fails, the deterministic composer answers instead. The simple path stays local. The complex path is the one place where tool output and note text leave the
 machine; the owner signed that egress off on 2026-10-22 for complex questions only.
 
 ## 5. Extra work beyond the first brief

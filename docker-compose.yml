@@ -139,6 +139,7 @@ services:
       <<: *app-env
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       MCP_URL: http://mcp-server:8100/mcp
+      MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
       AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
       CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
       ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
@@ -242,6 +243,7 @@ services:
       COMPOSER_BASE_URL: ${COMPOSER_BASE_URL:-http://host.docker.internal:11434}
       COMPOSER_MODEL: ${COMPOSER_MODEL:-beam:cloud}
       MCP_URL: http://mcp-server:8100/mcp
+      MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["pytest", "-q", "-m", "not integration"]

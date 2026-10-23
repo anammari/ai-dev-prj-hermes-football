@@ -19,6 +19,7 @@ from datetime import datetime
 
 from agent.gateway import compose
 from agent.gateway.answer_composer import AnswerComposer
+from agent.gateway.answer_verifier import AnswerVerifier
 from agent.gateway.chat import ChatError
 from agent.gateway.mcp_client import MCPClient, MCPError, MCPToolError
 from agent.gateway.planner import Planner
@@ -77,6 +78,7 @@ class Pipeline:
         model: str,
         planner: Planner | None = None,
         composer: AnswerComposer | None = None,
+        verifier: AnswerVerifier | None = None,
         composer_model: str = "beam:cloud",
     ) -> None:
         self._router = router
@@ -85,6 +87,7 @@ class Pipeline:
         self._model = model
         self._planner = planner
         self._composer = composer
+        self._verifier = verifier
         self._composer_model = composer_model
 
     def answer(self, message: str, *, chat_id_hash: str | None = None) -> Answer:
@@ -94,7 +97,12 @@ class Pipeline:
         data_as_of: datetime | None = None
         grounded = False
         error_text: str | None = None
-        complex_path = decision.complexity == "complex" and self._planner is not None and self._composer is not None
+        complex_path = (
+            decision.complexity == "complex"
+            and self._planner is not None
+            and self._composer is not None
+            and self._verifier is not None
+        )
 
         if complex_path and decision.route == "tool" and decision.tool:
             text, grounded, data_as_of, tool_calls = self._complex_tools(message, decision.tool)
@@ -224,7 +232,12 @@ class Pipeline:
             text = self._composer.compose(message, route="database", results=payloads)
         except ChatError:
             text = ""
-        if text and verify_complex(text, route="tool", results=payloads):
+        if (
+            text
+            and verify_complex(text, route="tool", results=payloads)
+            and self._verifier is not None
+            and self._verifier.verify(message, route="database", results=payloads, draft=text)
+        ):
             return text, True, data_as_of, calls
 
         fallback = "\n\n".join(compose.compose(name, payload)[0] for name, payload in payloads.items())
@@ -258,7 +271,12 @@ class Pipeline:
             text = self._composer.compose(message, route="notes", results=results)
         except ChatError:
             text = ""
-        if text and verify_complex(text, route="knowledge", results=results):
+        if (
+            text
+            and verify_complex(text, route="knowledge", results=results)
+            and self._verifier is not None
+            and self._verifier.verify(message, route="notes", results=results, draft=text)
+        ):
             return text, True, calls
         fallback, grounded = compose.compose("search_knowledge", payload)
         return fallback, grounded, calls
