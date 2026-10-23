@@ -133,46 +133,24 @@ tool calls.
 Each `make ask` writes a real turn. The route and source in the JSON are the same fields the dashboard
 will read.
 
-## The review bot
+## For project reviewers
+
+The review bot already exists. Do not create a bot, do not open BotFather, do not edit `.env`.
 
 - **Name:** reviewsoccerbot
 - **Username:** [@review_soccer_bot](https://t.me/review_soccer_bot)
 - **Link:** https://t.me/review_soccer_bot
-- **Status:** public review bot, separate token, allow-all, throttled. The main bot stays allowlisted.
-- It runs the same image, MCP server, database, turn writer and notes as the main bot.
+- **Status:** public review bot, allow-all, throttled. The main bot stays allowlisted.
 
-### Start the review bot
+Open the link, send `/start`, then ask the questions from the [local test runbook](#local-test-runbook). Each user
+is limited to one question every 5 seconds and 500 characters. Every answer that comes from the notes links to the
+public note on GitHub. If the bot does not reply, contact the owner; do not create a replacement bot.
 
-1. Message **@BotFather**, send `/newbot`, choose name `reviewsoccerbot` and username `review_soccer_bot`.
-   Copy the token. Do not reuse the main bot token.
-2. In `.env` set only the review token:
-   ```bash
-   TELEGRAM_REVIEW_BOT_TOKEN=123456:replace-with-the-review-token
-   ```
-   Leave `TELEGRAM_BOT_TOKEN` as the main bot's token.
-3. Start the review service:
-   ```bash
-   make review-up
-   ```
-4. Confirm it:
-   ```bash
-   docker compose --profile review ps hermes-review
-   docker compose --profile review exec -T hermes-review python -c \
-     "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8201/health').read().decode())"
-   ```
-   Expect `"telegram":"configured"`, `"allowlist":0`, and the gateway running on `8201`.
-5. Share `https://t.me/<review_username>`. Anyone can ask; each user is limited to one question every 5 seconds
-   and 500 characters. Admin commands still require `TELEGRAM_ADMIN_USERS`.
-6. When review ends:
-   ```bash
-   make review-down
-   ```
-   Then revoke the review token in BotFather (`/revoke`) or delete the review bot. Remove
-   `TELEGRAM_REVIEW_BOT_TOKEN` from `.env`.
+## Owner setup: Telegram
 
-The review bot shares the same MCP server, database, turn writer and notes as the main bot.
+These steps are for someone replicating the project or maintaining the bots. Reviewers can skip this section.
 
-## Connect Telegram
+### Main bot (allowlisted)
 
 1. **Create the bot.** In Telegram, message **@BotFather**, send `/newbot`, choose a name and a username
    ending in `bot`. Copy the token it gives you. Treat it like a password.
@@ -204,10 +182,41 @@ The review bot shares the same MCP server, database, turn writer and notes as th
    Expect `"telegram":"configured"` and `"allowlist":1`.
 
 6. **Talk to it.** Open your bot, send `/start`, then the database question and the notes question from
-   the previous section. `/id` tells you your own id; `/status` is admin-only and reports the router
-   model and allowlist size.
+   the runbook. `/id` tells you your own id; `/status` is admin-only and reports the router model and
+   allowlist size.
 
-The main bot still refuses users outside `TELEGRAM_ALLOWED_USERS`; the review bot is the public one.
+The main bot refuses users outside `TELEGRAM_ALLOWED_USERS`.
+
+### Public review bot
+
+1. Message **@BotFather**, send `/newbot`, choose name `reviewsoccerbot` and username `review_soccer_bot`.
+   Copy the token. Do not reuse the main bot token.
+2. In `.env` set only the review token:
+   ```bash
+   TELEGRAM_REVIEW_BOT_TOKEN=123456:replace-with-the-review-token
+   ```
+   Leave `TELEGRAM_BOT_TOKEN` as the main bot's token.
+3. Start the review service:
+   ```bash
+   make review-up
+   ```
+4. Confirm it:
+   ```bash
+   docker compose --profile review ps hermes-review
+   docker compose --profile review exec -T hermes-review python -c \
+     "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8201/health').read().decode())"
+   ```
+   Expect `"telegram":"configured"`, `"allowlist":0`, and the gateway running on `8201`.
+5. Share `https://t.me/review_soccer_bot`. Anyone can ask; each user is limited to one question every 5 seconds
+   and 500 characters. Admin commands still require `TELEGRAM_ADMIN_USERS`.
+6. When review ends:
+   ```bash
+   make review-down
+   ```
+   Then revoke the review token in BotFather (`/revoke`) or delete the review bot. Remove
+   `TELEGRAM_REVIEW_BOT_TOKEN` from `.env`.
+
+The review bot shares the same MCP server, database, turn writer and notes as the main bot.
 
 ## Read the audit trail
 
