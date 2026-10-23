@@ -133,17 +133,18 @@ tool calls.
 Each `make ask` writes a real turn. The route and source in the JSON are the same fields the dashboard
 will read.
 
-## The bots
+## The review bot
 
-- **Main bot:** `soccerbot`, [@hermes_soccer_bot](https://t.me/hermes_soccer_bot). Allowlisted; refuses users
-  outside `TELEGRAM_ALLOWED_USERS`.
-- **Public review bot:** a separate bot token, allow-all, throttled. Its username is chosen in BotFather; put it
-  here and in the README once created. The main bot stays closed.
+- **Name:** reviewsoccerbot
+- **Username:** [@review_soccer_bot](https://t.me/review_soccer_bot)
+- **Link:** https://t.me/review_soccer_bot
+- **Status:** public review bot, separate token, allow-all, throttled. The main bot stays allowlisted.
+- It runs the same image, MCP server, database, turn writer and notes as the main bot.
 
-### Start the public review bot
+### Start the review bot
 
-1. Message **@BotFather**, send `/newbot`, choose a review name and a username ending in `bot` (for example
-   `hermes_soccer_review_bot`). Copy the token. Do not reuse the main bot token.
+1. Message **@BotFather**, send `/newbot`, choose name `reviewsoccerbot` and username `review_soccer_bot`.
+   Copy the token. Do not reuse the main bot token.
 2. In `.env` set only the review token:
    ```bash
    TELEGRAM_REVIEW_BOT_TOKEN=123456:replace-with-the-review-token
@@ -206,7 +207,7 @@ The review bot shares the same MCP server, database, turn writer and notes as th
    the previous section. `/id` tells you your own id; `/status` is admin-only and reports the router
    model and allowlist size.
 
-If a different person messages the bot, they get `This bot is private.` and no pipeline runs.
+The main bot still refuses users outside `TELEGRAM_ALLOWED_USERS`; the review bot is the public one.
 
 ## Read the audit trail
 

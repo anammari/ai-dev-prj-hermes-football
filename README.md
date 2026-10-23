@@ -10,7 +10,7 @@ holdout (gated macro-F1 0.979 on prompt v1 and 0.960 on the prompt-v2 regression
 fabricated, 3/3 refusal and 4/4 unsupported refused). M4 also
 adds the eight read-only MCP tools, the Telegram gateway, thirteen reviewed notes and 41 indexed chunks. The live
 Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same pipeline.
-The review bot is [@hermes_soccer_bot](https://t.me/hermes_soccer_bot); it is allowlisted while M4 is reviewed.
+The review bot is [@review_soccer_bot](https://t.me/review_soccer_bot) (`reviewsoccerbot`); it is the public bot for project review.
 The dashboard, eval scoreboard, CI/CD and observability are M5–M6.
 
 ## How to read this README

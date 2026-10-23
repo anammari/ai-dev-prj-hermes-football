@@ -5,8 +5,7 @@ question_classes:
 - formats
 competitions:
 - ELC
-source: EFL Regulations 2026/27, Regulation 10.1.1 and its Guidance; source URL in
-  _docs/notes-sources.md row 1.
+source: EFL Regulations 2026/27, Regulation 10.1.1 and its Guidance; EFL "About the Play-Offs" for the away-goals and extra-time rules; source URLs in _docs/notes-sources.md row 1.
 owner: Ahmad Ammari
 status: reviewed
 reviewed_at: '2026-10-22'
@@ -36,5 +35,5 @@ League Two formats, which still use four clubs.
 
 ## Source
 
-EFL Regulations 2026/27, Regulation 10.1.1 and the Guidance beneath it. The regulation PDF is linked
-from `_docs/notes-sources.md` row 1.
+EFL Regulations 2026/27, Regulation 10.1.1 and the Guidance beneath it. The away-goals and extra-time
+rules are on the EFL's "About the Play-Offs" page. Both links are in `_docs/notes-sources.md` row 1.
