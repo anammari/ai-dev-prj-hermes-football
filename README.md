@@ -148,6 +148,8 @@ the 12 criteria are in [`_docs/scoping.md`](_docs/scoping.md) §7.
 - [`_docs/decisions/`](_docs/decisions/README.md) — standing decisions: notes corpus, embedding model, routing model
 - [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what was delegated to agents, and what a human caught
 - [`_docs/m4-guide.md`](_docs/m4-guide.md) — what M4 built, and how to launch and test the agent
+- [M4 local test runbook](_docs/m4-guide.md#local-test-runbook) — ordered steps for a reviewer to test the simple and
+  complex database and notes paths, refusals, the turn log and Telegram
 - [`prompts/`](prompts/README.md) — the versioned prompt bank
 - [`evals/routing/results/`](evals/routing/results/) — the routing comparison's evidence
 
