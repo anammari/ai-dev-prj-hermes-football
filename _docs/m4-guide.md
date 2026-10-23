@@ -134,6 +134,15 @@ tool calls.
 Each `make ask` writes a real turn. The route and source in the JSON are the same fields the dashboard
 will read.
 
+## The review bot
+
+- **Name:** soccerbot
+- **Username:** [@hermes_soccer_bot](https://t.me/hermes_soccer_bot)
+- **Link:** https://t.me/hermes_soccer_bot
+- **Status:** live during M4 review, allowlisted. Public access is a separate owner decision; the current bot
+  refuses users outside `TELEGRAM_ALLOWED_USERS`.
+- It runs the same image and pipeline described in this guide. Use the questions in the runbook.
+
 ## Connect Telegram
 
 1. **Create the bot.** In Telegram, message **@BotFather**, send `/newbot`, choose a name and a username
