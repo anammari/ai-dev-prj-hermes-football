@@ -1,26 +1,152 @@
 # The compiled list of the notes the bot is allowed to quote.
 #
 # The Markdown files are the source of truth; this file is the inventory, and the build fails if the
-# two disagree (`R-F6.5`, `_docs/decisions/0001`). Every note repeats these keys as YAML
-# front-matter, and `python -m ingest.knowledge check` verifies that the two copies agree.
+# two disagree (R-F6.5, _docs/decisions/0001). Every note repeats these keys as YAML front-matter,
+# and `python -m ingest.knowledge check` verifies that the two copies agree.
 #
-# question_classes are the seven classes of `_docs/scoping.md` §4:
-#   formats, tiebreakers, qualification_relegation, data_policy, coverage_limits, glossary, multi_hop
-#
-# status is draft, reviewed or retired. Drafts ARE indexed, so the pipeline can be exercised before
-# the corpus is finished; M4 turns them into reviewed notes one at a time. A retired note keeps its
-# entry (with its history) and is removed from the index.
-
+# All 13 notes are reviewed (2026-10-22), written in English from the checked sources in
+# _docs/notes-sources.md. A non-English source is translated at authoring time; that is the only
+# translation in the pipeline.
 version: 1
-
 notes:
-  - file: policy/free-tier-delay-and-coverage.md
-    title: What the free tier gives us, what it does not, and how old the data is
-    question_classes:
-      - data_policy
-      - coverage_limits
-    competitions: []
-    source: "Probe of the football-data.org v4 free tier on 2026-10-10, recorded in _docs/scoping.md section 3."
-    owner: Ahmad Ammari
-    status: draft
-    reviewed_at: 2026-10-10
+- file: formats/championship-playoffs.md
+  title: How the Championship promotion play-offs work from 2026/27
+  question_classes:
+  - formats
+  competitions:
+  - ELC
+  source: EFL Regulations 2026/27, Regulation 10.1.1 and its Guidance; EFL "About the Play-Offs" and the
+    4 May 2026 play-off explainer for the away-goals, extra-time and second-leg rules; source URLs in
+    _docs/notes-sources.md row 1.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: formats/european-competitions.md
+  title: The UEFA Champions League format from 2026/27
+  question_classes:
+  - formats
+  competitions:
+  - CL
+  source: UEFA Champions League Regulations 2026/27, Articles 17 and 20; UEFA 2026/27
+    explainer; URLs in _docs/notes-sources.md row 2.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: tiebreakers/serie-a-level-points.md
+  title: Serie A tiebreakers when clubs finish level on points
+  question_classes:
+  - tiebreakers
+  competitions:
+  - SA
+  source: FIGC Communiqué 244/A of 27 May 2026, 2026/27 Serie A classification rules;
+    source URL in _docs/notes-sources.md row 3.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: tiebreakers/premier-league-goal-difference.md
+  title: How the Premier League orders clubs level on points
+  question_classes:
+  - tiebreakers
+  competitions:
+  - PL
+  source: Premier League Handbook 2026/27, Rule C.17; source URL in _docs/notes-sources.md
+    row 4.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: qualification_relegation/bundesliga-relegation.md
+  title: How Bundesliga promotion and relegation work
+  question_classes:
+  - qualification_relegation
+  competitions:
+  - BL1
+  source: DFL glossary, Relegation Play-Offs; source URL in _docs/notes-sources.md
+    row 5.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: qualification_relegation/champions-league-qualification.md
+  title: How clubs qualify for the Champions League
+  question_classes:
+  - qualification_relegation
+  competitions:
+  - CL
+  source: UEFA Champions League Regulations 2026/27, Annex A (Access List); UEFA access
+    list page; URLs in _docs/notes-sources.md row 6.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: policy/free-tier-delay-and-coverage.md
+  title: What the free tier gives us, what it does not, and how old the data is
+  question_classes:
+  - data_policy
+  - coverage_limits
+  competitions: []
+  source: football-data.org coverage and API policies, plus the project's own free-tier
+    probe in _docs/scoping.md section 3; URLs in _docs/notes-sources.md row 7.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: coverage_limits/paid-features.md
+  title: Why lineups, live scores and odds are not available
+  question_classes:
+  - coverage_limits
+  competitions: []
+  source: football-data.org pricing and API policies; URLs in _docs/notes-sources.md
+    row 8.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: coverage_limits/competitions-covered.md
+  title: Which competitions the bot covers
+  question_classes:
+  - coverage_limits
+  competitions: []
+  source: football-data.org coverage and lookup tables, plus the live competition
+    list recorded in _docs/scoping.md section 3; URLs in _docs/notes-sources.md row
+    9.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: glossary/aggregate-two-legged-tie.md
+  title: What aggregate means in a two-legged tie
+  question_classes:
+  - glossary
+  competitions: []
+  source: UEFA Champions League Regulations 2026/27, Article 20; source URL in _docs/notes-sources.md
+    row 10.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: glossary/clean-sheet.md
+  title: What a clean sheet means
+  question_classes:
+  - glossary
+  competitions: []
+  source: No regulator defines the term; the Premier League clean-sheets page shows
+    its usage. Source URL in _docs/notes-sources.md row 11.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: multi_hop/fifth-place-and-cup-winner.md
+  title: Fifth place, the FA Cup and a Champions League place
+  question_classes:
+  - multi_hop
+  competitions:
+  - PL
+  source: Premier League, European qualification explained; UEFA men's access list;
+    URLs in _docs/notes-sources.md row 12.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'
+- file: tiebreakers/la-liga-head-to-head.md
+  title: La Liga tiebreakers when clubs finish level on points
+  question_classes:
+  - tiebreakers
+  competitions:
+  - PD
+  source: RFEF Circular 84, 2026/27 competition rules, Article 10; source URL in _docs/notes-sources.md
+    row 13.
+  owner: Ahmad Ammari
+  status: reviewed
+  reviewed_at: '2026-10-22'

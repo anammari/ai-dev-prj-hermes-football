@@ -9,6 +9,7 @@ prescribes ("no data", never "no matches").
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +34,7 @@ def test_health_reports_the_running_version_and_the_schema_revision(client: Test
     body = response.json()
     assert body["status"] == "ok"
     assert body["version"] == backend.__version__
-    assert body["db"] == {"status": "ok", "schema_revision": "0002_ingestion_storage"}
+    assert body["db"] == {"status": "ok", "schema_revision": "0003_agent_turn_writer"}
     assert isinstance(body["uptime_seconds"], int)
 
 
@@ -341,3 +342,17 @@ def test_the_app_closes_only_the_embedder_it_created(engine, backend_settings, m
     with TestClient(create_app(backend_settings, engine=engine)):
         pass
     assert built.closed is True, "the app leaked the embedder it built itself"
+
+
+def test_top_scorers_returns_the_latest_snapshot_in_order(client: TestClient, auth, seeded) -> None:
+    response = client.get("/competitions/PL/top-scorers", headers=auth)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["competition"]["code"] == "PL"
+    assert body["data"]["season"] == 2026
+    assert body["data"]["snapshot"] == (seeded.now.date() - timedelta(days=1)).isoformat()
+    scorers = body["data"]["scorers"]
+    assert [row["player"]["name"] for row in scorers] == ["Bukayo Saka", "Declan Rice"]
+    assert scorers[0]["goals"] == 5
+    assert scorers[0]["team"]["name"] == "Arsenal FC"
+    assert body["meta"]["data_as_of"].startswith(body["data"]["snapshot"])

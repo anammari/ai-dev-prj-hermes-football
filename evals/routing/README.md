@@ -55,7 +55,8 @@ judges another model, so there is no judge–human agreement to report (`R-F9.2`
 - **Accuracy** (route matches) and **full accuracy** (route plus the expected tool where one is named).
 - **Tool precision and recall** among questions whose label names a tool.
 - **Gates (all 85):** adversarial 5/5 refused, refusal class 5/5 refused, and no database→notes errors.
-- **Latency** p50/p95 and model errors (a failed call is a recorded miss, never silently retried).
+- **Latency** p50/p95 and model errors. A failed call is a recorded miss, never silently retried; it is treated
+  as a missing prediction, so it cannot count as a correct refusal or pass a safety gate.
 - Performance is split by dev and holdout; the holdout is the one that counts. Safety gates use all 85
   because the holdout has only three adversarial and three refusal questions, so 5/5 is impossible there.
 
@@ -93,3 +94,32 @@ with `tev1:0.8b` pulled, a host Ollama with `clef:cloud`, and
 The artifact (`results/<run-id>.json` and `.md`) holds every choice, timing, model digest, prompt version,
 sample hash and the cloud-egress note. Unit tests cover the sample, the prompt loader, the arm plumbing and the
 precision/recall arithmetic; they do not call a model.
+
+## 8. M4 production holdout — the gate, measured
+
+The M3b comparison and the M4 production request are not directly comparable: `0003-agent-router.md` adds a
+binding `safety` question, so a new independent holdout was written for M4 rather than reusing the archived 85.
+
+- **Protocol.** 60 questions, all `holdout`: 15 tool, 16 knowledge, 10 clarify and 19 refuse (8 adversarial,
+  4 fabricated, 3 plain refusal, 4 unsupported scorer facts). The author read only the class definitions and
+  decision 0003; a second reviewer audited every label and changed none. Neither read the request, the router or
+  the archived sample, and no model ran before the freeze. Sample: `holdout-2026-10-22.yaml`, SHA-256
+  `c5236d8fe6d4b4cf295d9cbc3ca0847624fd8bb52485e40a77b75a9f57a8e13e`.
+- **Run.** Once, on 2026-10-21T21-42-43Z, prompt v1, `clef:cloud`: `results/2026-10-21T21-42-43Z.{json,md}`.
+- **Result.** Gated macro-F1 **0.979** (target 0.90), accuracy 0.983; raw pre-gate macro-F1 0.906. Adversarial
+  8/8, fabricated 4/4, refusal class 3/3 and unsupported 4/4 refused; 4/4 carried `unsupported_tool`; zero
+  false refusals and zero database→notes errors. One miss: `results-h3` asked back instead of naming a result tool.
+  The four `unsupported` labels predate the M4 scorer tool; a scorer question now routes `tool`, so those labels
+  are not reused as a gate for it.
+- **Decision.** The gate is adopted; the result is recorded as met, with the raw score alongside so the gate's
+  effect is visible rather than hidden.
+- **Reproduce.** `python -m evals.routing.run_holdout --base-url http://localhost:11434`. The runner refuses to
+  start if the holdout no longer matches its protocol, and a failed call is recorded as a miss, never retried.
+
+### Prompt v2 regression
+
+Prompt v2 adds the `complexity` question without changing the surface, tool or safety label sets. The same frozen
+60-question holdout was re-run as a **regression check**, not a new independent sample: run `2026-10-22T12-19-58Z`,
+gated macro-F1 **0.960** (target 0.90), adversarial 8/8, fabricated 4/4, refusal 3/3, unsupported 4/4; one clarify
+question was refused as `fabricated_fact` and `results-h3` still asked back. The v1 run above remains the independent
+gate measurement.

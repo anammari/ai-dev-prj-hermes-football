@@ -1,329 +1,144 @@
 # Product Spec — Hermes Football
 
-Version 0.1 (scoping draft) · Scope of this version: **the tooling and system**, not the full conversational product.
-Sibling documents: `_docs/scoping.md` (criteria map, architecture), `AGENTS.md` (working rules), `_docs/decisions/`
-(standing decisions: the notes corpus, the embedding model, the router).
+Source of truth for behaviour and acceptance criteria. Sibling docs: [`scoping.md`](scoping.md) (problem and criteria
+map), [`openapi.yaml`](../openapi.yaml) (API contract), [`data-model.md`](data-model.md), [`agent-team.md`](agent-team.md).
 
-## 1. One-liner
+## 1. One line
 
-A Telegram agent that answers football questions **accurately**, grounded in a local database refreshed daily from
-football-data.org, with an auditable tool layer, an evaluation harness, and a dashboard that shows whether any of it
-is actually working.
+A Telegram agent that answers football questions accurately from a local database refreshed daily from
+football-data.org, plus a hand-written notes corpus for rules, with citations and a hard refusal when the data cannot
+support an answer.
 
 ## 2. Users
 
 | User | Need | Surface |
 | --- | --- | --- |
-| Football fan (end user) | Correct, current-enough answers in plain language: fixtures, results, standings, form, head-to-head, competition rules | Telegram chat with the Hermes bot |
-| Owner / admin (project author) | See data freshness, judge agent quality, inspect what the agent did, control ingestion | Dashboard + Telegram admin commands |
-| Reviewer / peer evaluator | Reproduce the system and check the claims: tests, scans, evals, AI-usage report | Repo + README + `_docs/` |
-| Future contributor agent (Claude Code, Codex, Hermes) | Enough durable context to change the system without breaking the rules | `AGENTS.md`, `_docs/`, tests |
+| Football fan | Correct fixtures, results, tables, form, head-to-head, rules | Telegram bot |
+| Owner | Freshness, quality, turn audit, ingestion control | Dashboard (planned) + Telegram admin |
+| Reviewer | Reproduce and check the claims | Repository, tests, evals, docs |
 
-## 3. In scope / out of scope
+## 3. Scope
 
-**In scope (v1 tooling)**
+**In:** daily ingestion, read-only API, MCP tools, Telegram agent, notes corpus + retrieval, turn log, routing gate,
+tests, later dashboard and evals.
 
-- Scheduled ingestion from football-data.org free tier into a local database.
-- Read-only REST API + OpenAPI contract for every fact the agent may state.
-- MCP tool server exposing a narrow, typed tool surface to Hermes.
-- Hermes agent: grounded answering, refusal behavior, freshness stamping, admin/user separation.
-- Knowledge corpus + retrieval for qualitative football questions.
-- Dashboard: freshness, explorer, agent log, eval results, admin actions.
-- Eval harness with a golden question set and CI thresholds.
-- Tests (unit, integration, e2e), CI/CD, observability with one actionable alert, security artifacts.
+**Out:** live scores, odds, lineups, xG, predictions, betting advice, accounts/payments, Kubernetes, model training.
 
-**Out of scope for v1**
+## 4. Compose project and egress
 
-- Live (in-play) scores, odds, lineups, xG or any paid-tier data point.
-- Match prediction, betting advice, or any claim the data cannot support.
-- Accounts, payments, multi-tenant hosting, mobile apps.
-- Kubernetes or a VPS deployment; production-scale traffic.
-- Training or fine-tuning models.
+Everything runs in one Compose project. `hermes` long-polls Telegram (no inbound port). `mcp-server` calls only the
+backend API. `backend` is the only component with a published port and the only reader of Postgres for serving.
+`ingest` writes; `ollama` embeds locally; `db` stores data and vectors.
 
-## 4. The Compose project
+No service mounts the Docker socket. The corpus is read-only. `hermes` `terminal.backend` stays local inside its
+container.
 
-Everything runs locally in one Compose project. Nothing is installed on the host except Docker, this repository and a
-`.env`. Three different things get called "container" here, and the distinction matters:
+**Egress:** routing sends the user message to `clef:cloud` (decision 0003). The simple answer path stays local. The
+complex path sends the collected tool results or note passages to `beam:cloud`; signed off for complex questions only
+(decision 0007). Embeddings and note retrieval stay local. No other cloud call is allowed without a policy decision.
 
-| Layer | What it is | This project |
-| --- | --- | --- |
-| Hermes itself | The agent process: gateway, Telegram adapter, cron scheduler | A container, data volume at `/opt/data` |
-| Hermes tool backend (`terminal.backend`) | Where the agent's shell commands run: `local`, `docker`, `ssh`, `modal`… | `local` — inside Hermes' own container, which is the boundary |
-| Our application | backend, ingest, mcp-server, Postgres, frontend, observability | One container each |
+## 5. Functional requirements
 
-We deliberately do **not** use `terminal.backend: docker`: it would require mounting the Docker socket into the
-agent's container, which is root-equivalent control of the host. The container is the isolation boundary.
+### F1 — Ingestion (`ingest/`)
 
-| Service | Role | Host port | Volume |
-| --- | --- | --- | --- |
-| `hermes` | Gateway, Telegram long polling, cron, skills, `SOUL.md` | none | `hermes-data` → `/opt/data` |
-| `mcp-server` | Read-only football tools over HTTP on the Compose network | none | — |
-| `backend` | FastAPI: the only component that reads Postgres, and the only one serving the contract | 8000 | — |
-| `ingest` | Scheduler, upstream client, run ledger | none | — |
-| `db` | Postgres 16 + pgvector | none (5432 exposed in dev only) | `pgdata` |
-| `frontend` | Next.js dashboard | 3000 (dev) | — |
-| `obs` | OTel collector, Prometheus, Loki, Tempo, Grafana | 3001 | `grafana-data` |
-| `ollama` | Local embedding server (`embeddinggemma:300m`). The routing model, `clef:cloud`, runs in Ollama's cloud and is not a Compose service (decision 0003) | none | `ollama-data` |
+- Collect competitions, matches, standings, teams, squads and scorer snapshots within 10 requests/minute.
+- Pace on `x-requests-available-minute` and `X-RequestCounter-Reset`; the local bucket is a safety net.
+- Store bronze payloads, normalized rows, scorer snapshots and a run ledger; upserts are idempotent.
+- A 403/404 on an optional sub-resource is recorded and the run continues; never fail the whole run for one.
+- **AC:** a run is reproducible, rate-limit hits are visible, re-running does not duplicate rows, and the retained
+  volume shows 13 competitions and ~9.9k matches from a real run.
 
-Only `backend` is published; the Cloudflare tunnel points at it. Telegram uses long polling, so `hermes` needs egress
-only — no inbound port, no static IP, no VPS. **Both public paths are demo-scoped:** the tunnel and the bot run for one
-recorded demo and are stopped afterwards, so the repository describes a local system with a demonstrated public
-address, not a hosted service.
+### F2 — Database (`db/`)
 
-Rules the layout enforces:
+- Postgres 16 + pgvector; SQLite is a dev fallback with the same code path.
+- Migrations are the schema of record; `0001` schema, `0002` ingestion/scorers, `0003` turn-writer role.
+- Read-only `agent_readonly` role; insert-only `agent_writer` for `agent_turns`; no agent DDL.
+- **AC:** contract coverage test fails on a column with no contract property or a property with no home.
 
-- **No Docker socket** in any container; the knowledge corpus is mounted **read-only** into `hermes`.
-- **Local embeddings; one signed-off egress path.** `ollama` serves the embeddings locally, and no note text or
-  retrieved passage leaves the machine. Routing is the exception: `clef:cloud` sends the user's message to Ollama's
-  cloud, signed off on 2026-10-20 (decision 0003). Tool output and retrieved text are never part of that call. Any
-  other cloud call is a policy change, not a configuration detail.
-- **MCP over HTTP, not stdio.** A stdio server would have to live inside the Hermes image, coupling tool code to the
-  agent image and complicating its own tests and scans. As a sibling container it keeps a read-only DB role, its own
-  tests and its own scan artifacts.
-- **Secrets** arrive as environment variables from `.env`; never baked into an image layer, never placed in the model
-  context.
-- **Resource limits** live in Compose (`mem_limit`, cpus), not in Hermes `container_*` settings, which apply only to
-  the Docker terminal backend we do not use.
-- **Operator access** is `docker compose exec hermes hermes ...` (for example `hermes cron list`).
+### F3 — Backend API (`backend/`)
 
-- **AC** `make up` on a machine with only Docker and `.env` brings all eight services up healthy, and `make down`
-  leaves no orphan containers.
-- **AC** No service other than `backend` publishes a host port, and `docker inspect` shows no Docker socket mount
-  anywhere.
+- FastAPI against `openapi.yaml` v0.3.0; every agent-facing endpoint needs `API_AGENT_TOKEN`.
+- No token configured means refuse everything, not open up.
+- Errors use the contract's own shape (`400`, `401`, `404`, `503`); `data_as_of` on factual payloads.
+- **AC:** contract served verbatim, response validation in tests, drift fails on a renamed field, hidden route,
+  reused operationId, changed bound or undeclared enum.
 
-## 5. Functional requirements and acceptance criteria
+### F4 — MCP tools (`mcp_server/`)
 
-Acceptance criteria are **checkable**: a reviewer should be able to answer yes/no without interpretation.
+- Eight read-only tools: standings, fixtures, match result, team form, head-to-head, top scorers, knowledge search,
+  freshness.
+- Compact JSON; freshness stamp included; no SQL, write path, filesystem or upstream call.
+- MCP over HTTP; distinct MCP token optional; no database-owner credentials in this container.
+- **AC:** each tool tested against a fake backend and the live API; an unknown argument is a protocol error, not 500.
 
-### F1 — Ingestion pipeline (`ingest/`)
+### F5 — Agent and Telegram (`agent/gateway/`, `hermes/`)
 
-- **R-F1.1** A daily scheduled run loads, for every competition the plan exposes (13 observed on 2026-10-10, not a
-  hardcoded 12): the competition record, teams and squads, matches (season fixtures + results), standings and top
-  scorers. Fixtures and results are fetched **in batch across competitions by date window**, not competition by
-  competition.
-- **R-F1.2** All upstream traffic passes through one client that paces on the upstream `x-requests-available-minute`
-  and `X-RequestCounter-Reset` headers and enforces **<= 10 requests/minute** as a hard ceiling, with backoff on
-  429/5xx, a retry ceiling, upstream 403 treated as `data_not_available` and upstream 404 as `resource_not_found`.
-  An exhausted quota (`x-requests-available-minute` of 0) with no reset header waits a full 60-second window.
-  **Fault isolation:** a 403/404 on an optional sub-resource (`teams`, `standings`, `scorers`, `/teams/{id}`) is
-  recorded in `ingest_runs.errors` and the run continues; any `UpstreamError` inside one competition skips that
-  competition only, and a failed `/matches` window skips that window only. Such runs end `partial`. `failed` is
-  reserved for a failing `/competitions` catalog or a database error. Example: EC (the 2024 European Championship)
-  has no standings or scorers on the free tier and returns 404 every day.
-- **R-F1.3** Runs are **idempotent**: re-running the same day does not duplicate rows.
-- **R-F1.4** Raw payloads are stored (bronze) and normalized into serving tables (silver). Bronze is **pruned after
-  `RAW_PAYLOAD_RETENTION_DAYS` (default 30)** at the end of each run, never including the run that just wrote it;
-  `content_hash` is a change-detection fingerprint (a payload identical to an earlier one for the same endpoint is
-  counted as `payloads_unchanged` in the run report). The normalized tables are the durable record.
-- **R-F1.5** Each run writes a ledger row: start/end, status, upstream calls used, rows upserted, errors.
-- **R-F1.6** Expected cost of a full run: about 130-160 upstream calls measured live (`/matches` is paged in 10-day windows, the upstream cap), i.e. roughly **15-20 minutes** at 10 requests/minute,
-  which is the whole free-tier budget for that half hour. The run logs progress per competition. The scheduler
-  validates `UPSTREAM_API_KEY` at startup so a bad token fails `make up` instead of a once-a-day log line.
-- **AC** `make ingest` twice in a row -> second run reports 0 inserted / N unchanged, ledger shows both runs, and no
-  API call exceeds the rate limit (asserted in a unit test with a fake clock).
+- `SOUL.md` sets role, grounding, freshness, refusal, privacy.
+- `clef:cloud` returns road, tool, safety and `simple`/`complex`.
+- Simple: one tool/note, deterministic answer. Complex: planner up to four tools or eight notes, `beam:cloud`
+  composition, citation + second-model claim check, deterministic fallback.
+- Every turn records route, source, confidence, tool calls, model, latency, hashed chat id.
+- Public review bot uses a separate token, allow-all, 5 s/user, 500 chars; main bot allowlisted.
+- **AC:** database, notes, complex, override, scorer and vague questions pass integration tests; a recording failure
+  withholds the answer.
 
-### F2 — Database (`db/`, Postgres + Alembic)
+### F6 — Notes and retrieval (`hermes/agent-knowledge/`)
 
-- **R-F2.1** Schema covers competitions, seasons, teams, players, matches, standings, normalized top-scorer snapshots,
-  bronze raw upstream payloads, and the knowledge corpus (pgvector embeddings).
-- **R-F2.2** All schema changes are Alembic migrations; `alembic upgrade head` is part of container start.
-- **R-F2.3** The same code path runs on SQLite (dev) and Postgres (compose) via `DATABASE_URL`.
-- **R-F2.4** The agent-facing role is **read-only**.
-- **AC** Fresh clone -> `make up` migrates an empty database and `/meta/freshness` returns 200; a write attempt with
-  the agent role fails.
+- Hand-written English notes, one topic per file, source URL, owner, review date.
+- Manifest is the inventory; missing file/entry/source fails the build.
+- Chunk by headings, embed locally (`embeddinggemma:300m`, 768-d), HNSW cosine, content-hash re-index.
+- Search returns passages with file/heading/score; empty is a valid "not covered" answer.
+- Citations use a public GitHub URL pinned to a commit/tag.
+- **AC:** 13 reviewed notes, 41 chunks; `make check-notes` and `make index-notes` pass; changing a note re-indexes it.
 
-### F3 — Backend API (`backend/`, FastAPI)
+### F7 — Dashboard (`frontend/`, planned)
 
-- **R-F3.1** `openapi.yaml` is written before the code and describes every endpoint the frontend or agent uses.
-- **R-F3.2** Endpoints: `/health`, `/meta/freshness`, `/meta/ingest-runs`, `/competitions`,
-  `/competitions/{code}/standings`, `/competitions/{code}/matches`, `/teams/{id}`, `/teams/{id}/form`,
-  `/matches/{id}`, `/head-to-head`, `/search/knowledge`, `/agent/turns`, plus the contract itself at
-  `/openapi.yaml` and its Swagger UI at `/docs`. The two admin writes (`POST /admin/ingest-runs`,
-  `PATCH /admin/agent-turns/{turnId}/review`) are declared and answer a contract-shaped 404 naming M5 until the
-  dashboard can use them.
-- **R-F3.3** Every factual response carries `source` and `data_as_of` (upstream data timestamp), never just "now".
-- **R-F3.4** Responses are bounded (limit/pagination) and typed; errors use a documented error shape. A value
-  outside a declared bound — including an id outside the signed 64-bit range the columns hold — is a `400
-  invalid_parameter`, never a server error.
-- **R-F3.5** Every endpoint except `/health`, `/openapi.yaml` and `/docs` requires a bearer token
-  (`API_AGENT_TOKEN`); with no token configured the API refuses every request instead of opening up.
-- **R-F3.6** The API never talks to the provider (`AGENTS.md` rule 3): it holds no upstream credential and no HTTP
-  client, and reads only through the read-only database role (rule 4).
-- **R-F3.7** Freshness is derived from the run ledger and reported per competition, and it never claims more than the
-  stored rows support: a run with no competition scope refreshes nothing, a competition that was merely *listed* (no
-  rows stored for it) is `unknown` rather than `fresh`, and a run stamped in the future is ignored.
-- **AC** A contract test fails if a route's request/response shape drifts from `openapi.yaml` — including a route hidden
-  from FastAPI's generated document, a reused `operationId`, a changed parameter bound, or a response that violates a
-  constraint the contract declares; integration tests hit the running stack, not a mock.
+Read-only freshness, explorer, agent log, eval results; admin actions allowlisted and logged. **Later.**
 
-### F4 — MCP tool server (`mcp-server/`)
+### F8 — Scheduling
 
-- **R-F4.1** Exposes read-only tools: `get_standings`, `get_fixtures`, `get_match_result`, `get_team_form`,
-  `get_head_to_head`, `search_knowledge`, `get_data_freshness`.
-- **R-F4.2** Tool outputs are compact and LLM-sized (top-N rows, no raw dumps) and always include the freshness stamp.
-- **R-F4.3** No arbitrary SQL, no write path, no filesystem access; per-call timeout and input validation.
-- **AC** Each tool has a unit test and one recorded example call; a prompt-injection test shows that no user text can
-  cause a non-allowlisted tool call or a wider query.
+Daily ingestion, re-index changed notes, manual ingest. **AC:** schedule survives restart; failures are recorded.
 
-### F5 — Hermes agent and Telegram (`hermes/`)
+### F9 — Evaluation
 
-- **R-F5.1** `SOUL.md` defines role, tone, and the grounding policy: answer only from tool results or knowledge files;
-  say "I don't know" otherwise; never present delayed data as live.
-- **R-F5.2** The agent discloses the data timestamp whenever it states a score, fixture or table.
-- **R-F5.3** Admin and public users are separated (`allow_admin_from`); admin commands are allowlisted.
-- **R-F5.4** Conversations are logged locally for review, with a retention rule.
-- **R-F5.5** Hermes runs as a container in the same Compose project; no Docker socket is mounted.
-- **AC** A Telegram smoke test passes the scripted question set; unanswerable questions produce a refusal, not a guess.
+Golden question set with expected route/tool/passage; routing precision/recall; groundedness; refusal gate. Routing
+holdout already exists; golden set and scoreboard are next. **AC:** seeded wrong answer and wrong route both fail.
 
-### F6 — Knowledge corpus and retrieval
+### F10 — Observability, security, reproducibility
 
-- **R-F6.1** `hermes/agent-knowledge/**/*.md` documents competition formats, tiebreakers, promotion/relegation, the
-  API's coverage and delay policy, and a glossary — in English, one topic per file, named `<class>/<slug>.md`.
-- **R-F6.1a** The corpus is **authored by hand** from stable public sources (competition regulations, the provider's
-  own documentation) and reviewed like code: versioned in git, changed through pull requests, never generated at
-  runtime and never scraped from a remote feed. Upstream API payloads carry no prose and are not a source.
-- **R-F6.2** Files are chunked and embedded into pgvector with `embeddinggemma:300m`, served locally by the `ollama`
-  container (768 dimensions, pinned in the migration as `vector(768)`); retrieval returns passages with source file and
-  heading. The client applies the model's task prefixes — documents and queries are formatted differently. Each chunk
-  records `embedding_model` and `embedding_dim`, so changing either is a detectable re-index rather than a silently
-  mixed vector space. The tag must be runnable *by that container*: packaging that needs a macOS-only runtime is
-  rejected, and the integration test probes the width the container actually returns instead of trusting the library
-  page (`_docs/decisions/0002`).
-- **R-F6.3** Structured questions are answered from SQL; qualitative questions from retrieval; the agent does not use
-  retrieval to answer questions the database already answers correctly.
-- **R-F6.4** Re-indexing a changed file is deterministic, runs on the ingest schedule (and in CI when a note changes),
-  and needs no model call to decide what to index: the file's content hash says whether it is stale.
-- **R-F6.5** The corpus has a compiled inventory: `hermes/agent-knowledge/manifest.yaml` lists every note's file, title,
-  question classes, competitions, source citation, owner, status and review date, mirroring the file's YAML
-  front-matter. A test fails when a file is missing from the manifest, when an entry has no file, or when an entry
-  cites no source. Any rendered table is generated from the manifest, never hand-edited.
-- **R-F6.6** Routing is explicit and recorded: the chosen model, `clef:cloud`, maps every message to one of four
-  intent buckets (`tool`, `knowledge`, `clarify`, `refuse`), and every turn stores `route`, `route_source` and
-  `route_confidence`. M4 wires it behind a hard safety gate; selection is not production adoption.
-  The router sees the user message and a fixed label set only — never retrieved text, never tool output. There is no
-  regex and no deterministic pre-router. The model and its cloud egress are recorded in `_docs/decisions/0003`;
-  routing precision and recall are scored in the eval harness, and a hard safety gate runs before the tool surface.
-- **AC** Eval set includes both kinds; retrieval answers cite a file and heading.
-- **AC** Editing a note file and re-running the indexer changes what the agent answers for the question that note covers.
-- **AC** A note file without a manifest entry, or an entry without a file or a source, fails a test.
-- **AC** The recorded route matches the eval harness's expected route for every golden question, and a prompt-injection
-  attempt through Telegram changes neither the route nor the tool allowlist.
+OTel traces/metrics/logs; one actionable alert; secret scan and dependency scan; no secrets in images or logs; one
+`make up` reproduces the stack. **Later.**
 
-### F7 — Dashboard (`frontend/`)
+## 6. Non-functional
 
-- **R-F7.1** Views: data freshness + ingestion runs, competitions/standings/fixtures explorer, agent conversation log
-  with review flags, eval results over time.
-- **R-F7.2** One typed API client module; no scattered `fetch` calls.
-- **R-F7.3** Unit tests on core logic and components, with run instructions; Playwright covers the two key flows
-  (open dashboard -> see freshness; ask the agent -> see the logged answer).
-- **AC** `make test` and `make e2e` pass from a clean checkout.
-
-### F8 — Scheduling and automation
-
-- **R-F8.1** Daily ingestion job (container scheduler) at a fixed local time, with a manual trigger.
-- **R-F8.2** Hermes cron jobs: a daily data-quality digest delivered to the admin (deterministic script output first,
-  LLM summarization second) and a weekly eval run.
-- **R-F8.3** Failed or stale ingestion raises an alert; the alert payload carries service, environment, version, and
-  the impact ("data older than N hours").
-- **AC** Kill the ingestion job mid-run -> alert fires within the configured window; ledger shows the failed run.
-
-### F9 — Evaluation harness (`evals/`)
-
-- **R-F9.1** 30-50 golden questions with expected facts, grouped: fixtures, results, standings, form, head-to-head,
-  rules/knowledge, and unanswerable (refusal expected). Each question also carries its expected route — structured
-  tool or knowledge — so routing is scored on its own.
-- **R-F9.2** Scoring: factual accuracy, groundedness (every claim traceable to a tool result or file),
-  freshness disclosure, refusal correctness, and routing precision/recall (was the right surface used). Any
-  model-based judgement, such as a future judge, is itself validated against hand-labelled cases before its numbers
-  are reported.
-- **R-F9.3** Runs in CI against a pinned model; results stored for trend comparison.
-- **AC** A deliberately wrong answer is caught by the harness; the run produces a machine-readable report.
-- **AC** A deliberately wrong route is caught by the harness as a routing failure, not as a wrong answer.
-
-### F10 — Observability, security, and reproducibility
-
-- **R-F10.1** OTel instrumentation on backend and ingest -> collector -> Prometheus/Loki/Tempo/Grafana.
-- **R-F10.2** One actionable alert tied to user impact (data staleness / repeated agent failures).
-- **R-F10.3** `security/capability-table.md` lists every agent capability, credential, and data access, with a threat
-  model for the MCP server and the untrusted Telegram input path.
-- **R-F10.4** Deterministic scans (Semgrep, dependency and image scan), an agent-supply-chain scan, and PR audit
-  output are committed under `security/` and `docs/`.
-- **R-F10.5** `_docs/ai-tool-policy.md` states which model providers see which data, retention, and approval rules.
-- **AC** `make setup && make up && make e2e` works from a clean clone on a machine that has only Docker and an API key.
-
-## 6. Non-functional requirements
-
-| Area | Target |
-| --- | --- |
-| Correctness | No invented fact in the eval set; every factual answer carries source + timestamp |
-| Data freshness | Fixtures/standings refreshed daily; freshness surfaced in the dashboard and in answers |
-| Upstream budget | <= 10 req/min, <= ~1,500 calls/day, cached responses reused across competitions |
-| Latency | Agent replies within ~10 s p95 for tool-backed answers; dashboard loads < 2 s locally |
-| Cost | Free tier API + the model provider in use; ingestion and tool calls must not require paid data |
-| Portability | Compose is the single entry point; SQLite/PgSQL switch stays working |
-| Auditability | Every ingestion run, tool call, answer, and admin action is logged or reconstructable |
+- Python 3.12, FastAPI, SQLAlchemy 2, Alembic, httpx, pytest, ruff; Next.js for dashboard.
+- Local first: no VPS; Ollama for embeddings; no note text or retrieved passage in a cloud call.
+- Read-only agent data path; no Docker socket; Telegram input untrusted.
+- Secrets only in `.env`; never in repo, logs or prompts.
 
 ## 7. Data model sketch
 
-Eleven tables in one Alembic migration (`0001_init`), named after `openapi.yaml`. The column-by-column mapping, the
-deliberate renames and the local-only tables live in `_docs/data-model.md`; this is the shape.
-
-- `competitions` (code, name, area, type, current season with its start and end, and the coverage flags flattened into
-  `coverage_fixtures`, `coverage_standings`, `coverage_scorers`, `coverage_lineups`, `coverage_live_scores`,
-  `coverage_note`), `seasons` (competition, year, start, end, current flag)
-- `teams` (id, name, tla, crest, area, founded, venue, club colors), `team_competitions` (which competitions a team is
-  in — the table the API's `TeamDetail` needs), `players` (squad members: name, position, date of birth, nationality)
-- `matches` (id, competition, season, matchday, stage, status, utc kickoff, home and away team, the score flattened
-  into `score_winner`, `score_duration`, `score_full_time_*`, `score_half_time_*`, venue, referees as json, and the
-  provider's own `last_updated`)
-- `standings` (competition, season, snapshot date, matchday, stage, `group_label`, `table_type`, team, position, played,
-  won, drawn, lost, `goals_for`, `goals_against`, `goal_difference`, points, form) — one row per team per snapshot, so
-  yesterday's table stays queryable instead of being overwritten
-- `ingest_runs` (id, started and finished, status, trigger, competitions, calls used, rate-limit hits,
-  `rows_inserted`/`rows_updated`/`rows_unchanged`, errors as json, duration)
-- `knowledge_chunks` (id, source_file, heading, ordinal, chunk_text, embedding `vector(768)`, embedding_model,
-  embedding_dim, content_hash, updated_at) — derived from the hand-written English files in
-  `hermes/agent-knowledge/`, which are the source of truth and are listed in its `manifest.yaml`
-  (see `_docs/scoping.md` §4)
-- `agent_turns` (id, `chat_id_hash`, user_message, tool_calls json, answer, grounded flag, data_as_of, model,
-  latency_ms, route, route_source, route_confidence, review status and note, created_at) — the chat id is hashed and
-  never stored or logged in the clear (`AGENTS.md` rule 6)
-
-Two gaps against the contract are open and owned by M3, and are listed in `_docs/data-model.md`: v0.1.0's
-`AgentTurn` carries no `route`/`route_source`/`route_confidence` although rule 10 requires them (the columns exist),
-and the `KnowledgeHit.source_file` example is repo-relative while the corpus stores corpus-relative paths.
+`competitions`, `seasons`, `teams`, `team_competitions`, `players`, `matches`, `standings`, `top_scorers`,
+`ingest_runs`, `raw_payloads`, `knowledge_chunks`, `agent_turns`, `alembic_version`. Details and open items:
+[`data-model.md`](data-model.md).
 
 ## 8. Milestones
 
-M0 scaffold (this repo state, contract included) -> M1 database schema and the first migration, matching the contract,
-including the notes table, the corpus manifest and the local embedding provider -> M2 ingestion + re-indexing of
-changed notes -> M3 API -> M3b routing comparison (two models scored on precision and recall against hand-checked expectations, before M4)
--> M4 agent on Telegram, with the first notes authored and reviewed -> M5 dashboard + evals -> M6 CI/CD, observability,
-security, AI-usage report. Details in `_docs/scoping.md#8`; the standing decisions behind the corpus, the embedding
-model and the router are recorded in `_docs/decisions/` (0001, 0002, 0003).
+M1 schema/corpus/embedder → M2 ingestion/re-index → M3 API → M3b routing comparison → M4 agent on Telegram + notes
+→ M5 dashboard + eval scoreboard → M6 CI/CD, observability, alerting, on-call, security.
 
-## 9. Risks and mitigations
+## 9. Success measures
 
-| Risk | Mitigation |
-| --- | --- |
-| Free-tier capabilities drift (a resource moves to a paid tier, the plan-filtered competition list changes) | The verified set is recorded in `_docs/scoping.md` §3; a re-runnable probe in CI reports a change instead of failing at answer time |
-| "Delayed" could be mistaken for "live" | Measured in M2 (match 555033): scores lag the provider by about 1.5-3 minutes and arrive with `FINISHED`; the status can flap to `TIMED` during play. Daily ingestion makes the stamp the real age, so every answer carries it |
-| Delayed data mistaken for live data | Freshness stamping enforced in the API layer, not only in the prompt |
-| Agent hallucinating scores under pressure | Grounding policy in `SOUL.md` + eval cases with unanswerable questions + retrieval of facts only via tools |
-| Rate limit exhaustion from retries or dev usage | Token bucket, cache table for repeated windows, dev environment reads from the local DB only |
-| Scope creep (prediction, betting, live scores) | Explicit non-goals in §3; new features must name the criterion or user need they serve |
-| Prompt injection through Telegram | Read-only tool surface, allowlists, injection test suite, no secrets in context |
-| A note exists but nobody can find it, or the corpus drifts from the plan | `manifest.yaml` is the inventory (`R-F6.5`) and a test fails when the manifest and the directory disagree |
-| The router sends a factual question to the notes, or a rules question to SQL | Model-first routing with a model validated on precision/recall and a safety gate, the route recorded on every turn, a routing slice in the eval harness, and the M3b comparison before implementation |
-| An embedding model swap silently mixes vector spaces | `embedding_model` and `embedding_dim` are stored per chunk; a change forces a full re-index, which is cheap at roughly ten files |
+1. Clean machine: `make up` gives a working bot.
+2. Answerable questions ≥ 90% correct; unanswerable refused 100%.
+3. Zero invented facts across two consecutive eval runs.
+4. Every criterion has an artifact or an explicit gap (README table).
+5. Every note has a source URL and manifest entry.
+6. Routing at or above the selected target; no factual answer sourced from notes.
 
-## 10. Success measures for v1
+## 10. Known limits
 
-1. `make up` on a clean machine yields a working bot that answers the golden set within threshold.
-2. Eval accuracy >= 90% on answerable questions, 100% correct refusals on unanswerable ones.
-3. Zero invented facts detected across two consecutive eval runs.
-4. Every one of the 12 course criteria has a named, inspectable artifact or an explicit gap (map in `_docs/scoping.md#7`).
-5. Every note in `hermes/agent-knowledge/` appears in `manifest.yaml` with a source citation, and the manifest and the
-   directory agree in CI.
-6. Routing is correct on the golden set at or above the target the M3b comparison sets, and no factual answer is sourced
-   from the notes.
+- Free data is delayed; scores are not live.
+- No multi-turn memory; each message routes alone.
+- Scorer data is served; lineups, odds, live scores and xG are not available.
+- Complex answers use `beam:cloud`; the simple path is local.

@@ -17,7 +17,17 @@ import re
 from typing import Any
 
 from backend.meta import as_utc
-from db.models import AgentTurn, Competition, IngestRun, KnowledgeChunk, Match, Standing, Team
+from db.models import (
+    AgentTurn,
+    Competition,
+    IngestRun,
+    KnowledgeChunk,
+    Match,
+    Player,
+    Standing,
+    Team,
+    TopScorer,
+)
 
 #: The longest passage the contract allows in a knowledge snippet.
 SNIPPET_MAX_LENGTH = 1200
@@ -144,6 +154,35 @@ def standing_row(row: Standing, team: Team) -> dict[str, Any]:
             goal_difference=row.goal_difference,
             form=row.form,
         ),
+    }
+
+
+def top_scorer(row: TopScorer, player: Player, team: Team) -> dict[str, Any]:
+    return {
+        "player": {"id": player.id, "name": player.name},
+        "team": team_summary(team),
+        "goals": row.goals,
+        **pruned(
+            played=row.played_matches,
+            assists=row.assists,
+            penalties=row.penalties,
+        ),
+    }
+
+
+def top_scorers_table(
+    *,
+    code: str,
+    name: str,
+    season: int,
+    snapshot: Any,
+    scorers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "competition": {"code": code, "name": name},
+        "season": season,
+        "snapshot": snapshot.isoformat(),
+        "scorers": scorers,
     }
 
 

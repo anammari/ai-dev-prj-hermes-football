@@ -20,3 +20,7 @@ the change it makes, so a prompt can be diffed and blamed like code.
 | --- | --- | --- |
 | [`0001-m3-backend-api.md`](0001-m3-backend-api.md) | Build the M3 API against `openapi.yaml` | Reviewed, shipped |
 | [`0002-router-model-comparison.md`](0002-router-model-comparison.md) | The one routing request both models receive in the M3b routing comparison, so the model is the only variable | Used by both arms; comparison recorded in `_docs/scoping.md` §8 |
+| [`0003-agent-router.md`](0003-agent-router.md) | The M4 production routing request: surface, tool, a binding safety question and a simple/complex label in one pass | Reviewed; used by `agent/router.py` and the M4 holdout run |
+| [`0004-complex-planner.md`](0004-complex-planner.md) | Plan up to four allowlisted tools for a complex database question | Reviewed; used by `agent/gateway/planner.py` |
+| [`0005-complex-composer.md`](0005-complex-composer.md) | Compose a cited answer from the collected results with `beam:cloud` | Reviewed; used by `agent/gateway/answer_composer.py` |
+| [`0006-complex-verifier.md`](0006-complex-verifier.md) | Check a complex draft's factual claims against the results | Reviewed; used by `agent/gateway/answer_verifier.py` |

@@ -8,6 +8,8 @@ to reverse, when two documents disagreed, or when a reviewer asks "why is it lik
 - [0003 — Which model routes between the database and the notes](0003-prompt-router.md)
 - [0004 — Embedding tag: embeddinggemma:300m, because the `-2` tag needs MLX](0004-embedding-tag-mlx.md)
 - [0005 — The Ollama image: a flattened CPU-only build, because the CUDA trees cannot load here](0005-ollama-image.md)
+- [0006 — The routing safety gate: one pass, a binding answer, no regex](0006-routing-safety-gate.md)
+- [0007 — The Telegram gateway is our own thin client](0007-telegram-gateway.md)
 
 Format: Status, Milestone, Related, Context, Decision, Alternatives, Consequences, Verification. Keep it under a page.
 A decision that changes gets a new record that supersedes the old one; old records are not edited into agreement with

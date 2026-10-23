@@ -27,7 +27,7 @@ def test_one_note_indexes_end_to_end(session: Session, settings: Settings, embed
     session.commit()
 
     assert report.files == len(manifest.notes)
-    assert report.indexed == [note.file for note in manifest.notes]
+    assert set(report.indexed) == {note.file for note in manifest.notes}
     assert report.chunks_written >= 1
     assert _count(session) == report.chunks_written
 
@@ -53,7 +53,7 @@ def test_indexing_twice_writes_nothing_the_second_time(
 
     assert second.chunks_written == 0
     assert second.indexed == []
-    assert second.unchanged == first.indexed
+    assert set(second.unchanged) == set(first.indexed)
     assert _count(session) == before
 
 
@@ -85,10 +85,15 @@ def test_an_edited_note_is_re_embedded_without_duplicates(
     report = index_corpus(session, local, embedder=embedder)
     session.commit()
 
-    assert report.indexed == [note.relative_to(corpus_copy).as_posix()]
-    assert report.unchanged == []
-    assert report.chunks_removed == before
-    assert _count(session) == report.chunks_written
+    relative = note.relative_to(corpus_copy).as_posix()
+    assert report.indexed == [relative]
+    expected_unchanged = {entry.file for entry in load_manifest(corpus_copy).notes} - {relative}
+    assert set(report.unchanged) == expected_unchanged
+    before_for_note = len(
+        session.scalars(select(KnowledgeChunk.id).where(KnowledgeChunk.source_file == relative)).all()
+    )
+    assert report.chunks_removed == before_for_note
+    assert _count(session) == before - before_for_note + report.chunks_written
 
     keys = {(row.source_file, row.heading, row.ordinal) for row in session.scalars(select(KnowledgeChunk))}
     assert len(keys) == _count(session), "a chunk was written twice"
@@ -104,12 +109,12 @@ def test_a_retired_note_leaves_the_index(
 
     manifest_path = corpus_copy / MANIFEST_NAME
     manifest_path.write_text(
-        manifest_path.read_text("utf-8").replace("status: draft", "status: retired"), encoding="utf-8"
+        manifest_path.read_text("utf-8").replace("status: reviewed", "status: retired"), encoding="utf-8"
     )
     report = index_corpus(session, local, embedder=embedder)
     session.commit()
 
-    assert report.retired == [note.file for note in load_manifest(corpus_copy).notes]
+    assert set(report.retired) == {note.file for note in load_manifest(corpus_copy).notes}
     assert _count(session) == 0
 
 
@@ -122,13 +127,22 @@ def test_a_note_removed_from_the_corpus_is_pruned_from_the_index(
 
     note = next(path for path in corpus_copy.rglob("*.md"))
     relative = note.relative_to(corpus_copy).as_posix()
+    before = _count(session)
+    removed_chunks = len(
+        session.scalars(select(KnowledgeChunk.id).where(KnowledgeChunk.source_file == relative)).all()
+    )
     note.unlink()
-    (corpus_copy / MANIFEST_NAME).write_text("version: 1\nnotes: []\n", encoding="utf-8")
+    import yaml
+
+    manifest_body = yaml.safe_load((corpus_copy / MANIFEST_NAME).read_text("utf-8"))
+    manifest_body["notes"] = [entry for entry in manifest_body["notes"] if entry["file"] != relative]
+    (corpus_copy / MANIFEST_NAME).write_text(yaml.safe_dump(manifest_body, sort_keys=False), encoding="utf-8")
     report = index_corpus(session, local, embedder=embedder)
     session.commit()
 
     assert report.removed == [relative]
-    assert _count(session) == 0
+    assert _count(session) == before - removed_chunks
+    assert session.scalars(select(KnowledgeChunk).where(KnowledgeChunk.source_file == relative)).first() is None
 
 
 def test_a_width_that_does_not_match_the_schema_is_refused(session: Session, settings: Settings) -> None:
