@@ -45,7 +45,7 @@ up: ## Start the stack, apply migrations, serve the API
 	@echo "gateway health: docker compose exec -T hermes python -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8200/health').read().decode())\""
 
 down: ## Stop everything, keep the volumes
-	$(COMPOSE) --profile tools down
+	$(COMPOSE) --profile tools --profile review down
 
 db-port: ## Also publish the db on the host port, for development only
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.dev.yml up -d db
@@ -102,6 +102,12 @@ search: ## Ask the corpus a question: make search Q="how does the playoff work"
 
 ingest: ## Trigger one manual upstream collection run
 	$(COMPOSE) run --rm ingest python -m ingest run
+
+review-up: ## Start the public review bot (separate token, allow-all, throttled)
+	$(COMPOSE) --profile review up -d hermes-review
+
+review-down: ## Stop the public review bot
+	$(COMPOSE) --profile review stop hermes-review
 
 ask: ## Ask the agent one question through the real pipeline: make ask Q="where are Arsenal?"
 	$(TOOLS) run --rm -e BACKEND_BASE_URL=http://backend:8000 tests python -m agent.gateway.ask --message "$(Q)"

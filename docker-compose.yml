@@ -113,6 +113,7 @@ services:
       BACKEND_BASE_URL: http://backend:8000
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      PUBLIC_NOTES_BASE_URL: ${PUBLIC_NOTES_BASE_URL:-}
     command: ["python", "-m", "mcp_server"]
     healthcheck:
       test:
@@ -159,6 +160,49 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8200/health').read()"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
+  hermes-review:
+    profiles: [review]
+    image: hermes-football-hermes:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+    environment:
+      # Separate bot token and an explicit public mode, only while the project is under review.
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      MCP_URL: http://mcp-server:8100/mcp
+      MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
+      CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
+      ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
+      ROUTER_MODEL: ${ROUTER_MODEL:-clef:cloud}
+      COMPOSER_BASE_URL: ${COMPOSER_BASE_URL:-http://host.docker.internal:11434}
+      COMPOSER_MODEL: ${COMPOSER_MODEL:-beam:cloud}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_REVIEW_BOT_TOKEN:-}
+      TELEGRAM_ALLOW_ALL_USERS: "true"
+      TELEGRAM_ALLOWED_USERS: ""
+      TELEGRAM_ADMIN_USERS: ${TELEGRAM_ADMIN_USERS:-}
+      TELEGRAM_MIN_INTERVAL_SECONDS: ${TELEGRAM_REVIEW_MIN_INTERVAL_SECONDS:-5}
+      TELEGRAM_MAX_MESSAGE_CHARS: ${TELEGRAM_REVIEW_MAX_MESSAGE_CHARS:-500}
+      GATEWAY_PORT: "8201"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./hermes/agent-knowledge:/corpus:ro
+    command: ["python", "-m", "agent.gateway"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8201/health').read()"
       interval: 10s
       timeout: 5s
       retries: 6

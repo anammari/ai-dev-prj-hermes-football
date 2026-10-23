@@ -195,7 +195,10 @@ def knowledge(payload: dict) -> tuple[str, bool]:
         )
     hit = hits[0]
     snippet = _clean(hit.get("snippet"))
-    citation = f"{hit.get('source_file')}, {hit.get('heading')}"
+    if hit.get("source_url"):
+        citation = f"{hit['source_url']} ({hit.get('heading')})"
+    else:
+        citation = f"{hit.get('source_file')}, {hit.get('heading')}"
     return f"{snippet}\n\nSource: {citation}.", True
 
 

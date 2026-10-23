@@ -70,7 +70,8 @@ def test_a_rules_question_answers_from_a_note_and_cites_it(runtime: Runtime, own
     try:
         assert answer.route == "knowledge", answer
         assert answer.grounded is True
-        assert "Source: formats/championship-playoffs.md" in answer.text
+        assert "Source: https://github.com/" in answer.text
+        assert "formats/championship-playoffs.md" in answer.text
     finally:
         _cleanup(owner_engine, answer.turn_id)
 

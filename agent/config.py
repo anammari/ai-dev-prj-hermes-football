@@ -16,6 +16,10 @@ from db.settings import REPO_ROOT
 DEFAULT_PROMPT = REPO_ROOT / "prompts" / "0003-agent-router.md"
 
 
+def _flag(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _ids(value: str | None) -> tuple[int, ...]:
     if not value:
         return ()
@@ -44,6 +48,9 @@ class AgentSettings:
     telegram_bot_token: str | None = None
     telegram_allowed_users: tuple[int, ...] = ()
     telegram_admin_users: tuple[int, ...] = ()
+    telegram_allow_all_users: bool = False
+    telegram_min_interval_seconds: float = 0.0
+    telegram_max_message_chars: int = 500
     backend_base_url: str = "http://backend:8000"
     backend_token: str | None = None
     mcp_url: str = "http://mcp-server:8100/mcp"
@@ -73,6 +80,9 @@ class AgentSettings:
             telegram_bot_token=source.get("TELEGRAM_BOT_TOKEN") or None,
             telegram_allowed_users=_ids(source.get("TELEGRAM_ALLOWED_USERS")),
             telegram_admin_users=_ids(source.get("TELEGRAM_ADMIN_USERS")),
+            telegram_allow_all_users=_flag(source.get("TELEGRAM_ALLOW_ALL_USERS")),
+            telegram_min_interval_seconds=float(source.get("TELEGRAM_MIN_INTERVAL_SECONDS") or 0),
+            telegram_max_message_chars=int(source.get("TELEGRAM_MAX_MESSAGE_CHARS") or 500),
             backend_base_url=(source.get("BACKEND_BASE_URL") or "http://backend:8000").rstrip("/"),
             backend_token=source.get("API_AGENT_TOKEN") or None,
             mcp_url=source.get("MCP_URL") or "http://mcp-server:8100/mcp",

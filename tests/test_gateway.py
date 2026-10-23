@@ -147,6 +147,16 @@ def test_scorer_composition_names_the_player_and_the_goals() -> None:
     assert grounded is True
 
 
+def test_knowledge_composition_uses_the_public_source_url() -> None:
+    payload = {
+        **KNOWLEDGE,
+        "hits": [{**KNOWLEDGE["hits"][0], "source_url": "https://example.test/notes/formats/championship-playoffs.md"}],
+    }
+    text, grounded = compose.compose("search_knowledge", payload)
+    assert "Source: https://example.test/notes/formats/championship-playoffs.md" in text
+    assert grounded is True
+
+
 def test_knowledge_composition_cites_file_and_heading() -> None:
     text, grounded = compose.compose("search_knowledge", KNOWLEDGE)
     assert "The top two clubs are promoted automatically." in text
@@ -250,11 +260,21 @@ class FakeTelegram:
         self.sent.append((chat_id, text))
 
 
-def _gateway(allowed=(7,), admins=(7,)) -> tuple[Gateway, FakeTelegram, FakeTools]:
+def _gateway(
+    allowed=(7,),
+    admins=(7,),
+    *,
+    allow_all: bool = False,
+    min_interval: float = 0.0,
+    max_chars: int = 500,
+) -> tuple[Gateway, FakeTelegram, FakeTools]:
     settings = AgentSettings(
         telegram_bot_token="token",
         telegram_allowed_users=allowed,
         telegram_admin_users=admins,
+        telegram_allow_all_users=allow_all,
+        telegram_min_interval_seconds=min_interval,
+        telegram_max_message_chars=max_chars,
     )
     tools = FakeTools(STANDINGS)
     turns = FakeTurns()
@@ -275,6 +295,28 @@ def test_a_user_outside_the_allowlist_is_refused_without_a_tool_call() -> None:
     gateway, telegram, tools = _gateway()
     gateway.handle(Incoming(1, 100, 999, "where are Arsenal?"))
     assert telegram.sent == [(100, "This bot is private.")]
+    assert tools.calls == []
+
+
+def test_allow_all_lets_an_unknown_user_use_the_review_bot() -> None:
+    gateway, telegram, tools = _gateway(allowed=(), allow_all=True)
+    gateway.handle(Incoming(1, 100, 999, "where are Arsenal?"))
+    assert telegram.sent and "Arsenal" in telegram.sent[0][1]
+    assert tools.calls
+
+
+def test_a_public_user_is_throttled() -> None:
+    gateway, telegram, tools = _gateway(allowed=(), allow_all=True, min_interval=60)
+    gateway.handle(Incoming(1, 100, 999, "where are Arsenal?"))
+    gateway.handle(Incoming(2, 100, 999, "where are Chelsea?"))
+    assert "One question at a time" in telegram.sent[-1][1]
+    assert len(tools.calls) == 1
+
+
+def test_an_overlong_public_message_is_rejected_before_the_pipeline() -> None:
+    gateway, telegram, tools = _gateway(allowed=(), allow_all=True, max_chars=20)
+    gateway.handle(Incoming(1, 100, 999, "x" * 30))
+    assert "Please keep the question under 20 characters" in telegram.sent[0][1]
     assert tools.calls == []
 
 

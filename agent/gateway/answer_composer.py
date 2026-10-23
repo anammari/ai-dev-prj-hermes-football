@@ -33,4 +33,22 @@ class AnswerComposer:
                 },
             ]
         )
-        return re.sub(r"\s*No data_as_of provided\.?", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"\s*No data_as_of provided\.?", "", text, flags=re.IGNORECASE).strip()
+        return _publicise_citations(text, results)
+
+
+def _publicise_citations(text: str, results: dict) -> str:
+    """The composer is told to cite source_url, but a model can still print the file name.
+
+    Rewrite only an existing `Source: <file>` prefix, never a file name inside a URL, so a citation
+    the model already made public stays intact.
+    """
+    for payload in results.values():
+        for hit in payload.get("hits") or []:
+            file = hit.get("source_file")
+            url = hit.get("source_url")
+            if not file or not url:
+                continue
+            text = text.replace(f"Source: {file}", f"Source: {url}")
+            text = text.replace(f"Source: `{file}`", f"Source: {url}")
+    return text

@@ -45,6 +45,8 @@ class Gateway:
         self.telegram = telegram
         self.stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_message: dict[int, float] = {}
+        self._rate_lock = threading.Lock()
 
     def start(self) -> None:
         if self.telegram is None or self._thread is not None:
@@ -83,12 +85,24 @@ class Gateway:
 
     def handle(self, incoming: Incoming) -> None:
         assert self.telegram is not None
-        if incoming.user_id not in self.settings.telegram_allowed_users:
+        if not self.settings.telegram_allow_all_users and incoming.user_id not in self.settings.telegram_allowed_users:
             LOGGER.warning("rejected a message from a user outside the allowlist")
             self._send(incoming.chat_id, PRIVATE)
             return
 
         text = incoming.text
+        if len(text) > self.settings.telegram_max_message_chars:
+            limit = self.settings.telegram_max_message_chars
+            self._send(incoming.chat_id, f"Please keep the question under {limit} characters.")
+            return
+        if self.settings.telegram_min_interval_seconds > 0:
+            now = time.monotonic()
+            with self._rate_lock:
+                previous = self._last_message.get(incoming.user_id)
+                if previous is not None and now - previous < self.settings.telegram_min_interval_seconds:
+                    self._send(incoming.chat_id, "One question at a time, please. Try again in a moment.")
+                    return
+                self._last_message[incoming.user_id] = now
         if text.startswith("/"):
             command = text.split()[0].split("@")[0].lower()
             if command in ("/start", "/help"):

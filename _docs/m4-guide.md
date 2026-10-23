@@ -101,9 +101,8 @@ Notes question:
 make ask Q="how does the championship playoff work?"
 ```
 
-Expected shape: the note's passage, then `Source: formats/championship-playoffs.md, How the
-Championship promotion play-offs work.`, then `"route": "knowledge"`, `"complexity": "simple"` and a
-`turn_id`.
+Expected shape: the note's passage, then a public `Source: https://github.com/...` link with the heading, then
+`"route": "knowledge"`, `"complexity": "simple"` and a `turn_id`.
 
 Complex database question (plan + Beam):
 
@@ -134,14 +133,43 @@ tool calls.
 Each `make ask` writes a real turn. The route and source in the JSON are the same fields the dashboard
 will read.
 
-## The review bot
+## The bots
 
-- **Name:** soccerbot
-- **Username:** [@hermes_soccer_bot](https://t.me/hermes_soccer_bot)
-- **Link:** https://t.me/hermes_soccer_bot
-- **Status:** live during M4 review, allowlisted. Public access is a separate owner decision; the current bot
-  refuses users outside `TELEGRAM_ALLOWED_USERS`.
-- It runs the same image and pipeline described in this guide. Use the questions in the runbook.
+- **Main bot:** `soccerbot`, [@hermes_soccer_bot](https://t.me/hermes_soccer_bot). Allowlisted; refuses users
+  outside `TELEGRAM_ALLOWED_USERS`.
+- **Public review bot:** a separate bot token, allow-all, throttled. Its username is chosen in BotFather; put it
+  here and in the README once created. The main bot stays closed.
+
+### Start the public review bot
+
+1. Message **@BotFather**, send `/newbot`, choose a review name and a username ending in `bot` (for example
+   `hermes_soccer_review_bot`). Copy the token. Do not reuse the main bot token.
+2. In `.env` set only the review token:
+   ```bash
+   TELEGRAM_REVIEW_BOT_TOKEN=123456:replace-with-the-review-token
+   ```
+   Leave `TELEGRAM_BOT_TOKEN` as the main bot's token.
+3. Start the review service:
+   ```bash
+   make review-up
+   ```
+4. Confirm it:
+   ```bash
+   docker compose --profile review ps hermes-review
+   docker compose --profile review exec -T hermes-review python -c \
+     "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8201/health').read().decode())"
+   ```
+   Expect `"telegram":"configured"`, `"allowlist":0`, and the gateway running on `8201`.
+5. Share `https://t.me/<review_username>`. Anyone can ask; each user is limited to one question every 5 seconds
+   and 500 characters. Admin commands still require `TELEGRAM_ADMIN_USERS`.
+6. When review ends:
+   ```bash
+   make review-down
+   ```
+   Then revoke the review token in BotFather (`/revoke`) or delete the review bot. Remove
+   `TELEGRAM_REVIEW_BOT_TOKEN` from `.env`.
+
+The review bot shares the same MCP server, database, turn writer and notes as the main bot.
 
 ## Connect Telegram
 
@@ -224,7 +252,7 @@ Run these in order. Each step says what a pass looks like.
 4. **Simple database.** `make ask Q="where are Arsenal in the table?"` → a table sentence with
    `As of <ts>, source: football-data.org`, then `"route": "tool"`, `"complexity": "simple"`, `"grounded": true`.
 5. **Simple notes.** `make ask Q="how does the championship playoff work?"` → the note passage, its
-   `Source: formats/championship-playoffs.md, ...`, `"route": "knowledge"`, `"complexity": "simple"`.
+   a public `Source: https://github.com/...` link, `"route": "knowledge"`, `"complexity": "simple"`.
 6. **Complex database.** `make ask Q="Compare Arsenal's league position with their recent form and say whether they are in the title race."`
    → `"complexity": "complex"`, `"model": "clef:cloud+beam:cloud"`, two `tool_calls`
    (`get_standings`, `get_team_form`), timestamp in the answer, `"grounded": true`.

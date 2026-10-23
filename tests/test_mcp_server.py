@@ -229,6 +229,12 @@ def test_head_to_head_needs_two_teams() -> None:
     assert result["summary"]["played"] == 4
 
 
+def test_knowledge_hits_carry_a_public_source_url(monkeypatch) -> None:
+    monkeypatch.setenv("PUBLIC_NOTES_BASE_URL", "https://example.test/notes")
+    result = search_knowledge(_ctx(), "how does the playoff work")
+    assert result["hits"][0]["source_url"] == "https://example.test/notes/formats/championship-playoffs.md"
+
+
 def test_knowledge_returns_a_citation_and_an_empty_result_is_real() -> None:
     hit = search_knowledge(_ctx(), "how does the playoff work")
     assert hit["hits"][0]["source_file"] == "formats/championship-playoffs.md"

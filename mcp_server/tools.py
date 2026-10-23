@@ -7,9 +7,11 @@ and resolve team/competition names themselves, so the model's only routing job i
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 from mcp_server.backend import Backend, BackendError
 from mcp_server.resolver import Competition, RegistryCache, Team, normalise
@@ -29,6 +31,13 @@ class ToolContext:
 
     def __post_init__(self) -> None:
         self.cache = RegistryCache(self.backend)
+
+
+def _note_url(source_file: object) -> str | None:
+    base = (os.environ.get("PUBLIC_NOTES_BASE_URL") or "").strip().rstrip("/")
+    if not base or not source_file:
+        return None
+    return f"{base}/{quote(str(source_file), safe='/')}"
 
 
 def _as_of(meta: dict | None) -> str | None:
@@ -324,6 +333,7 @@ def search_knowledge(ctx: ToolContext, query: str, *, k: int = 3) -> dict:
         hits.append(
             {
                 "source_file": hit.get("source_file"),
+                "source_url": _note_url(hit.get("source_file")),
                 "heading": hit.get("heading"),
                 "score": hit.get("score"),
                 "snippet": hit.get("snippet"),

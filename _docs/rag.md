@@ -162,7 +162,7 @@ Two honest caveats, both written in the code rather than discovered later:
 ### How the agent uses retrieval in M4
 
 - **Simple knowledge question:** `clef:cloud` picks `knowledge`; the gateway calls `search_knowledge` with `k=3` and
-  the deterministic composer quotes the top passage with `Source: <file>, <heading>`.
+  the deterministic composer quotes the top passage with `Source: <public note URL> (<heading>)`.
 - **Complex knowledge question:** the gateway calls `search_knowledge` with `k=8`, then `beam:cloud` synthesises
   across the passages. A citation check and a focused second-model claim check run before the answer is sent; a
   failure falls back to the top passage.

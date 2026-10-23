@@ -257,6 +257,14 @@ def test_a_composer_fact_the_verifier_rejects_falls_back() -> None:
     assert "World Cup" not in answer.text
 
 
+def test_the_composer_rewrites_a_file_citation_to_the_public_url() -> None:
+    knowledge = {**KNOWLEDGE, "hits": [{**KNOWLEDGE["hits"][0], "source_url": "https://example.test/serie-a.md"}]}
+    chat = FakeChat(["Two clubs play. Source: tiebreakers/serie-a-level-points.md, Serie A tiebreakers."])
+    text = _composer(chat).compose("question", route="notes", results={"search_knowledge": knowledge})
+    assert "Source: https://example.test/serie-a.md" in text
+    assert "Source: tiebreakers/serie-a-level-points.md" not in text
+
+
 def test_a_complex_knowledge_turn_composes_with_the_note_citation() -> None:
     cited = (
         "Two clubs level on points for 1st play a single match. "
