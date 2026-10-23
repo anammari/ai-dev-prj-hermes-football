@@ -211,7 +211,7 @@ Run these in order. Each step says what a pass looks like.
    `ingest` healthy. `make up` is not needed if they are already up.
 2. **Corpus.** `make check-notes` prints `corpus ok: ...`; `make index-notes` prints `13 notes: 13 unchanged`. A
    changed note here means a stale index.
-3. **Gates.** `make test` (347 passed), `make lint` (clean), `make itest` (38 passed).
+3. **Gates.** `make test` (352 passed), `make lint` (clean), `make itest` (38 passed).
 4. **Simple database.** `make ask Q="where are Arsenal in the table?"` → a table sentence with
    `As of <ts>, source: football-data.org`, then `"route": "tool"`, `"complexity": "simple"`, `"grounded": true`.
 5. **Simple notes.** `make ask Q="how does the championship playoff work?"` → the note passage, its

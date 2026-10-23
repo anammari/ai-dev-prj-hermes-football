@@ -8,9 +8,9 @@ someone wrote down — how a promotion playoff works, what "aggregate" means, wh
 comes from our own notes. Searching those notes is the "RAG" part of this project ([`scoping.md`](scoping.md) §4
 explains the split, §5 why it earns its place).
 
-Status: **the machinery is built and working end to end (M1–M3); the notes themselves are M4.**
-[Decision 0001](decisions/0001-notes-corpus-manifest.md) states the split the same way: *"M1 (manifest + first note
-indexed), M4 (remaining notes authored and reviewed)"*.
+Status: **built and working end to end.** M1–M3 built the storage, chunker, local embedder, indexer and retrieval
+endpoint; M4 authored and reviewed thirteen notes, indexed 41 chunks, and wired retrieval into the Telegram agent
+(simple top-hit and complex multi-passage synthesis). The retrieval quality scoreboard is M5.
 
 ## 1. Which milestone owns which part
 
@@ -23,30 +23,31 @@ indexed), M4 (remaining notes authored and reviewed)"*.
 | Manifest and its checks: a note without an entry, or an entry with no file or source, fails the build | `ingest/knowledge/manifest.py`, `make check-notes` | M1 | Implemented |
 | Re-indexing changed notes on the daily schedule | `ingest/pipeline.py`, driven by `ingest/scheduler.py` | M2 | Implemented |
 | The retrieval surface the bot calls | `backend/routers/knowledge.py` (`GET /search/knowledge`) | M3 | Implemented |
-| **The notes themselves** — the knowledge being searched | `hermes/agent-knowledge/**/*.md` | **M4** | **1 of ~10 exists** |
-| The agent that searches, answers from what it found, and cites the file and heading | `hermes/` | **M4** | Not started |
-| The scoreboard that turns retrieval quality into a number | `evals/`, `frontend/` | **M5** | Not started |
+| **The notes themselves** — the knowledge being searched | `hermes/agent-knowledge/**/*.md` | **M4** | **13 reviewed notes, 41 chunks** |
+| The agent that searches, answers from what it found, and cites the file and heading | `agent/gateway/`, `mcp_server/` | **M4** | Implemented — one top hit on the simple path; eight passages plus `beam:cloud` synthesis on the complex path |
+| The scoreboard that turns retrieval quality into a number | `evals/`, `frontend/` | **M5** | Not started; the routing holdout is separate |
 | Re-indexing in CI when a note changes, and a quality threshold on every pull request | `.github/workflows/` | **M6** | Not started |
 
-Today the corpus holds exactly one note, `policy/free-tier-delay-and-coverage.md`, and the database holds the five
-passages it chunks into.
+Today the corpus holds thirteen reviewed notes across formats, tiebreakers, qualification/relegation, data policy,
+coverage limits, glossary and multi-hop. The retained database holds **41 chunks from 13 files**, all
+`embeddinggemma:300m`, all 768-dimensional.
 
 ## 2. Proof it works, not just that it exists
 
 Run against the retained volume, with the real model:
 
 ```text
-$ make search Q="how old are the scores on the free plan"
-0.549  policy/free-tier-delay-and-coverage.md  ::  How old the data is
-0.475  policy/free-tier-delay-and-coverage.md  ::  What the free plan gives us
-0.430  policy/free-tier-delay-and-coverage.md  ::  What the free tier gives us, what it does not, and how old the data is
-0.407  policy/free-tier-delay-and-coverage.md  ::  Why we count head-to-head records ourselves
-0.382  policy/free-tier-delay-and-coverage.md  ::  What it does not give us
+$ make search Q="how does the championship playoff work"
+0.587  formats/championship-playoffs.md  ::  How the Championship promotion play-offs work
+0.487  qualification_relegation/bundesliga-relegation.md  ::  Bundesliga promotion and relegation
+0.448  formats/european-competitions.md  ::  The UEFA Champions League format
+0.444  qualification_relegation/champions-league-qualification.md  ::  How clubs qualify for the Champions League
+0.436  tiebreakers/serie-a-level-points.md  ::  Serie A tiebreakers
 ```
 
-That is the whole path: a note file, chunked, embedded locally, stored as `vector(768)`, searched by cosine
-similarity, returned with its source file and heading. The retained database agrees: `5` chunks, `1` source file,
-`embeddinggemma:300m`, dimension `768`.
+That is the whole path: note files, chunked, embedded locally, stored as `vector(768)`, searched by cosine
+similarity, returned with source file and heading. The retained database agrees: **41 chunks, 13 source files,
+`embeddinggemma:300m`, dimension 768**.
 
 Tests that hold this in place: `tests/test_chunker.py`, `tests/test_indexer.py`, `tests/test_corpus_manifest.py`,
 `tests/test_schema.py`, the retrieval cases in `tests/test_api_insights.py`, and `tests/integration/`
@@ -158,11 +159,21 @@ Two honest caveats, both written in the code rather than discovered later:
 - A broken or missing manifest disables the competition boost and logs a warning — **a corpus problem must not become
   a retrieval outage**. `make check-notes` is where that gets fixed.
 
+### How the agent uses retrieval in M4
+
+- **Simple knowledge question:** `clef:cloud` picks `knowledge`; the gateway calls `search_knowledge` with `k=3` and
+  the deterministic composer quotes the top passage with `Source: <file>, <heading>`.
+- **Complex knowledge question:** the gateway calls `search_knowledge` with `k=8`, then `beam:cloud` synthesises
+  across the passages. A citation check and a focused second-model claim check run before the answer is sent; a
+  failure falls back to the top passage.
+- Every turn records `route`, `route_source`, `route_confidence` and `grounded`, so retrieval and generation are
+  visible separately in `agent_turns`.
+
 ### The corpus and its manifest
 
 - Notes live in `hermes/agent-knowledge/**/*.md`, English, one topic per file, named `<class>/<slug>.md`.
-- The corpus is mounted **read-only** (`:ro`) into every container that reads it — `backend`, `ingest`, `migrate` and
-  `tests` today, and `hermes` when it lands (product-spec §4). A test reads the Compose file and fails if any mount of
+- The corpus is mounted **read-only** (`:ro`) into every container that reads it — `backend`, `ingest`, `migrate`,
+  `tests` and `hermes` (product-spec §4). A test reads the Compose file and fails if any mount of
   the corpus is writable, because a read-only corpus is what makes "the notes are the source of truth" a property
   rather than a promise.
 - `hermes/agent-knowledge/manifest.yaml` (version 1) lists every note with `file`, `title`, `question_classes`,
@@ -171,7 +182,7 @@ Two honest caveats, both written in the code rather than discovered later:
 - `question_classes` are the seven classes of [`scoping.md`](scoping.md) §4: formats, tiebreakers,
   qualification_relegation, data_policy, coverage_limits, glossary, multi_hop.
 - `status` is `draft`, `reviewed` or `retired`. **Drafts are indexed**, so the pipeline can be exercised before the
-  corpus is finished; M4 turns them into reviewed notes one at a time.
+  corpus is finished; M4 finished with all thirteen notes `reviewed`.
 - The check fails on: a file on disk that is not listed, an entry with no file, an entry with no source, a duplicate
   entry, a path that escapes the corpus, an unknown or empty `question_classes`, a bad `status`, or a missing
   `reviewed_at`.
@@ -185,14 +196,13 @@ competition regulations, the provider's own documentation — versioned in git, 
 **reviewed like code**. They are never generated at run time and never scraped, and upstream API payloads are not a
 source of prose: they carry no sentences to quote. A model *embeds* the notes; a model does not write them.
 
-So the remaining work in M4 is authoring and reviewing roughly ten notes — competition formats, tiebreakers,
-promotion and relegation, coverage limits, a glossary — each one a small reviewable pull request with its source
-citation, owner and review date. At that size a full re-index is cheap, which is one reason the corpus is kept small
-and deliberate.
+M4 finished that work: thirteen notes across the planned classes, each with a checked source URL
+([`notes-sources.md`](notes-sources.md)), a citation, an owner and a review date. The remaining work is evaluation
+(M5), not authoring: the corpus is small enough that a full re-index is cheap, which is why it stays deliberate.
 
 ## 5. How we will evaluate the retrieval — the proposal
 
-The point of a RAG evaluation is to find **where** a wrong answer went wrong. A wrong answer has two possible
+M4 added a runtime claim verifier on the complex path; the scoreboard below is still M5. A wrong answer has two possible
 causes: the retriever handed over poor passages, or the generator ignored good ones. Measuring only the final answer
 cannot tell them apart, so we score retrieval and generation separately and then read the pattern.
 
