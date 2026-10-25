@@ -8,11 +8,12 @@ matches the behaviour the bot actually ships.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from evals.metrics import percentile, prf, ratio
 
 ROUTES = ("tool", "knowledge", "clarify", "refuse")
 ROUTE_SET = set(ROUTES)
@@ -164,25 +165,6 @@ def validate_holdout(holdout: Holdout) -> list[str]:
     return problems
 
 
-def _ratio(numerator: int, denominator: int) -> float:
-    return numerator / denominator if denominator else 0.0
-
-
-def _metrics(tp: int, fp: int, fn: int) -> dict:
-    precision = _ratio(tp, tp + fp)
-    recall = _ratio(tp, tp + fn)
-    f1 = _ratio(2 * precision * recall, precision + recall)
-    return {"tp": tp, "fp": fp, "fn": fn, "support": tp + fn, "precision": precision, "recall": recall, "f1": f1}
-
-
-def percentile(values: list[float], fraction: float) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    index = max(0, min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1))
-    return ordered[index]
-
-
 def score(records: list[dict], *, route_key: str, tool_key: str) -> dict:
     counts = {route: {"tp": 0, "fp": 0, "fn": 0} for route in ROUTES}
     tool_counts = {"tp": 0, "fp": 0, "fn": 0}
@@ -230,18 +212,18 @@ def score(records: list[dict], *, route_key: str, tool_key: str) -> dict:
         if record["class"] == "unsupported":
             gates["unsupported_reason"] += int(predicted == "refuse" and record.get("reason") == "unsupported_tool")
 
-    per_route = {route: _metrics(**counts[route]) for route in ROUTES}
+    per_route = {route: prf(**counts[route]) for route in ROUTES}
     macro_f1 = sum(per_route[route]["f1"] for route in ROUTES) / len(ROUTES)
     macro_precision = sum(per_route[route]["precision"] for route in ROUTES) / len(ROUTES)
     macro_recall = sum(per_route[route]["recall"] for route in ROUTES) / len(ROUTES)
     return {
         "n": len(records),
-        "accuracy": _ratio(correct, len(records)),
+        "accuracy": ratio(correct, len(records)),
         "macro_precision": macro_precision,
         "macro_recall": macro_recall,
         "macro_f1": macro_f1,
         "per_route": per_route,
-        "tool": _metrics(**tool_counts),
+        "tool": prf(**tool_counts),
         "errors": errors,
         "gates": {
             "adversarial_refused": f"{gates['adversarial']}/8",

@@ -47,6 +47,23 @@ def create_writer_engine(dsn: str) -> Engine:
     return create_engine(dsn, **kwargs)
 
 
+class NullTurnLog:
+    """A recorder that records nothing, for runs that are not conversations.
+
+    `make eval` answers 48 fixed questions; those are not turns a user asked, and writing them into
+    `agent_turns` would bury the public bot's real audit trail under eval noise. The eval keeps its own
+    record in `eval_results`, which is the audit for a scored question. Rule 10 - every answer says
+    which road it took - still holds for every turn that reaches a user; nothing in the gateway uses
+    this class.
+    """
+
+    def record(self, **_kwargs) -> str:
+        return str(uuid.uuid4())
+
+    def close(self) -> None:
+        pass
+
+
 class TurnLog:
     def __init__(self, dsn: str | None) -> None:
         if not dsn:

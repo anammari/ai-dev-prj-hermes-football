@@ -147,6 +147,31 @@ def test_scorer_composition_names_the_player_and_the_goals() -> None:
     assert grounded is True
 
 
+def test_freshness_composition_names_its_own_source() -> None:
+    """Rule 2 on the freshness answer: it carries a timestamp *and* says where the number came from.
+
+    The source is our ingestion ledger, not the provider: this answer is about our runs, and quoting
+    football-data.org here would attribute a fact the provider never published.
+    """
+    payload = {
+        "as_of": "2026-10-25T05:01:00Z",
+        "competitions": [
+            {
+                "code": "PL",
+                "name": "Premier League",
+                "status": "fresh",
+                "last_success_at": "2026-10-25T02:19:00Z",
+                "age_minutes": 162,
+            }
+        ],
+    }
+    text, grounded = compose.compose("get_data_freshness", payload)
+    assert "source: hermes-football ingestion ledger" in text
+    assert "162 minutes old" in text
+    assert "Premier League: fresh" in text
+    assert grounded is True
+
+
 def test_knowledge_composition_uses_the_public_source_url() -> None:
     payload = {
         **KNOWLEDGE,

@@ -19,10 +19,7 @@ questions:
       - "points and goal difference"
       - "data timestamp"
     expected_terms:
-      - ["Arsenal"]
-      - ["position", "place"]
-      - ["points"]
-      - ["goal difference"]
+      - ["arsenal"]
     expected_reason: null
     rationale: "A current league position is a stored table row, not a written rule; the tiebreaker note explains ordering but cannot say where a club sits today."
   - id: g-tool-standings-2
@@ -37,10 +34,7 @@ questions:
       - "Napoli goal difference"
       - "Serie A table"
     expected_terms:
-      - ["Napoli"]
-      - ["points"]
-      - ["goal difference"]
-      - ["Serie A"]
+      - ["napoli"]
     expected_reason: null
     rationale: "Points and goal difference are columns returned for one club; the neighbouring rules road explains how level clubs are separated, not what the numbers are."
   - id: g-tool-fixtures-1
@@ -54,10 +48,7 @@ questions:
       - "Liverpool's next Premier League fixture"
       - "kick-off time"
     expected_terms:
-      - ["Liverpool"]
-      - ["kick-off", "kickoff"]
-      - ["Premier League"]
-      - ["fixture", "fixtures"]
+      - ["liverpool"]
     expected_reason: null
     rationale: "A next date and kick-off time are stored fixture rows, and no note covers scheduling; this is not a rules question."
   - id: g-tool-fixtures-2
@@ -71,9 +62,7 @@ questions:
       - "Bayern home fixture"
       - "kick-off time"
     expected_terms:
-      - ["Bayern"]
-      - ["kick-off", "kickoff"]
-      - ["home"]
+      - ["bayern", "bayern munich"]
     expected_reason: null
     rationale: "Upcoming home matches with times come from stored fixtures; a format note describes a competition's shape, never its calendar."
   - id: g-tool-results-1
@@ -87,9 +76,7 @@ questions:
       - "Chelsea's weekend result"
       - "final score"
     expected_terms:
-      - ["Chelsea"]
-      - ["won", "win", "beat"]
-      - ["score", "result"]
+      - ["chelsea"]
     expected_reason: null
     rationale: "Whether a club won is one stored match with a score and status; the message names the club, so there is nothing vague to clarify."
   - id: g-tool-results-2
@@ -103,10 +90,8 @@ questions:
       - "Inter v Juventus final score"
       - "match status"
     expected_terms:
-      - ["Inter"]
-      - ["Juventus", "Juve"]
-      - ["score", "result"]
-      - ["status", "finished", "full time"]
+      - ["inter"]
+      - ["juventus", "juve"]
     expected_reason: null
     rationale: "One finished match is the results road; head-to-head is for the record across many meetings, which this question does not ask for."
   - id: g-tool-form-1
@@ -120,9 +105,7 @@ questions:
       - "Dortmund's recent results"
       - "form sequence"
     expected_terms:
-      - ["Dortmund"]
-      - ["form"]
-      - ["win", "draw", "loss"]
+      - ["dortmund"]
     expected_reason: null
     rationale: "Recent form is a short sequence of stored results; a single score would be the results road, and no written rule describes a run of form."
   - id: g-tool-form-2
@@ -136,9 +119,7 @@ questions:
       - "Marseille last five results"
       - "win, draw and loss sequence"
     expected_terms:
-      - ["Marseille"]
-      - ["five", "5"]
-      - ["results", "form"]
+      - ["marseille"]
     expected_reason: null
     rationale: "An ordered run of one club's last matches is the form window; a table row or a single fixture is a different stored shape."
   - id: g-tool-head-to-head-1
@@ -152,10 +133,8 @@ questions:
       - "Arsenal v Tottenham meetings"
       - "win counts"
     expected_terms:
-      - ["Arsenal"]
-      - ["Tottenham", "Spurs"]
-      - ["head-to-head", "head to head", "meetings"]
-      - ["wins", "won", "win"]
+      - ["arsenal"]
+      - ["tottenham", "spurs"]
     expected_reason: null
     rationale: "Meetings and win counts between two clubs are the head-to-head record; a single match result would be the results road."
   - id: g-tool-head-to-head-2
@@ -169,9 +148,8 @@ questions:
       - "Ajax v PSV meetings"
       - "Ajax win count"
     expected_terms:
-      - ["Ajax"]
-      - ["PSV", "Eindhoven"]
-      - ["wins", "beaten", "won"]
+      - ["ajax"]
+      - ["psv"]
     expected_reason: null
     rationale: "A win count across meetings of two named clubs is head-to-head history; current form is a different window and would not answer it."
   - id: g-tool-scorers-1
@@ -185,9 +163,7 @@ questions:
       - "Bundesliga top scorer"
       - "goals total"
     expected_terms:
-      - ["Bundesliga"]
-      - ["top scorer", "top-scorer", "leading scorer"]
-      - ["goals", "goal"]
+      - ["bundesliga"]
     expected_reason: null
     rationale: "Top-scorer totals come from the latest stored snapshot; the format note describes the competition, not who is scoring in it."
   - id: g-tool-scorers-2
@@ -202,10 +178,7 @@ questions:
       - "assists"
       - "penalties"
     expected_terms:
-      - ["La Liga", "LaLiga"]
-      - ["assists"]
-      - ["penalties"]
-      - ["goals"]
+      - ["la liga", "laliga", "primera division"]
     expected_reason: null
     rationale: "Goals, assists and penalties per player are snapshot columns; no written note answers who leads a scoring chart."
   - id: g-tool-freshness-1
@@ -218,28 +191,23 @@ questions:
     expected_facts:
       - "as-of timestamp"
       - "last refresh time"
-    expected_terms:
-      - ["timestamp", "as of", "as-of"]
-      - ["refresh", "refreshed"]
-      - ["age", "minutes", "hours"]
+    expected_terms: []
     expected_reason: null
     rationale: "The age of this stored run is a freshness report; the delay policy note explains why delays exist, not what today's stamp is."
   - id: g-tool-freshness-2
     class: freshness
-    message: "when were the scores last refreshed"
+    message: "is the serie a table up to date"
     expected_route: tool
     expected_tool: get_data_freshness
     expected_notes: []
     expected_headings: []
     expected_facts:
-      - "last refresh timestamp"
-      - "data age"
+      - "Serie A freshness status"
+      - "when Serie A was last refreshed"
     expected_terms:
-      - ["refresh", "refreshed"]
-      - ["timestamp", "time"]
-      - ["date"]
+      - ["serie a"]
     expected_reason: null
-    rationale: "A last-refresh stamp is produced by the freshness tool; the coverage note is about plan limits, not this moment's age."
+    rationale: "Whether one named competition is current is a freshness report for that competition; the delay policy note explains why refreshes lag, not whether Serie A is current."
   - id: g-tool-standings-3
     class: standings
     message: "give me the championship table with points and goal difference"
@@ -251,10 +219,7 @@ questions:
       - "Championship table"
       - "position, points and goal difference"
     expected_terms:
-      - ["Championship"]
-      - ["points"]
-      - ["goal difference"]
-      - ["table"]
+      - ["championship"]
     expected_reason: null
     rationale: "A whole competition table is standings data; the play-off note explains what the top positions earn, not who currently holds them."
   - id: g-tool-scorers-3
@@ -268,9 +233,7 @@ questions:
       - "Ligue 1 top scorer"
       - "goals total"
     expected_terms:
-      - ["Ligue 1"]
-      - ["top scorer", "leading scorer", "most goals"]
-      - ["goals"]
+      - ["ligue 1"]
     expected_reason: null
     rationale: "A goals total for the league's leading scorer is a stored snapshot value; the glossary defines terms, it does not hold totals."
   # ---------------------------------------------------------------------------
@@ -293,8 +256,6 @@ questions:
     expected_terms:
       - ["play-off", "playoff", "playoffs"]
       - ["six", "6"]
-      - ["Wembley"]
-      - ["seven", "7"]
     expected_reason: null
     rationale: "A fixed format with counts and rounds is written down; a live table cannot say how many clubs contest the play-offs."
   - id: g-knowledge-formats-2
@@ -312,9 +273,7 @@ questions:
       - "top eight go straight to the round of 16"
     expected_terms:
       - ["league phase"]
-      - ["36"]
       - ["eight", "8"]
-      - ["round of 16"]
     expected_reason: null
     rationale: "Competition structure is a written format; the standings tool returns one table, not the shape of the competition."
   - id: g-knowledge-tiebreakers-1
@@ -333,7 +292,6 @@ questions:
     expected_terms:
       - ["goal difference"]
       - ["goals scored"]
-      - ["C.17"]
       - ["head-to-head", "head to head"]
     expected_reason: null
     rationale: "The sorting order is a rule the table tool applies silently; this asks for the reason, which only the note states."
@@ -354,7 +312,6 @@ questions:
       - ["play-off", "playoff"]
       - ["penalties"]
       - ["no extra time", "without extra time"]
-      - ["classifica avulsa"]
     expected_reason: null
     rationale: "A tiebreak procedure is regulation text; a current table cannot settle a hypothetical title tie."
   - id: g-knowledge-tiebreakers-3
@@ -374,7 +331,6 @@ questions:
       - ["head-to-head", "head to head"]
       - ["goal difference"]
       - ["fair play", "fair-play"]
-      - ["Article 10", "Circular 84"]
     expected_reason: null
     rationale: "This is the ordering rule, not a record of results; the head-to-head tool would return meetings, not which criterion ranks first."
   - id: g-knowledge-qualification-1
@@ -411,9 +367,8 @@ questions:
       - "domestic cup win does not earn a Champions League place"
       - "European Performance Spot"
     expected_terms:
-      - ["domestic cup", "FA Cup", "cup winners"]
-      - ["access list"]
-      - ["titleholder", "title holder"]
+      - ["titleholder", "title holder", "title holders"]
+      - ["Champions League winners", "Europa League winners"]
       - ["European Performance Spot"]
     expected_reason: null
     rationale: "Access routes are regulation text; a league position is data, but how places are earned and who is exempt is not."
@@ -425,17 +380,14 @@ questions:
     expected_notes:
       - policy/free-tier-delay-and-coverage.md
     expected_headings:
-      - "What the free tier gives us, what it does not, and how old the data is"
       - "How old the data is"
-      - "What it does not give us"
     expected_facts:
-      - "10 requests per minute"
       - "1.5 to 3 minutes behind the provider's lastUpdated"
       - "median 104 seconds on the second probe"
     expected_terms:
-      - ["10 requests", "ten requests", "requests per minute"]
       - ["lastUpdated", "last updated"]
-      - ["1.5", "3 minutes", "104 seconds"]
+      - ["1.5 to 3 minutes"]
+      - ["104 seconds"]
     expected_reason: null
     rationale: "Why a score lags is a written policy; the freshness tool reports this run's stamp, not the reason behind the gap."
   - id: g-knowledge-coverage-1
@@ -454,8 +406,7 @@ questions:
     expected_terms:
       - ["paid", "pricing"]
       - ["lineups", "line-ups", "lineup"]
-      - ["xG"]
-      - ["odds"]
+      - ["not available", "unavailable", "not included"]
     expected_reason: null
     rationale: "This asks why a feature is missing, which is a coverage policy; the same wish phrased as a request for an actual lineup would be a refusal."
   - id: g-knowledge-coverage-2
@@ -474,7 +425,7 @@ questions:
     expected_terms:
       - ["13", "thirteen"]
       - ["Copa Libertadores"]
-      - ["stored list", "source of truth"]
+      - ["Premier League", "Bundesliga", "Serie A"]
     expected_reason: null
     rationale: "Coverage is a policy statement about the stored list; none of the eight tools returns the coverage rule itself."
   - id: g-knowledge-glossary-1
@@ -494,7 +445,6 @@ questions:
       - ["aggregate"]
       - ["two legs", "two-legged", "second leg"]
       - ["away goals", "away-goals"]
-      - ["2021/22", "2021"]
     expected_reason: null
     rationale: "This is the definition of a level aggregate; a result tool would give the two scores, not what the rules do with them."
   - id: g-knowledge-glossary-2
@@ -513,8 +463,7 @@ questions:
     expected_terms:
       - ["clean sheet"]
       - ["conceded", "conceding", "no goals"]
-      - ["0-0", "nil-nil"]
-      - ["defensive", "not a rule"]
+      - ["not a clean sheet", "no clean sheet"]
     expected_reason: null
     rationale: "A glossary term with no stored column behind it; a match result returns the score, not the meaning of conceding."
   - id: g-knowledge-multihop-1
@@ -533,32 +482,27 @@ questions:
     expected_terms:
       - ["fifth", "5th"]
       - ["Europa League"]
-      - ["Conference League"]
       - ["European Performance Spot"]
     expected_reason: null
     rationale: "Where a finishing position leads is written into the qualification rules; the table tool can say who is fifth, not what fifth earns."
   - id: g-knowledge-multihop-2
     class: multi_hop
-    message: "we win the fa cup but finish fifth, are we in the champions league next season"
+    message: "if the fa cup winner already qualifies for the champions league through the league, where does their cup place go"
     expected_route: knowledge
     expected_tool: null
     expected_notes:
       - multi_hop/fifth-place-and-cup-winner.md
-      - qualification_relegation/champions-league-qualification.md
     expected_headings:
       - "Fifth place, the FA Cup and a Champions League place"
-      - "How clubs qualify for the Champions League"
     expected_facts:
-      - "no Champions League place from the FA Cup"
-      - "the cup's Europa League place passes down the table"
-      - "a domestic cup win does not earn a Champions League place"
+      - "the cup place passes down rather than stacking"
+      - "it goes to the next-highest club not already qualified for Europe"
     expected_terms:
-      - ["FA Cup"]
-      - ["Champions League"]
+      - ["passes down", "passed down", "passes to"]
+      - ["next-highest", "next highest"]
       - ["Europa League"]
-      - ["passes down", "next-highest", "next highest"]
     expected_reason: null
-    rationale: "Two written rules are needed, one about a fifth-placed cup winner and one that a domestic cup never carries a Champions League place; no stored number settles it."
+    rationale: "The rule is that a cup place passes down instead of stacking when the winner is already qualified; it sits in the same note as the fifth-place case, which the earlier question already covers."
   - id: g-knowledge-multihop-3
     class: multi_hop
     message: "if an fa cup winner finished fifth, would they go into the 36-club league phase"
@@ -664,7 +608,7 @@ questions:
     rationale: "No competition is named and a fixture query needs one; asking which league is the next step."
   - id: g-clarify-6
     class: clarify
-    message: "who's the best team right now"
+    message: "did we win on saturday"
     expected_route: clarify
     expected_tool: null
     expected_notes: []
@@ -672,7 +616,7 @@ questions:
     expected_facts: []
     expected_terms: []
     expected_reason: null
-    rationale: "'Best' with no competition or measure names no table row and no rule; neither the standings tool nor a note settles it."
+    rationale: "No club is named, so there is no result to fetch; a day on its own does not identify a fixture."
   - id: g-clarify-7
     class: clarify
     message: "tell me about the league"

@@ -14,6 +14,7 @@ those payloads to `beam:cloud`; the simple path keeps them local.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -40,6 +41,12 @@ REFUSALS = {
 CLARIFY = "Which team or competition do you mean? Name one and I'll look it up."
 TOOL_FAILED = "I can't check that right now. Please try again in a moment."
 COMPLEX_KNOWLEDGE_LIMIT = 8
+
+#: Called with (tool name, payload) for every successful tool call, when a caller wants the evidence
+#: as well as the answer. The eval harness is the only user: it needs to know exactly what an answer
+#: was grounded on to score retrieval and faithfulness. Production passes nothing, so the callback is
+#: never on the user path.
+EvidenceRecorder = Callable[[str, dict], None]
 
 
 @dataclass(frozen=True)
@@ -80,6 +87,7 @@ class Pipeline:
         composer: AnswerComposer | None = None,
         verifier: AnswerVerifier | None = None,
         composer_model: str = "beam:cloud",
+        record_evidence: EvidenceRecorder | None = None,
     ) -> None:
         self._router = router
         self._tools = tools
@@ -89,6 +97,17 @@ class Pipeline:
         self._composer = composer
         self._verifier = verifier
         self._composer_model = composer_model
+        self._record_evidence = record_evidence
+
+    def _evidence(self, tool: str, payload: dict) -> None:
+        """Hand a successful call's payload to the recorder, if there is one.
+
+        Deliberately not wrapped in a try: the only caller is the eval harness, which builds its own
+        pipeline, and a recorder that silently dropped evidence would make a run look better than it
+        was. A user answer never reaches this path with a recorder set.
+        """
+        if self._record_evidence is not None:
+            self._record_evidence(tool, payload)
 
     def answer(self, message: str, *, chat_id_hash: str | None = None) -> Answer:
         started = time.perf_counter()
@@ -165,6 +184,7 @@ class Pipeline:
             return TOOL_FAILED, False, None, [
                 {"tool": tool, "args_summary": {"query": message}, "status": "error", "latency_ms": 0}
             ]
+        self._evidence(tool, payload)
         text, grounded = compose.compose(tool, payload)
         call = {
             "tool": tool,
@@ -182,6 +202,7 @@ class Pipeline:
             return TOOL_FAILED, False, [
                 {"tool": "search_knowledge", "args_summary": {"query": message}, "status": "error", "latency_ms": 0}
             ]
+        self._evidence("search_knowledge", payload)
         text, grounded = compose.compose("search_knowledge", payload)
         call = {
             "tool": "search_knowledge",
@@ -205,6 +226,7 @@ class Pipeline:
             try:
                 payload = self._tools.call(name, {"query": message})
                 payloads[name] = payload
+                self._evidence(name, payload)
                 calls.append(
                     {
                         "tool": name,
@@ -266,6 +288,7 @@ class Pipeline:
             }
         ]
         results = {"search_knowledge": payload}
+        self._evidence("search_knowledge", payload)
         text = ""
         try:
             text = self._composer.compose(message, route="notes", results=results)
