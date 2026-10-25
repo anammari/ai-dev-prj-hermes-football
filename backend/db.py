@@ -44,3 +44,28 @@ def create_read_engine(settings: Settings) -> Engine:
     """The one engine the API holds. Reuses `db.session.create_db_engine`, so the SQLite foreign-key
     pragma and the pool settings stay in a single place."""
     return create_db_engine(replace(settings, database_url=agent_database_url(settings)))
+
+
+def admin_database_url(settings: Settings) -> str:
+    """The DSN of the one write path: the review decision, through the narrow `agent_admin` role.
+
+    Deliberately a different role from `agent_readonly` and from the gateway's insert-only
+    `agent_writer`: rule 4 stays true for the agent, and the dashboard's write is bounded by a grant
+    (UPDATE on two columns) rather than by discipline. On SQLite there are no roles, so this falls
+    back to the configured DSN exactly like the read engine does.
+    """
+    if not settings.is_postgres or not settings.admin_db_password or not settings.admin_db_role:
+        return settings.database_url
+    return make_url(settings.database_url).set(
+        username=settings.admin_db_role,
+        password=settings.admin_db_password,
+    ).render_as_string(hide_password=False)
+
+
+def create_admin_engine(settings: Settings) -> Engine:
+    """The write engine, built only when an admin token is configured. `hide_parameters` masks the
+    review body in driver errors, which is the same reason the turn writer sets it."""
+    return create_db_engine(
+        replace(settings, database_url=admin_database_url(settings)),
+        hide_parameters=True,
+    )

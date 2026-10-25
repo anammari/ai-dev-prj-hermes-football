@@ -68,6 +68,8 @@ INGEST_TRIGGERS = ("schedule", "manual")
 REVIEW_STATUSES = ("unreviewed", "correct", "flagged", "wrong")
 ROUTES = ("tool", "knowledge", "clarify", "refuse")
 ROUTE_SOURCES = ("rules", "model", "fallback")
+EVAL_SOURCES = ("live", "backfill")
+EVAL_STATUSES = ("running", "succeeded", "failed")
 
 
 def _enum_check(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
@@ -393,4 +395,76 @@ class AgentTurn(Base):
         _enum_check("route", ROUTES, "route_valid"),
         _enum_check("route_source", ROUTE_SOURCES, "route_source_valid"),
         Index("ix_agent_turns_created_at", "created_at"),
+    )
+
+
+class EvalRun(Base):
+    """One golden-question evaluation run: the scoreboard's row, and the gate's own verdict.
+
+    A run is written by `make eval`, never by the API. Two columns make a trend honest: `set_name`
+    and `golden_set_sha256` name the sample, because a run on a different question set is not
+    comparable and the dashboard must not draw the two as one line; and `source` says whether the
+    agent actually answered these questions in this run (`live`) or a historical artifact was imported
+    so the scoreboard had a baseline (`backfill`).
+
+    `metrics` is JSON rather than twenty columns: the metric set is owned by the eval harness and
+    versioned in `evals/golden/README.md`, and a contract-shaped column per metric would invite the
+    schema and the harness to drift. The contract exposes it as an open object and the run detail
+    endpoint is where a reader drills in.
+    """
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    set_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    golden_set_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(120), nullable=False)
+    git_commit: Mapped[str] = mapped_column(String(40), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="live")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="running")
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False)
+    failure_reasons: Mapped[list] = mapped_column(JSON, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        _enum_check("source", EVAL_SOURCES, "source_valid"),
+        _enum_check("status", EVAL_STATUSES, "status_valid"),
+        Index("ix_eval_runs_started_at", "started_at"),
+        Index("ix_eval_runs_set_name", "set_name"),
+    )
+
+
+class EvalResult(Base):
+    """One question inside one run: what was expected, what was chosen, what it was grounded on.
+
+    `expected_tool` and `tool` are nullable because a clarify or refuse question has no tool and a
+    failed call produced no decision at all. `class_name` is a column name, not a contract name: the
+    contract calls the property `class`, which SQL cannot use.
+    """
+
+    __tablename__ = "eval_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("eval_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    question_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    class_name: Mapped[str] = mapped_column(String(40), nullable=False)
+    expected_route: Mapped[str] = mapped_column(String(16), nullable=False)
+    expected_tool: Mapped[str | None] = mapped_column(String(64))
+    route: Mapped[str | None] = mapped_column(String(16))
+    tool: Mapped[str | None] = mapped_column(String(64))
+    retrieved: Mapped[list | None] = mapped_column(JSON)
+    scores: Mapped[dict] = mapped_column(JSON, nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("run_id", "question_id"),
+        _enum_check("expected_route", ROUTES, "expected_route_valid"),
+        _enum_check("route", ROUTES, "route_valid"),
+        Index("ix_eval_results_run_id", "run_id"),
     )

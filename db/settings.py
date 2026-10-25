@@ -26,6 +26,11 @@ class Settings:
     embedding_dim: int = 768
     agent_db_role: str = "agent_readonly"
     agent_db_password: str | None = None
+    #: The role the one write path uses: UPDATE on the two review columns of `agent_turns` only.
+    #: Separate from `agent_db_role` so the dashboard's review button can never become a general
+    #: write engine (migration `0004_evals_and_admin_review`).
+    admin_db_role: str = "agent_admin"
+    admin_db_password: str | None = None
     upstream_base_url: str = "https://api.football-data.org/v4"
     upstream_api_key: str | None = None
 
@@ -43,6 +48,8 @@ class Settings:
             embedding_dim=int(source.get("OLLAMA_EMBED_DIM") or 768),
             agent_db_role=source.get("AGENT_DB_ROLE") or "agent_readonly",
             agent_db_password=source.get("AGENT_DB_PASSWORD"),
+            admin_db_role=source.get("AGENT_ADMIN_DB_ROLE") or "agent_admin",
+            admin_db_password=source.get("AGENT_ADMIN_DB_PASSWORD"),
             upstream_base_url=source.get("UPSTREAM_BASE_URL") or "https://api.football-data.org/v4",
             upstream_api_key=source.get("UPSTREAM_API_KEY"),
         )

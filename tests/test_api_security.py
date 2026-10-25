@@ -18,12 +18,17 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app
 from backend.db import create_read_engine, read_only
+from backend.services import reviews
 from backend.settings import BackendSettings
 from db.settings import REPO_ROOT, Settings
 from tests import api_helpers
 from tests.api_helpers import operations, request_for_with
 
 BACKEND = REPO_ROOT / "backend"
+
+#: The one module allowed to write, and the columns it may write. Kept next to the guard so the two
+#: cannot drift: the writer declares `REVIEW_COLUMNS`, and this test holds the file to it.
+REVIEW_WRITE_MODULE = "backend/services/reviews.py"
 
 #: Operations the contract marks `security: []`, and which must therefore answer without a token.
 OPEN_OPERATIONS = [
@@ -325,17 +330,22 @@ def test_no_backend_module_writes_to_the_database() -> None:
     """Rule 4: "No write tool, no DDL, no arbitrary SQL from model output." The read path must not
     commit, flush, insert or execute DDL - not through the session's write helpers, and not through a
     hand-written statement either. A review probe passed `session.execute(text("DELETE FROM matches"))`
-    through the first version of this test, which checked only the helper methods."""
+    through the first version of this test, which checked only the helper methods.
+
+    M5 adds one deliberate exception: the review decision. It lives in exactly one module, and the
+    next test pins what that module may write. Every other backend module stays read-only, so a second
+    writer is a failure here rather than a question in review.
+    """
     banned_calls = {"commit", "flush", "add", "add_all", "delete", "merge", "bulk_save_objects"}
+    writers: set[str] = set()
     for path in backend_sources():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr in banned_calls and isinstance(node.func.value, ast.Name):
-                    assert node.func.value.id not in {"session", "db"}, (
-                        f"{path.relative_to(REPO_ROOT)} calls session.{node.func.attr}"
-                    )
+                    if node.func.value.id in {"session", "db"}:
+                        writers.add(str(path.relative_to(REPO_ROOT)))
             # Raw SQL, if any, has to be a read: `text("...")` with a literal that selects.
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "text":
                 for argument in node.args:
@@ -348,8 +358,29 @@ def test_no_backend_module_writes_to_the_database() -> None:
         if path.name != "db.py":
             assert "create_db_engine" not in source, (
                 f"{path.relative_to(REPO_ROOT)} builds its own engine; the app has one, and it is the "
-                "read-only one"
+                "read-only one (or the admin one in db.py)"
             )
+    assert writers, "the guard would pass vacuously if nothing wrote at all"
+    assert writers == {REVIEW_WRITE_MODULE}, f"writes outside the one review module: {sorted(writers)}"
+
+
+def test_the_review_write_touches_only_the_review_columns() -> None:
+    """The bound is a grant in Postgres and a keyword list here: UPDATE on `agent_turns`, setting the
+    two review columns. If this module ever writes another column, it is not a review any more."""
+    path = REPO_ROOT / REVIEW_WRITE_MODULE
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    written: set[str] | None = None
+    updates_agent_turns = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == "values":
+                written = {keyword.arg for keyword in node.keywords if keyword.arg is not None}
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "update":
+            updates_agent_turns = updates_agent_turns or "AgentTurn" in ast.unparse(node)
+    assert updates_agent_turns, "the review writer must be an UPDATE on AgentTurn"
+    assert written == set(reviews.REVIEW_COLUMNS), (
+        f"the review writer sets {sorted(written or [])}, expected {sorted(reviews.REVIEW_COLUMNS)}"
+    )
 
 
 def test_the_read_engine_connects_as_the_read_only_role(settings) -> None:
@@ -396,11 +427,49 @@ def test_secrets_are_not_logged(client: TestClient, auth, caplog) -> None:
 
 def test_the_settings_document_what_the_environment_must_provide(settings: Settings) -> None:
     """`API_AGENT_TOKEN` is required in a deployment and refused when empty, so an unauthenticated API
-    is not one environment variable away."""
+    is not one environment variable away. `API_ADMIN_TOKEN` is the same shape: empty disables the one
+    write path rather than opening it."""
     from backend.settings import BackendSettings as SettingsClass
 
     assert SettingsClass.from_env({}).auth_enabled is False
     assert SettingsClass.from_env({"API_AGENT_TOKEN": "  "}).auth_enabled is False
     assert SettingsClass.from_env({"API_AGENT_TOKEN": "x"}).auth_enabled is True
+    assert SettingsClass.from_env({}).admin_enabled is False
+    assert SettingsClass.from_env({"API_ADMIN_TOKEN": "  "}).admin_enabled is False
+    assert SettingsClass.from_env({"API_ADMIN_TOKEN": "y"}).admin_enabled is True
     assert SettingsClass.from_env({"FRESHNESS_MAX_AGE_MINUTES": "90"}).freshness_max_age_minutes == 90
     assert SettingsClass.from_env({}).contract_path == REPO_ROOT / "openapi.yaml"
+
+
+def test_the_admin_token_is_not_the_agent_token(engine, settings: Settings) -> None:
+    """The write path must not be reachable with the token the agent holds. Two roles, two tokens,
+    and the review endpoint refuses the agent one."""
+    configured = BackendSettings(db=settings, agent_token="agent", admin_token="admin")
+    app = create_app(configured, engine=engine)
+    with TestClient(app) as client:
+        refused = client.patch(
+            "/admin/agent-turns/00000000-0000-0000-0000-000000000000/review",
+            json={"reviewStatus": "correct"},
+            headers={"Authorization": "Bearer agent"},
+        )
+        assert refused.status_code == 401
+        accepted_shape = client.patch(
+            "/admin/agent-turns/00000000-0000-0000-0000-000000000000/review",
+            json={"reviewStatus": "correct"},
+            headers={"Authorization": "Bearer admin"},
+        )
+        assert accepted_shape.status_code == 404, "the admin token authenticates; the turn is missing"
+
+
+def test_admin_actions_are_disabled_without_an_admin_token(engine, settings: Settings) -> None:
+    """A deployment with no admin token has no write path at all: `403`, not `401`, because the
+    feature is switched off rather than the caller being unauthenticated."""
+    app = create_app(BackendSettings(db=settings, agent_token="agent"), engine=engine)
+    with TestClient(app) as client:
+        response = client.patch(
+            "/admin/agent-turns/00000000-0000-0000-0000-000000000000/review",
+            json={"reviewStatus": "correct"},
+            headers={"Authorization": "Bearer agent"},
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"

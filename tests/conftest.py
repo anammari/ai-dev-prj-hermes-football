@@ -35,6 +35,9 @@ CORPUS = REPO_ROOT / "hermes" / "agent-knowledge"
 #: The bearer token the API fixtures configure. A literal, in the test suite, is fine: it never
 #: leaves the process, and `AGENTS.md` rule 6 is about the repository and the prompts.
 API_TOKEN = "test-agent-token"
+#: The admin token, deliberately different from the agent one: the dashboard's write path must never
+#: be reachable with the token the agent holds.
+ADMIN_TOKEN = "test-admin-token"
 
 
 def alembic_config(database_url: str) -> Config:
@@ -103,7 +106,7 @@ def embedder() -> FakeEmbedder:
 
 @pytest.fixture
 def backend_settings(settings: Settings) -> BackendSettings:
-    return BackendSettings(db=settings, agent_token=API_TOKEN)
+    return BackendSettings(db=settings, agent_token=API_TOKEN, admin_token=ADMIN_TOKEN)
 
 
 @pytest.fixture
@@ -122,6 +125,11 @@ def client(api_app: FastAPI) -> Iterator[TestClient]:
 @pytest.fixture
 def auth() -> dict[str, str]:
     return {"Authorization": f"Bearer {API_TOKEN}"}
+
+
+@pytest.fixture
+def admin_auth() -> dict[str, str]:
+    return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @pytest.fixture

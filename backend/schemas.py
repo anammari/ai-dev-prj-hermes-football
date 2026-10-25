@@ -20,6 +20,8 @@ from backend.meta import as_utc
 from db.models import (
     AgentTurn,
     Competition,
+    EvalResult,
+    EvalRun,
     IngestRun,
     KnowledgeChunk,
     Match,
@@ -300,4 +302,44 @@ def knowledge_hit(chunk: KnowledgeChunk, score: float) -> dict[str, Any]:
         "snippet": chunk.chunk_text[:SNIPPET_MAX_LENGTH],
         "score": min(1.0, max(0.0, float(score))),
         **pruned(updated_at=as_utc(chunk.updated_at)),
+    }
+
+
+def eval_run(row: EvalRun) -> dict[str, Any]:
+    """One scoreboard row. `metrics` and `failure_reasons` are the harness's JSON, served as stored:
+    the contract declares them open objects so the harness can add a metric without a migration."""
+    return {
+        "id": row.id,
+        "set_name": row.set_name,
+        "golden_set_sha256": row.golden_set_sha256,
+        "prompt_version": row.prompt_version,
+        "model": row.model,
+        "git_commit": row.git_commit,
+        "source": row.source,
+        "status": row.status,
+        "passed": bool(row.passed),
+        "metrics": row.metrics or {},
+        "failure_reasons": [str(reason) for reason in (row.failure_reasons or [])],
+        "started_at": as_utc(row.started_at),
+        "finished_at": as_utc(row.finished_at),
+    }
+
+
+def eval_result(row: EvalResult) -> dict[str, Any]:
+    """One question inside a run. `route` and `scores` are required by the contract and may be
+    `null`/`{}`; the optional fields are pruned rather than sent as nulls, as everywhere else here."""
+    return {
+        "id": row.id,
+        "question_id": row.question_id,
+        "class": row.class_name,
+        "expected_route": row.expected_route,
+        "route": row.route,
+        "scores": row.scores or {},
+        **pruned(
+            expected_tool=row.expected_tool,
+            tool=row.tool,
+            retrieved=row.retrieved,
+            latency_ms=row.latency_ms,
+            error=row.error,
+        ),
     }

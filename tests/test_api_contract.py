@@ -396,13 +396,48 @@ def test_no_unimplemented_operation_is_an_agent_tool() -> None:
 
 
 def test_admin_operations_are_the_only_writes_in_the_contract() -> None:
-    """M3 is a read-only API (`AGENTS.md` rule 4). If a write appears anywhere else it is a finding."""
+    """The agent's data path is read-only (`AGENTS.md` rule 4): the only writes are the two `/admin`
+    operations, one of which (the review decision) M5 implements and the other (the ingest trigger)
+    M6 still owns. A write appearing anywhere else is a finding, not a design choice."""
     writes = {
         operation_id
         for operation_id, (method, _path, _node) in operations().items()
         if method in {"POST", "PUT", "PATCH", "DELETE"}
     }
-    assert writes == set(admin.UNIMPLEMENTED)
+    assert writes == set(admin.UNIMPLEMENTED) | {"reviewAgentTurn"}, writes
+
+
+def test_the_implemented_write_is_the_documented_review(client: TestClient, admin_auth: dict[str, str], seeded) -> None:
+    """The review operation is declared with a `200`, a `400`, a `403` and a `404`; this checks the
+    first, the second and the contract shape of the body it returns."""
+    turn_id = seeded.turns["tool"]
+    response = client.patch(
+        f"/admin/agent-turns/{turn_id}/review",
+        json={"reviewStatus": "wrong", "note": "Said the match was live; the free tier is delayed by design."},
+        headers=admin_auth,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    schema = response_schema("reviewAgentTurn", "200")
+    assert schema is not None
+    validate(body, schema, where="reviewAgentTurn")
+    data = body["data"]
+    assert data["id"] == turn_id
+    assert data["review_status"] == "wrong"
+    assert data["review_note"].startswith("Said the match was live")
+    assert body["meta"]["source"] == "hermes-football"
+
+    missing = client.patch(
+        f"/admin/agent-turns/{uuid.uuid4()}/review", json={"reviewStatus": "correct"}, headers=admin_auth
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "not_found"
+
+    bad_enum = client.patch(
+        f"/admin/agent-turns/{turn_id}/review", json={"reviewStatus": "brilliant"}, headers=admin_auth
+    )
+    assert bad_enum.status_code == 400
+    assert bad_enum.json()["error"]["code"] == "invalid_parameter"
 
 
 # ------------------------------------------------------------------------------------------------
