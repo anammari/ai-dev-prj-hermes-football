@@ -4,9 +4,10 @@ A Telegram agent that answers football questions accurately. Facts come from a l
 daily from the free football-data.org API; rules and definitions come from a small hand-written notes corpus. Every
 answer says how old the data is and cites its source. When the data cannot support an answer, the bot says so.
 
-Status: **built through the Telegram agent; dashboard and operations next.** The routing gate is measured on an
-independent holdout, the MCP tools and Telegram gateway work end to end, and the notes corpus is indexed. The public
-review bot is [@review_soccer_bot](https://t.me/review_soccer_bot) (`reviewsoccerbot`).
+Status: **built through the dashboard and the eval scoreboard; operations next.** The routing gate is measured on an
+independent holdout, the MCP tools and Telegram gateway work end to end, the notes corpus is indexed, the dashboard
+serves seven routes over the same contract, and `make eval` scores a 48-question golden set into a stored scoreboard.
+The public review bot is [@review_soccer_bot](https://t.me/review_soccer_bot) (`reviewsoccerbot`).
 
 Try it: open the bot, send `/start`, then ask:
 - `where are Arsenal in the table?` — a database answer with a timestamp.
@@ -37,14 +38,16 @@ Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#
 ├── db/                                   SQLAlchemy models, Alembic migrations
 ├── ingest/                               football-data.org client, loaders, scheduler, knowledge index
 ├── mcp_server/                           eight read-only MCP tools over HTTP
+├── frontend/                             Next.js dashboard: freshness, tables, turns, evals, system
 ├── agent/                                router, hard safety gate, planner/composer, turn writer, Telegram gateway
 ├── hermes/                               SOUL.md, config.yaml, notes and manifest
 ├── prompts/                              versioned prompt bank
 ├── evals/routing/                        routing holdout and results
+├── evals/golden/                         golden questions, runner, metrics, scoreboard store
 └── tests/                                unit and integration tests
 ```
 
-`frontend/` (dashboard), `observability/`, `security/` and `ops/` are planned, not present yet.
+`observability/`, `security/` and `ops/` are planned, not present yet.
 
 ## How the 12 criteria are covered
 
@@ -54,10 +57,10 @@ Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#
 | 2 | Product specification | Partly | [`_docs/product-spec.md`](_docs/product-spec.md), [`openapi.yaml`](openapi.yaml), [`_docs/scoping.md`](_docs/scoping.md) §8. Gap: no public task tracker |
 | 3 | Agent team | Met | [`_docs/agent-team.md`](_docs/agent-team.md), [`prompts/`](prompts/README.md), [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) |
 | 4 | Context management | Met | [`AGENTS.md`](AGENTS.md), [`_docs/`](_docs), decisions |
-| 5 | Application | Open | Backend, MCP tools, agent and ingestion work; dashboard missing. Start at [`backend/`](backend), [`agent/gateway/`](agent/gateway), [`mcp_server/`](mcp_server) |
-| 6 | Testing | Partly | `make test` **358 passed**, `make itest` **38 passed**, lint clean. No e2e until the dashboard exists |
-| 7 | Containerization | Partly | `make up` starts six services with health checks; dashboard missing. [`docker-compose.yml`](docker-compose.yml) |
-| 8 | Deployment | Partly | Telegram long polling; dashboard tunnel planned, no public deployment yet |
+| 5 | Application | Met | Backend, MCP tools, agent, ingestion and the dashboard: start at [`frontend/`](frontend), [`backend/`](backend), [`agent/gateway/`](agent/gateway), [`mcp_server/`](mcp_server) |
+| 6 | Testing | Met | `make test`, `make itest`, `make frontend-test` (26), `make e2e` (6), contract drift tests, and a self-check that proves the eval gate fails when it should |
+| 7 | Containerization | Met | `make up` starts seven services with health checks and two published ports. [`docker-compose.yml`](docker-compose.yml) |
+| 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a tunnel is demo-only. Gap: no permanent public host |
 | 9 | CI/CD | Open | Local gates only; workflows are next |
 | 10 | Observability | Open | OTel stack planned |
 | 11 | Alerting | Open | Staleness/failure alert planned |
@@ -88,12 +91,16 @@ make ask Q="how does the championship playoff work?"
 make test
 make lint
 make itest
+make frontend-test
+make e2e
+make eval
 make check-notes
 make down
 ```
 
-One `make up` starts `db`, `ollama`, `backend`, `mcp-server`, `hermes` and `ingest`. Only `backend` publishes port
-`8000`. Review bot setup and the Telegram test steps are in
+One `make up` starts `db`, `ollama`, `backend`, `frontend`, `mcp-server`, `hermes` and `ingest`. Only `backend`
+(`:8000`) and `frontend` (`:3000`) publish host ports; the dashboard fetches server-side, so no token reaches a
+browser. Review bot setup, the dashboard walk-through and the Telegram test steps are in
 [`_docs/setup-and-review.md`](_docs/setup-and-review.md).
 
 ## Documents
@@ -105,13 +112,16 @@ One `make up` starts `db`, `ollama`, `backend`, `mcp-server`, `hermes` and `inge
 - [`_docs/data-model.md`](_docs/data-model.md) — tables and open items
 - [`_docs/notes-sources.md`](_docs/notes-sources.md) — source URLs for every note
 - [`_docs/agent-team.md`](_docs/agent-team.md) — roles and process
+- [`_docs/permissions.md`](_docs/permissions.md) — every capability, its role and its bound
 - [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) — what agents did, what humans caught
 - [`_docs/decisions/`](_docs/decisions/README.md) — decisions not to re-litigate
 - [`evals/routing/results/`](evals/routing/results/) — routing evidence
 
 ## Limits, stated
 
-- Dashboard, golden-question scoreboard, CI/CD, observability and security artifacts are M5/M6.
+- CI/CD, observability, alerting and security artifacts are M6. The dashboard has no login; a tunnel is demo-only.
+- Golden-set scoring is deterministic (no model judge): completeness means the required terms are present, not that the
+  prose is good. The first run is stored with its misses rather than tuned green.
 - No multi-turn memory; each message routes on its own.
 - Top-scorer data is served; lineups, odds, live scores and xG are not available on the free tier.
 - The free provider is delayed; never presented as live.

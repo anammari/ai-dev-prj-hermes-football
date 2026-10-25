@@ -29,20 +29,24 @@ Egress: only the user message goes to `clef:cloud`. Simple answers stay local. C
 
 ## Local test runbook
 
-Prerequisite: Docker, repo, `.env`. One `make up` starts six services; only `backend` publishes port `8000`.
+Prerequisite: Docker, repo, `.env`. One `make up` starts seven services; `backend` publishes `8000` and the dashboard
+`3000`.
 
 ```bash
 docker compose ps
-make test                 # 358 unit
+make test                 # unit
 make lint
-make itest                # 38 integration
+make itest                # integration
+make frontend-test        # dashboard lint, typecheck, Vitest
+make e2e                  # Playwright against the running stack
+make eval                 # golden-question run, stored in the scoreboard
 make ask Q="where are Arsenal in the table?"
 ```
 
 The runbook:
 
-1. **Stack.** `docker compose ps` shows `db`, `ollama`, `backend`, `mcp-server`, `hermes`, `ingest`; all but `ingest`
-   healthy.
+1. **Stack.** `docker compose ps` shows `db`, `ollama`, `backend`, `frontend`, `mcp-server`, `hermes`, `ingest`; all
+   but `ingest` healthy.
 2. **Corpus.** `make check-notes` → `corpus ok`; `make index-notes` → `13 notes: 13 unchanged`.
 3. **Simple database.** `where are Arsenal in the table?` → timestamped row, `route: tool`, `complexity: simple`.
 4. **Simple notes.** `how does the championship playoff work?` → passage + public GitHub `Source:`, `route:
@@ -63,6 +67,23 @@ The runbook:
    ```
    Check `route`, `route_source`, `route_confidence`, `grounded`, `data_as_of`, `tool_calls`.
 10. **Telegram.** Send the same questions to [@review_soccer_bot](https://t.me/review_soccer_bot).
+11. **Dashboard.** <http://localhost:3000> — freshness on `/`, the table on `/standings`, fixtures on `/fixtures`, the
+    audit log on `/turns`, the scoreboard on `/evals`, the API probe on `/system`. Every factual page shows `as of`
+    and the source.
+12. **Review action.** With `API_ADMIN_TOKEN` set, `/turns` offers a review form; without it the page says
+    `read-only` and the endpoint answers `403`. Record a decision and check it survives a reload.
+13. **Eval.** `make eval` answers 48 golden questions and stores a run; `make eval-self-check` proves the gate can
+    fail without calling a model; `/evals` shows the run, its macro-F1 and its misses, one series per set hash.
+
+## Dashboard notes
+
+- The browser never holds a token: `frontend/src/lib/api/client.ts` is `server-only`, and `make e2e` asserts that no
+  served chunk contains `API_AGENT_TOKEN` and that the browser makes no request off the dashboard origin.
+- `/turns` masks message text unless `DASHBOARD_SHOW_MESSAGES=true`. The review bot is public, so the default is
+  conservative; the full text is still in the API.
+- A tunnel is **demo-only**: point Cloudflare at `localhost:3000`, stop it after the demo, and never run one with
+  `DASHBOARD_SHOW_MESSAGES=true`. The dashboard has no login, so the tunnel is the only boundary.
+- The dashboard reads; the one write is the review decision, through `API_ADMIN_TOKEN` and the `agent_admin` role.
 
 ## Owner setup: main bot (allowlisted)
 

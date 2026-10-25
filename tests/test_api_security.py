@@ -196,13 +196,18 @@ def test_the_api_container_mounts_read_only_and_has_no_docker_socket() -> None:
             assert "docker.sock" not in str(volume), f"{name} mounts the Docker socket"
 
 
-def test_the_api_is_the_only_published_port_in_the_stack() -> None:
-    """`_docs/product-spec.md` §4: one published port, the API's. A second one would be a surface
-    nobody asked for - and the dev overlay is where a port for a host tool belongs."""
+def test_the_only_published_ports_are_the_api_and_the_dashboard() -> None:
+    """`_docs/product-spec.md` §4: exactly two published ports, the API's and the dashboard's.
+
+    The dashboard's is not a second door to the data: it renders server-side and holds the token, so a
+    browser reaching :3000 cannot reach :8000. Anything else published - especially a database port -
+    is a surface nobody asked for, and the dev overlay is where a port for a host tool belongs.
+    """
     stack = compose_stack()
     published = {name: service["ports"] for name, service in stack["services"].items() if service.get("ports")}
-    assert list(published) == ["backend"], published
+    assert sorted(published) == ["backend", "frontend"], published
     assert published["backend"] == ["${BACKEND_PORT:-8000}:8000"]
+    assert published["frontend"] == ["${FRONTEND_PORT:-3000}:3000"]
 
 
 # ------------------------------------------------------------------------------------------------

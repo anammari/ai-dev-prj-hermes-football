@@ -107,6 +107,36 @@ services:
     cpus: 1
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Server-side only: the browser never receives either token (frontend/src/lib/api/client.ts is
+      # marked `server-only`, so an accidental client import fails the build).
+      BACKEND_BASE_URL: http://backend:8000
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
+      # Mask stored Telegram text unless the owner asks for it: the review bot is public.
+      DASHBOARD_SHOW_MESSAGES: ${DASHBOARD_SHOW_MESSAGES:-false}
+      NEXT_TELEMETRY_DISABLED: "1"
+    # The second published port, and the last one: the API and the dashboard
+    # (_docs/product-spec.md §4). The tunnel points at this port during a demo.
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+
   mcp-server:
     build:
       context: .
@@ -272,6 +302,23 @@ services:
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["alembic", "upgrade", "head"]
+
+  frontend-e2e:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: frontend/e2e/Dockerfile
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      DASHBOARD_URL: http://frontend:3000
+      # The security spec asserts this string never reaches a browser; the test container is the only
+      # place it is compared, and it never leaves it.
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
+    mem_limit: 2g
+    cpus: 2
 
   tests:
     profiles: [tools]
