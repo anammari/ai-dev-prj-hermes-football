@@ -9,7 +9,6 @@ prescribes ("no data", never "no matches").
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -350,9 +349,17 @@ def test_top_scorers_returns_the_latest_snapshot_in_order(client: TestClient, au
     body = response.json()
     assert body["data"]["competition"]["code"] == "PL"
     assert body["data"]["season"] == 2026
-    assert body["data"]["snapshot"] == (seeded.now.date() - timedelta(days=1)).isoformat()
+    assert body["data"]["snapshot"] == "2026-11-01", "the newest stored snapshot, not the older one"
     scorers = body["data"]["scorers"]
     assert [row["player"]["name"] for row in scorers] == ["Bukayo Saka", "Declan Rice"]
     assert scorers[0]["goals"] == 5
     assert scorers[0]["team"]["name"] == "Arsenal FC"
     assert body["meta"]["data_as_of"].startswith(body["data"]["snapshot"])
+
+
+def test_top_scorers_snapshot_returns_the_table_as_it_stood(client: TestClient, auth, seeded) -> None:
+    """`snapshot` is the point-in-time question, and the contract's own example date is what the
+    sweep sends: with fixed fixtures it must select the older table instead of depending on the clock."""
+    body = client.get("/competitions/PL/top-scorers", params={"snapshot": "2026-10-22"}, headers=auth).json()
+    assert body["data"]["snapshot"] == "2026-10-12"
+    assert [row["goals"] for row in body["data"]["scorers"]] == [4, 2]

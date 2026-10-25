@@ -431,12 +431,16 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
     )
     session.flush()
 
+    # Two fixed snapshots, exactly like the standings fixtures above. They used to be `now - 1 day`,
+    # which made every assertion about "the latest snapshot" depend on the calendar: the contract
+    # sweep sends the documented `snapshot` example, so the suite passed only on the day the example
+    # was written. Fixed dates make "latest" a fact of the fixture, not of the clock.
     session.add_all(
         [
             TopScorer(
                 competition_code=COMPETITION,
                 season=SEASON,
-                snapshot_date=now.date() - timedelta(days=1),
+                snapshot_date=date(2026, 11, 1),
                 player_id=1001,
                 team_id=TEAM,
                 played_matches=7,
@@ -447,11 +451,33 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
             TopScorer(
                 competition_code=COMPETITION,
                 season=SEASON,
-                snapshot_date=now.date() - timedelta(days=1),
+                snapshot_date=date(2026, 11, 1),
                 player_id=1002,
                 team_id=TEAM,
                 played_matches=7,
                 goals=3,
+                assists=1,
+                penalties=0,
+            ),
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=date(2026, 10, 12),
+                player_id=1001,
+                team_id=TEAM,
+                played_matches=5,
+                goals=4,
+                assists=1,
+                penalties=0,
+            ),
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=date(2026, 10, 12),
+                player_id=1002,
+                team_id=TEAM,
+                played_matches=5,
+                goals=2,
                 assists=1,
                 penalties=0,
             ),

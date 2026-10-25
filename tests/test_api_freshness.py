@@ -95,19 +95,29 @@ def test_the_threshold_is_inclusive_and_configurable(session, seeded, settings) 
     assert entry(report(session, just_over, now=seeded.now), "PL")["status"] == "stale"
 
 
-def test_the_next_scheduled_run_is_reported_in_utc(session, seeded, settings) -> None:
+@pytest.mark.parametrize(
+    ("instant", "expected_utc"),
+    [
+        # 07:30 Berlin: summer is CEST (+02:00), winter is CET (+01:00). The expectation is the same
+        # clock time in two seasons, not one hardcoded offset - the first version of this test said
+        # "October is CEST", which is false after the last Sunday of October and turned the suite red
+        # on exactly the wrong day.
+        (datetime(2026, 7, 15, 12, 0, tzinfo=UTC), (5, 30)),
+        (datetime(2026, 12, 15, 12, 0, tzinfo=UTC), (6, 30)),
+    ],
+)
+def test_the_next_scheduled_run_is_reported_in_utc(session, seeded, settings, instant, expected_utc) -> None:
     """The schedule is configured in local time and reported in UTC, because a client should not have
     to know the deployment's timezone to read a timestamp."""
     configured = BackendSettings(
         db=settings, schedule_hour=7, schedule_minute=30, schedule_timezone="Europe/Berlin"
     )
-    body = report(session, configured, now=seeded.now)
+    body = report(session, configured, now=instant)
     when = datetime.fromisoformat(body["next_scheduled_run_at"].replace("Z", "+00:00"))
-    # 07:30 in Berlin is 05:30 UTC in October (CEST, +02:00), on the next local day.
     assert body["next_scheduled_run_at"].endswith("Z")
-    assert (when.hour, when.minute) == (5, 30)
-    assert when > seeded.now, "a scheduled run in the past is not the next one"
-    assert when - seeded.now < timedelta(days=1)
+    assert (when.hour, when.minute) == expected_utc
+    assert when > instant, "a scheduled run in the past is not the next one"
+    assert when - instant < timedelta(days=1)
 
 
 def test_row_counts_report_what_can_actually_be_answered(scoped) -> None:
