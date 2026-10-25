@@ -58,7 +58,7 @@ Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#
 | 3 | Agent team | Met | [`_docs/agent-team.md`](_docs/agent-team.md), [`prompts/`](prompts/README.md), [`_docs/ai-usage-report.md`](_docs/ai-usage-report.md) |
 | 4 | Context management | Met | [`AGENTS.md`](AGENTS.md), [`_docs/`](_docs), decisions |
 | 5 | Application | Met | Backend, MCP tools, agent, ingestion and the dashboard: start at [`frontend/`](frontend), [`backend/`](backend), [`agent/gateway/`](agent/gateway), [`mcp_server/`](mcp_server) |
-| 6 | Testing | Met | `make test`, `make itest`, `make frontend-test` (26), `make e2e` (6), contract drift tests, and a self-check that proves the eval gate fails when it should |
+| 6 | Testing | Met | `make test`, `make itest`, `make frontend-test` (27), `make e2e` (6), contract drift tests, and a self-check that proves the eval gate fails when it should |
 | 7 | Containerization | Met | `make up` starts seven services with health checks and two published ports. [`docker-compose.yml`](docker-compose.yml) |
 | 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a tunnel is demo-only. Gap: no permanent public host |
 | 9 | CI/CD | Open | Local gates only; workflows are next |
