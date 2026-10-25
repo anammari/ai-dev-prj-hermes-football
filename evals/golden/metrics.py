@@ -214,8 +214,12 @@ def score_run(questions: tuple[model.Question, ...], records: list[dict[str, Any
             top_scores.append(float(hits[0].get("score") or 0.0))
 
     per_route = {route: prf(**counts[route]) for route in ROUTES}
+    # Macro over the routes the run actually exercised. On a full run that is all four and the number
+    # is the one the M4 artifact reports; on a smoke run (`--limit`, `--only-class`) averaging in three
+    # routes with no support would read as a catastrophic score for a perfect answer.
+    supported = [route for route in ROUTES if per_route[route]["support"] > 0]
     macro = {
-        metric: sum(per_route[route][metric] for route in ROUTES) / len(ROUTES)
+        metric: (sum(per_route[route][metric] for route in supported) / len(supported) if supported else 0.0)
         for metric in ("precision", "recall", "f1")
     }
     retrieval_questions = sum(1 for question in questions if question.notes)
@@ -233,6 +237,7 @@ def score_run(questions: tuple[model.Question, ...], records: list[dict[str, Any
             "macro_precision": macro["precision"],
             "macro_recall": macro["recall"],
             "macro_f1": macro["f1"],
+            "routes_with_support": supported,
             "per_route": per_route,
             "tool": prf(**tool_counts),
             "per_class": per_class,
@@ -264,8 +269,16 @@ def score_run(questions: tuple[model.Question, ...], records: list[dict[str, Any
     }
 
 
-def failure_reasons(metrics: dict[str, Any], thresholds: dict[str, float] | None = None) -> list[str]:
-    """Everything that makes a run fail its own gate, in the order a reader should fix it."""
+def failure_reasons(
+    metrics: dict[str, Any], thresholds: dict[str, float] | None = None, *, full: bool = True
+) -> list[str]:
+    """Everything that makes a run fail its own gate, in the order a reader should fix it.
+
+    `full=False` is a smoke run: its gate is not evaluated, because a four-question sample cannot
+    answer a question about the set. The metrics are still printed, and the runner does not store it.
+    """
+    if not full:
+        return []
     limits = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     reasons: list[str] = []
     routing = metrics["routing"]

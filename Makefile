@@ -120,7 +120,7 @@ ask: ## Ask the agent one question through the real pipeline: make ask Q="where 
 score-delay: ## Poll a live or recent match and report how old the provider's data is
 	$(COMPOSE) run --rm ingest python -m ingest measure-score-delay $(if $(MATCH_ID),--match-id $(MATCH_ID),)
 
-eval: ## Run the golden-question eval (pass ARGS="--limit 5" for a smoke run)
+eval: ## Run the golden-question eval (EVAL_ARGS="--limit 4" is a smoke run: metrics only, not stored)
 	$(TOOLS) run --rm tests python -m evals.golden.runner $(EVAL_ARGS)
 
 eval-self-check: ## Prove the eval gate can fail (no model, no database)

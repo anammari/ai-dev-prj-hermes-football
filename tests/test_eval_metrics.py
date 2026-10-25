@@ -165,6 +165,26 @@ def test_a_perfect_run_scores_one_everywhere_and_passes() -> None:
     assert metrics.failure_reasons(summary) == []
 
 
+def test_macro_averages_only_the_routes_the_run_exercised() -> None:
+    """A smoke run with one route must not be averaged against three empty routes: 0.25 for a perfect
+    answer is a number nobody should see, and the full run is unaffected because all four have
+    support there."""
+    questions, records = perfect_run()
+    summary = metrics.score_run(questions[:1], records[:1])
+    assert summary["routing"]["macro_f1"] == 1.0
+    assert summary["routing"]["routes_with_support"] == ["tool"]
+    full = metrics.score_run(questions, records)
+    assert full["routing"]["routes_with_support"] == ["tool", "knowledge", "clarify", "refuse"]
+    assert full["routing"]["macro_f1"] == 1.0
+
+
+def test_a_smoke_run_does_not_get_a_gate_verdict() -> None:
+    questions, records = perfect_run()
+    summary = metrics.score_run(questions[:1], [dict(records[0], route="knowledge", tool=None)])
+    assert metrics.failure_reasons(summary) != []
+    assert metrics.failure_reasons(summary, full=False) == []
+
+
 def test_the_gate_bites_on_every_dimension() -> None:
     """Each dimension gets its own tamper, because a gate that only catches one of them is a gate
     nobody can trust."""

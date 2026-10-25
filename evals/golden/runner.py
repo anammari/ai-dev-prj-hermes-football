@@ -288,7 +288,11 @@ def main(argv: list[str] | None = None) -> int:
 
     metrics = scoring.score_run(questions, records)
     limits = thresholds_from_env()
-    failures = scoring.failure_reasons(metrics, limits)
+    # A subset is a diagnostic, not a measurement: it is never stored, so it can never appear on the
+    # scoreboard as a point on the set's line, and its gate is not evaluated.
+    partial = len(questions) != len(golden.questions)
+    failures = scoring.failure_reasons(metrics, limits, full=not partial)
+    store = not args.no_store and not partial
 
     run = {
         "run_id": str(uuid.uuid4()),
@@ -307,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     artifact = args.out_dir / f"{run['run_id']}.json"
-    if not args.no_store:
+    if store:
         args.out_dir.mkdir(parents=True, exist_ok=True)
         artifact.write_text(
             json.dumps({"run": {**run, "started_at": started.isoformat(), "finished_at": finished.isoformat()},
@@ -329,12 +333,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  retrieval recall@k {retrieval['recall_at_k']} · headings {retrieval['heading_recall']}")
     print(f"  answers   fact coverage {answers['fact_coverage']} · citations {answers['citation_coverage']:.2f}")
     print(f"  gates     {metrics['gates']}")
-    print(f"  passed    {'yes' if run['passed'] else 'no'}")
-    for reason in failures:
-        print(f"  failed    {reason}")
-    if not args.no_store:
+    if partial:
+        print(f"  smoke     {len(questions)} of {len(golden.questions)} questions: metrics only, gate not")
+        print("            evaluated, nothing stored (use a full `make eval` for a scoreboard point)")
+    else:
+        print(f"  passed    {'yes' if run['passed'] else 'no'}")
+        for reason in failures:
+            print(f"  failed    {reason}")
+    if store:
         print(f"  wrote     {artifact.relative_to(REPO_ROOT)} and one eval_runs row")
-    return 0 if run["passed"] else 1
+    elif not partial:
+        print("  stored    no (--no-store)")
+    return 0 if run["passed"] or partial else 1
 
 
 if __name__ == "__main__":

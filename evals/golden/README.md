@@ -38,6 +38,7 @@ new cloud egress path, and neither was signed off for M5 (decision 0008).
   "routing": {
     "n": 48, "accuracy": 0.98, "errors": 0,
     "macro_precision": 0.97, "macro_recall": 0.97, "macro_f1": 0.97,
+    "routes_with_support": ["tool", "knowledge", "clarify", "refuse"],
     "per_route": {"tool": {"precision": 1.0, "recall": 1.0, "f1": 1.0, "support": 16}, "...": {}},
     "tool": {"precision": 1.0, "recall": 1.0, "f1": 1.0},
     "per_class": {"standings": {"n": 3, "route": 3, "tool": 3}},
@@ -79,6 +80,12 @@ A run **passes** when all of these hold (floors are overridable in `.env`):
 6. no answer is missing its citation.
 
 A failed run is stored and stays on the scoreboard, red, with its reasons. That is the point.
+
+**Smoke runs.** `--limit` and `--only-class` are diagnostics: they print metrics, do not evaluate the
+gate and are never stored, because a four-question sample cannot answer a question about the set, and a
+partial point on the set's series would lie. Macro averages are taken over the routes the run actually
+exercised (`routes_with_support`), which on a full run is all four and identical to the M4 artifact's
+arithmetic.
 
 `make eval-self-check` proves the gate can fail: it scores a synthetic perfect run, then three
 tampered ones (every route wrong, every fact missing, no citation anywhere) and fails if any tamper

@@ -69,7 +69,7 @@ The dashboard fetches server-side, so its tokens never reach the browser; a tunn
 | 3 | Agent team | Met | [`agent-team.md`](agent-team.md), [`ai-usage-report.md`](ai-usage-report.md), [`prompts/`](../prompts/README.md) |
 | 4 | Context management | Met | [`AGENTS.md`](../AGENTS.md) plus modular docs; rules change in the same PR as behaviour |
 | 5 | Application | Met | Backend, MCP tools, Telegram agent and the dashboard (`frontend/`, seven routes) over one contract |
-| 6 | Testing | Met | 409 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
+| 6 | Testing | Met | 411 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
 | 7 | Containerization | Met | `make up` starts seven services with health checks and exactly two published ports |
 | 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a Cloudflare tunnel is demo-only. Gap: no permanent public host |
 | 9 | CI/CD | Open | Local gates only; workflows, deploy, rollback are later |
