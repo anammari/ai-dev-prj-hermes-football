@@ -12,7 +12,9 @@ Q ?=
 EVAL_ARGS ?=
 
 .PHONY: help setup build up down db-port migrate models model-ready test itest itest-isolated lint check-notes index-notes search ingest score-delay \
-        eval eval-self-check eval-backfill frontend-test frontend-types e2e logs swagger swagger-stop validate-spec
+        eval eval-self-check eval-backfill frontend-test frontend-types e2e logs swagger swagger-stop validate-spec \
+        ci ci-full security-scan scan-secrets scan-deps scan-images lint-workflows \
+        obs-up obs-down obs-logs telemetry-smoke oncall-report alert-check alert-fire alert-drill alert-state
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -156,3 +158,86 @@ swagger-stop: ## Stop the Swagger UI container
 
 validate-spec: ## Lint the OpenAPI contract
 	npx --yes @redocly/cli@latest lint $(SPEC)
+
+# --- CI parity and security scans ---------------------------------------------------------------
+# `make ci` is what a pull request runs minus the Postgres/Ollama integration job, which needs the
+# stack. `make ci-full` is the pre-merge gate the owner runs locally. Neither runs `make eval`: the
+# eval sends the golden questions to clef:cloud and is a deliberate, manual owner decision.
+
+ci: ## Local parity with the pull-request CI gates (no stack, no cloud)
+	@$(MAKE) --no-print-directory lint test frontend-test eval-self-check security-scan lint-workflows
+
+ci-full: ## Every gate except the eval: unit, lint, integration, dashboard, browser, scans
+	@$(MAKE) --no-print-directory ci itest e2e
+
+security-scan: scan-secrets scan-deps ## Secret scan and dependency audit; reports under security/scans/latest
+
+scan-secrets: ## gitleaks over the working tree (never prints a secret; report is redacted)
+	@mkdir -p security/scans/latest
+	@docker run --rm -u "$$(id -u):$$(id -g)" -e HOME=/tmp -v "$(CURDIR):/repo" -w /repo \
+	  ghcr.io/gitleaks/gitleaks:v8.24.0 detect --source=/repo --no-git --redact \
+	  --config=/repo/.gitleaks.toml --report-format=json \
+	  --report-path=/repo/security/scans/latest/gitleaks.json
+	@echo "gitleaks: no leak found"
+
+scan-deps: ## pip-audit and pnpm audit (network: advisories only, no project data)
+	@mkdir -p security/scans/latest
+	@$(TOOLS) run --rm tests pip-audit --progress-spinner off
+	@$(COMPOSE) --profile tools run --rm frontend-e2e pnpm audit --prod --audit-level high
+
+scan-images: ## trivy over the built images (slow; main and nightly, not every push)
+	@for image in hermes-football-backend:latest hermes-football-frontend:latest hermes-football-ollama:local; do \
+	  echo "scanning $$image"; \
+	  docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1 image \
+	    --severity HIGH,CRITICAL --exit-code 1 "$$image" || exit 1; \
+	done
+
+lint-workflows: ## actionlint over .github/workflows
+	@docker run --rm -v "$(CURDIR):/repo" -w /repo rhysd/actionlint:1.7.7
+
+# --- Observability and on-call ------------------------------------------------------------------
+# The obs stack is opt-in. `obs-up` starts it and recreates the app containers with the OTLP endpoint
+# exported, because Compose passes environment at creation time; `obs-down` does the reverse and keeps
+# the data volumes. Grafana is loopback-only and has no login: never tunnel it.
+
+OBS := OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+OBS_FILES := -f docker-compose.yml -f docker-compose.observability.yml --profile obs
+
+obs-up: ## Start the opt-in observability stack and point the app at it (Grafana on 127.0.0.1:3001)
+	$(OBS) $(COMPOSE) $(OBS_FILES) up -d
+	$(OBS) $(COMPOSE) up -d --force-recreate backend mcp-server hermes oncall ingest
+	@echo "Grafana: http://127.0.0.1:$${GRAFANA_PORT:-3001}  (anonymous viewer, loopback only)"
+	@echo "Prometheus: docker compose exec -T prometheus wget -qO- http://127.0.0.1:9090/-/healthy"
+
+obs-down: ## Stop the observability stack, keep its volumes, and turn app telemetry off again
+	$(COMPOSE) $(OBS_FILES) down
+	$(COMPOSE) up -d --force-recreate backend mcp-server hermes oncall ingest
+	@echo "observability stopped; app containers recreated with telemetry off"
+
+obs-logs: ## Tail one observability service: make obs-logs S=grafana
+	$(COMPOSE) $(OBS_FILES) logs -f --tail=100 $(S)
+
+telemetry-smoke: ## Probe the obs stack and count the exported series
+	@curl -fsS http://127.0.0.1:$${GRAFANA_PORT:-3001}/api/health | head -c 200; echo
+	@$(COMPOSE) $(OBS_FILES) exec -T prometheus wget -qO- http://127.0.0.1:9090/-/healthy; echo
+	@echo "hermes series in Prometheus:"
+	@$(COMPOSE) $(OBS_FILES) exec -T prometheus wget -qO- 'http://127.0.0.1:9090/api/v1/label/__name__/values' \
+	  | tr ',' '\n' | grep -o 'hermes_[a-z_]*' | sort -u
+
+oncall-report: ## Copy the on-call reports volume to data/oncall for inspection
+	@mkdir -p data/oncall
+	@docker compose cp oncall:/reports/. data/oncall/
+	@ls -1 data/oncall
+
+alert-check: ## Evaluate the ingest-health alert once against the real ledger
+	@docker compose exec -T oncall python -m agent.oncall --once
+
+alert-fire: ## Demonstrate the alert with a synthetic stale observation (no wait, no database)
+	@docker compose exec -T oncall python -m agent.oncall --simulate stale
+
+alert-drill: ## Real one-off evaluation with a 1-minute threshold against the live ledger
+	@docker compose run --rm -e ONCALL_STALE_MINUTES=1 -e ONCALL_REQUIRED_BREACHES=1 \
+	  oncall python -m agent.oncall --once
+
+alert-state: ## Show the stored alert state
+	@docker compose exec -T oncall cat /reports/alerts.json

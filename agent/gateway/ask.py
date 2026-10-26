@@ -13,6 +13,8 @@ import sys
 from agent.config import AgentSettings
 from agent.gateway.factory import build_runtime
 from agent.turn_log import hash_chat_id
+from telemetry import configure as configure_telemetry
+from telemetry import shutdown as shutdown_telemetry
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = AgentSettings.from_env()
+    configure_telemetry("hermes-gateway-cli")
     runtime = build_runtime(settings)
     chat_hash = None
     if args.chat_id and settings.chat_hash_salt:
@@ -30,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         answer = runtime.pipeline.answer(args.message, chat_id_hash=chat_hash)
     finally:
         runtime.close()
+        shutdown_telemetry()
 
     print(answer.text)
     print(

@@ -23,7 +23,7 @@ class MCPToolError(RuntimeError):
 
 
 class MCPClient:
-    def __init__(self, url: str, token: str | None, timeout: float = 20.0) -> None:
+    def __init__(self, url: str, token: str | None, timeout: float = 50.0) -> None:
         if not token:
             raise MCPError("MCP_SERVER_TOKEN/API_AGENT_TOKEN is unset: refusing to call the tool server")
         self.url = url

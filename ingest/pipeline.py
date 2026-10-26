@@ -27,8 +27,12 @@ from ingest.normalize import (
     upsert_standings,
     upsert_team,
 )
+from telemetry import get_tracer
+from telemetry import metrics as telemetry_metrics
 
 logger = logging.getLogger(__name__)
+
+tracer = get_tracer("hermes.ingest")
 
 # Bronze payloads older than this are pruned at the end of each run; None keeps them forever.
 DEFAULT_RAW_RETENTION_DAYS = 30
@@ -58,6 +62,38 @@ class RunReport:
 
 
 def run_ingestion(
+    settings: Settings,
+    factory: sessionmaker[Session],
+    client: FootballDataClient,
+    embedder: Embedder,
+    *,
+    trigger: str = "manual",
+    raw_retention_days: int | None = DEFAULT_RAW_RETENTION_DAYS,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> RunReport:
+    """One run, with a span and three counters. The wrapper keeps the pipeline itself unchanged."""
+    with tracer.start_as_current_span("ingest.run", record_exception=False) as span:
+        report = _run_ingestion(
+            settings,
+            factory,
+            client,
+            embedder,
+            trigger=trigger,
+            raw_retention_days=raw_retention_days,
+            now=now,
+        )
+        span.set_attribute("status", report.status)
+        span.set_attribute("competitions", len(report.competitions))
+        span.set_attribute("calls_used", report.calls_used)
+        span.set_attribute("rate_limit_hits", report.rate_limit_hits)
+        span.set_attribute("errors", len(report.errors))
+        telemetry_metrics.INGEST_RUNS.add(1, {"status": report.status})
+        telemetry_metrics.INGEST_DURATION.record(report.duration_seconds, {"status": report.status})
+        telemetry_metrics.INGEST_CALLS.add(report.calls_used, {"trigger": trigger})
+        return report
+
+
+def _run_ingestion(
     settings: Settings,
     factory: sessionmaker[Session],
     client: FootballDataClient,
@@ -255,6 +291,36 @@ def _fetch(
             )
         )
     return payload
+
+
+def close_orphaned_runs(
+    factory: sessionmaker[Session],
+    *,
+    now: datetime | None = None,
+    max_age_hours: int = 3,
+) -> list[str]:
+    """Close `running` rows that no process owns any more.
+
+    A container killed mid-run leaves a row that says `running` forever. The freshness report ignores
+    it (it has no outcome), but the on-call alert correctly reads it as a stuck run and would fire
+    every day for a crash that happened once. Startup is the right place to decide it is dead: this
+    process is the only writer of the ledger, so a row older than the threshold cannot be alive.
+    """
+    moment = _utc(now or datetime.now(UTC))
+    closed: list[str] = []
+    with session_scope(factory) as session:
+        for run in session.scalars(select(IngestRun).where(IngestRun.status == "running")):
+            started = _utc(run.started_at)
+            if moment - started < timedelta(hours=max_age_hours):
+                continue
+            run.finished_at = moment
+            run.status = "failed"
+            run.duration_seconds = max(0.0, (moment - started).total_seconds())
+            run.errors = list(run.errors or []) + [
+                {"resource": "recovery", "message": "orphaned running row closed at startup"}
+            ]
+            closed.append(run.id)
+    return closed
 
 
 def prune_raw_payloads(

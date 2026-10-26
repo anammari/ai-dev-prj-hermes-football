@@ -14,13 +14,14 @@ agent:
     - get_match_result
     - get_team_form
     - get_head_to_head
+    - get_top_scorers
     - search_knowledge
     - get_data_freshness
 mcp:
   transport: http
   url: http://mcp-server:8100/mcp
   auth: "Bearer ${MCP_SERVER_TOKEN}"
-  timeout_seconds: 20
+  timeout_seconds: 50
 policy:
   grounding: tool-result-or-note-only
   freshness: always-cite-data-as-of
