@@ -228,7 +228,7 @@ Telegram alert channel is opt-in and metadata-only.
 - [`_docs/follow-ups.md`](_docs/follow-ups.md) — the recorded gaps, with next steps
 - [`_docs/rag.md`](_docs/rag.md) — notes, chunking, embeddings, retrieval
 - [`_docs/data-model.md`](_docs/data-model.md) — tables and open items
-- [`_docs/gallery.md`](_docs/gallery.md) — the dashboard and the served contract, in screenshots
+- [`_docs/gallery.md`](_docs/gallery.md) — the bot, the dashboard, the served contract and observability, in screenshots
 - [`_docs/notes-sources.md`](_docs/notes-sources.md) — source URLs for every note
 - [`_docs/agent-team.md`](_docs/agent-team.md) — roles and process
 - [`_docs/permissions.md`](_docs/permissions.md) — every capability, its role and its bound
