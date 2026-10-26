@@ -25,7 +25,10 @@ owner decision.
    container attached only to an internal network, and the dashboard must be reachable at
    `127.0.0.1:3001`. Grafana therefore also joins the default network; its analytics, plugin download
    and update checks are disabled in Compose, and its two dashboards are provisioned from this
-   repository. It is loopback-only and has no login, so it must never be tunnelled.
+   repository. It runs as an anonymous **Editor**, not a Viewer, because Grafana 11.3 denies
+   `datasources:explore` to Viewer and the Explore page would have an empty picker; an Editor cannot
+   manage datasources, users or org settings. It is loopback-only and has no login, so it must never
+   be tunnelled.
 3. **No user text in telemetry.** A span or log attribute may carry a route, a tool, a status, a
    latency or an alert name. It may not carry a message, an answer, a chat id, a note passage or a
    token. The backend's uvicorn access log is disabled because it prints the query string of

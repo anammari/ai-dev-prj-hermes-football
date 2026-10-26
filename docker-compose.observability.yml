@@ -101,7 +101,12 @@ services:
         condition: service_healthy
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Editor, not Viewer: Grafana 11.3 denies `datasources:explore` to the Viewer role, so the
+      # Explore page shows an empty datasource picker (the logs say
+      # `Access denied ... permissions="action:datasources:explore"`). The dashboards stay provisioned
+      # and read-only, Grafana is loopback-only, and an anonymous Editor cannot manage datasources,
+      # users or org settings. Do not expose this port.
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"

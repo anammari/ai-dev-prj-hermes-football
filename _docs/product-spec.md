@@ -36,7 +36,7 @@ with a published port. `ingest` writes; `ollama` embeds locally; `db` stores dat
 port. The dashboard reaches the API server-side with `API_AGENT_TOKEN` and never sends that token to the browser, so a
 tunnel exposes rendered pages, not credentials. A tunnel is demo-only: no permanent hostname, and it is stopped after
 a demo. The opt-in observability profile adds one more: Grafana on `127.0.0.1:${GRAFANA_PORT:-3001}`, loopback-bound,
-anonymous viewer, never tunnelled. `docker-compose.observability.yml` is not started by `make up`.
+anonymous Editor, never tunnelled. `docker-compose.observability.yml` is not started by `make up`.
 
 No service mounts the Docker socket. The corpus is read-only. `hermes` `terminal.backend` stays local inside its
 container.
@@ -167,7 +167,7 @@ throwaway literals.
 
 **Observability.** `docker-compose.observability.yml`, opt-in through `profiles: [obs]` and `make obs-up`. Applications
 push OTLP to `otel-collector`; Prometheus scrapes the collector's exporter; Loki stores logs; Tempo stores traces;
-Grafana (loopback `:3001`, anonymous Viewer) renders two provisioned dashboards. The four storage/scrape containers are
+Grafana (loopback `:3001`, anonymous Editor) renders two provisioned dashboards. The four storage/scrape containers are
 on an internal network; Grafana also joins the default network only so its port can be published, with analytics,
 plugin download and update checks disabled. Telemetry is a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is empty. A span
 or log carries a route, tool, status, latency or alert name — never a message, answer, chat id or token; the backend
@@ -248,7 +248,7 @@ M1 schema/corpus/embedder → M2 ingestion/re-index → M3 API → M3b routing c
 - Scorer data is served; lineups, odds, live scores and xG are not available.
 - Complex answers use `beam:cloud`; the simple path is local.
 - The dashboard has no login: it is local, and a tunnel is demo-only. Message text on `/turns` is masked by default.
-- Observability is local-only. Grafana is loopback-bound, anonymous and has no login; it must not be tunnelled.
+- Observability is local-only. Grafana is loopback-bound, anonymous Editor and has no login; it must not be tunnelled.
 - Owner-Telegram alert delivery is opt-in and off by default; when enabled it carries counters and timestamps only.
 - The ingest trigger (`POST /admin/ingest-runs`) is still a documented `404`; closing it is a post-M6 follow-up.
 - No licence has been chosen; the repository is all-rights-reserved until the owner picks one.

@@ -19,7 +19,7 @@ and the thing it may **not** do.
 | `prometheus` | the collector's exporter | `prometheus-data` | no | internal `obs` network; 7-day retention |
 | `loki` | OTLP logs | `loki-data` | no | internal `obs` network; 7-day retention |
 | `tempo` | OTLP traces | `tempo-data` | no | internal `obs` network; 7-day retention |
-| `grafana` | Prometheus, Loki, Tempo | `grafana-data` | **loopback only** on `127.0.0.1:3001` | no login; anonymous Viewer; never tunnelled; plugin download and analytics disabled |
+| `grafana` | Prometheus, Loki, Tempo | `grafana-data` | **loopback only** on `127.0.0.1:3001` | no login; anonymous Editor (Explore needs it; dashboards are provisioned/read-only); never tunnelled; plugin download and analytics disabled |
 | `ollama` | — | the ollama volume | no egress for embeddings | local CPU-only build |
 | `db` | — | — | — | the only stateful volume, plus `ollama-data`, `oncall-reports` and the four obs volumes |
 

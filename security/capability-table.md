@@ -25,7 +25,7 @@ checkable.
 | `prometheus` | Compose profile `obs` | none | scrape the collector, retain 7 days | scrape an app directly, read the database | `observability/prometheus/prometheus.yml` |
 | `loki` | Compose profile `obs` | none | store logs, retain 7 days | read the database | `observability/loki/loki-config.yaml` |
 | `tempo` | Compose profile `obs` | none | store traces, retain 7 days | read the database | `observability/tempo/tempo.yaml` |
-| `grafana` | Compose profile `obs`, `127.0.0.1:3001` | anonymous viewer (local only) | show metrics/logs/traces and the alert panel | be published off loopback, hold a project token | `docker-compose.observability.yml` |
+| `grafana` | Compose profile `obs`, `127.0.0.1:3001` | anonymous Editor (local only) | show metrics/logs/traces and the alert panel | be published off loopback, hold a project token | `docker-compose.observability.yml` |
 
 ## Tool and test targets (never started by `make up`)
 

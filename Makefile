@@ -204,12 +204,28 @@ OBS := OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 OBS_FILES := -f docker-compose.yml -f docker-compose.observability.yml --profile obs
 
 obs-up: ## Start the opt-in observability stack and point the app at it (Grafana on 127.0.0.1:3001)
-	$(OBS) $(COMPOSE) $(OBS_FILES) up -d
-	$(OBS) $(COMPOSE) up -d --force-recreate backend mcp-server hermes oncall ingest
-	@echo "Grafana: http://127.0.0.1:$${GRAFANA_PORT:-3001}  (anonymous viewer, loopback only)"
+	# Persist the endpoint in the local .env, not just this shell. A later `make build` + `make e2e`
+	# recreates the app containers from Compose, and without the persisted line they come back with
+	# telemetry off - which is how the backend silently stopped exporting once. `.env` is gitignored.
+	@if grep -q '^OTEL_EXPORTER_OTLP_ENDPOINT=' .env; then \
+	  sed -i.bak 's#^OTEL_EXPORTER_OTLP_ENDPOINT=.*#OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318#' .env; \
+	else \
+	  printf '\nOTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318\n' >> .env; \
+	fi
+	$(COMPOSE) $(OBS_FILES) up -d
+	$(COMPOSE) up -d --force-recreate backend mcp-server hermes oncall ingest
+	@for service in backend mcp-server hermes oncall ingest; do \
+	  value=$$(docker compose exec -T $$service printenv OTEL_EXPORTER_OTLP_ENDPOINT 2>/dev/null); \
+	  test "$$value" = "http://otel-collector:4318" || { \
+	    echo "$$service is not sending telemetry (endpoint='$$value'); run make obs-up again"; exit 1; }; \
+	done
+	@echo "Grafana: http://127.0.0.1:$${GRAFANA_PORT:-3001}  (anonymous Editor, loopback only)"
 	@echo "Prometheus: docker compose exec -T prometheus wget -qO- http://127.0.0.1:9090/-/healthy"
 
 obs-down: ## Stop the observability stack, keep its volumes, and turn app telemetry off again
+	@if grep -q '^OTEL_EXPORTER_OTLP_ENDPOINT=' .env; then \
+	  sed -i.bak 's#^OTEL_EXPORTER_OTLP_ENDPOINT=.*#OTEL_EXPORTER_OTLP_ENDPOINT=#' .env; \
+	fi
 	$(COMPOSE) $(OBS_FILES) down
 	$(COMPOSE) up -d --force-recreate backend mcp-server hermes oncall ingest
 	@echo "observability stopped; app containers recreated with telemetry off"
@@ -219,6 +235,13 @@ obs-logs: ## Tail one observability service: make obs-logs S=grafana
 
 telemetry-smoke: ## Probe the obs stack and count the exported series
 	@curl -fsS http://127.0.0.1:$${GRAFANA_PORT:-3001}/api/health | head -c 200; echo
+	@for service in backend mcp-server hermes oncall ingest; do \
+	  value=$$(docker compose exec -T $$service printenv OTEL_EXPORTER_OTLP_ENDPOINT 2>/dev/null); \
+	  test "$$value" = "http://otel-collector:4318" || { \
+	    echo "$$service is not sending telemetry (endpoint='$$value'); run make obs-up"; exit 1; }; \
+	done
+	@curl -fsS http://127.0.0.1:$${GRAFANA_PORT:-3001}/api/access-control/user/permissions \
+	  | grep -q '"datasources:explore"' || { echo "Grafana anonymous role cannot open Explore; set Editor"; exit 1; }
 	@$(COMPOSE) $(OBS_FILES) exec -T prometheus wget -qO- http://127.0.0.1:9090/-/healthy; echo
 	@echo "hermes series in Prometheus:"
 	@$(COMPOSE) $(OBS_FILES) exec -T prometheus wget -qO- 'http://127.0.0.1:9090/api/v1/label/__name__/values' \

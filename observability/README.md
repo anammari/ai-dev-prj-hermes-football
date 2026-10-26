@@ -7,7 +7,10 @@ make obs-down                   # stop it; app containers go back to telemetry-o
 
 The stack is a separate Compose file with the `obs` profile, joined to the same project. `make up`
 never starts it. Grafana is the only new host port and is bound to loopback with an anonymous
-Viewer role: **never tunnel it, never expose it**, and do not add a login-less public host.
+**Editor** role: Grafana 11.3 denies `datasources:explore` to a Viewer, so the Explore picker would be
+empty. The dashboards stay provisioned and read-only, and an anonymous Editor cannot manage
+datasources, users or org settings. **Never tunnel it, never expose it**, and do not add a login-less
+public host.
 
 | URL | What it shows |
 | --- | --- |
@@ -41,7 +44,7 @@ so it still works when Grafana is down.
 | `prometheus` | 512 MB / 0.5 CPU | 7-day retention |
 | `loki` | 256 MB / 0.25 CPU | 7-day retention |
 | `tempo` | 256 MB / 0.25 CPU | 7-day retention |
-| `grafana` | 256 MB / 0.5 CPU | provisioned dashboards, anonymous viewer |
+| `grafana` | 256 MB / 0.5 CPU | provisioned dashboards, anonymous Editor (Explore needs it) |
 
 ≈1.4 GB RAM and 1.75 CPU while running; < 1 GB of volume per week at the default sampling. The
 default is **100 % trace sampling** because this stack is low-traffic and a manual check must find the
@@ -61,8 +64,10 @@ holds the query columns.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| dashboards empty | app containers were not recreated with the endpoint | `make obs-up` (it recreates them) |
+| **Explore has no datasource picker, or the log says `Access denied … datasources:explore`** | the anonymous role is Viewer; Grafana 11.3 withholds Explore from it | `make obs-up` sets `GF_AUTH_ANONYMOUS_ORG_ROLE=Editor`; verify with `curl -s http://127.0.0.1:3001/api/access-control/user/permissions` |
+| dashboards empty | app containers were not recreated with the endpoint | `make obs-up` (it recreates them and persists the endpoint in `.env`) |
 | `hermes_*` series missing | sampling/export interval not elapsed | wait 15–30 s, then `make telemetry-smoke` |
+| **a request produces no trace** | the app container has an empty `OTEL_EXPORTER_OTLP_ENDPOINT`, or you are looking at the last 5 minutes | `make telemetry-smoke` (it checks every container); set the range to Last 15 minutes and wait ~30 s |
 | Grafana unreachable | the port is loopback-only, or Grafana is down | `docker compose ps grafana`; use `127.0.0.1:3001` |
 | traces missing | the process was not configured | check `OTEL_EXPORTER_OTLP_ENDPOINT` in `docker compose config` |
 | logs show a `q=` | an access log was re-enabled | the backend must run with `--no-access-log` |
@@ -73,11 +78,20 @@ Run these in order after `make obs-up`; each has a visible result, not a promise
 
 1. **The dashboards load.** Open <http://127.0.0.1:3001/d/hermes-overview> and
    <http://127.0.0.1:3001/d/hermes-freshness>. Both render panels; the freshness panel's max age should equal the
-   value from `curl -s -H "Authorization: Bearer $API_AGENT_TOKEN" http://localhost:8000/meta/freshness | python3 -m
-   json.tool | grep max_age`.
-2. **An API request becomes a trace.** Request `/meta/freshness` in a browser or with curl, then in Explore choose
-   Tempo and search `service.name = hermes-backend` for the last 5 minutes. The trace `GET /meta/freshness` is there;
-   its span attributes include the route and status, not the query string.
+   value from:
+   ```bash
+   set -a; . ./.env; set +a
+   curl -s -H "Authorization: Bearer $API_AGENT_TOKEN" http://localhost:8000/meta/freshness | python3 -m json.tool | grep max_age
+   ```
+2. **An API request becomes a trace.** Fire a request that prints its status, then look in Explore → Tempo for
+   `service.name = hermes-backend` with the range set to **Last 15 minutes**:
+   ```bash
+   set -a; . ./.env; set +a
+   curl -s -o /dev/null -w 'freshness: %{http_code}\n' -H "Authorization: Bearer $API_AGENT_TOKEN" http://localhost:8000/meta/freshness
+   ```
+   The trace `GET /meta/freshness` appears within ~30 s (the SDK batches for 5 s and Tempo flushes); its span
+   attributes include the route and status, not the query string. A silent curl that prints nothing is expected —
+   add `-w` as above.
 3. **A turn is a trace and a count.** `make ask Q="where are Arsenal in the table?"`, then search Tempo for
    `hermes-gateway-cli` / `gateway.turn`, and query `sum(hermes_gateway_turns_total)` in Explore → Prometheus. The
    span has `route`, `complexity`, `grounded`, `tool_calls`, `latency_ms` — no message.

@@ -157,7 +157,7 @@ make telemetry-smoke
 
 The URLs and what each shows are in [Dashboards and key pages](#dashboards-and-key-pages).
 
-Grafana is loopback-only, anonymous Viewer and has no login: never tunnel it. The alert is evaluated by `oncall`
+Grafana is loopback-only, anonymous Editor (Grafana 11.3 withholds Explore from Viewer) and has no login: never tunnel it. The alert is evaluated by `oncall`
 against Postgres, not by Grafana, so it still works when the obs stack is down. Telemetry is push-only to a local
 collector on an internal network; it carries route/tool/status/latency, never a message, answer, chat id or token.
 Details, signal matrix and troubleshooting: [`observability/README.md`](observability/README.md).
