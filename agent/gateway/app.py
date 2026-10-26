@@ -26,6 +26,8 @@ from telemetry import instrument_app as instrument_telemetry
 from telemetry import shutdown as shutdown_telemetry
 
 LOGGER = logging.getLogger("hermes.gateway")
+# Same reason as backend/app.py: uvicorn's root is WARNING, and "turn recorded" is an INFO audit line.
+LOGGER.setLevel(logging.INFO)
 
 WELCOME = (
     "I'm Hermes Football. I answer from stored football data and from a small set of rules notes.\n\n"

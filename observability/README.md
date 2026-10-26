@@ -83,15 +83,24 @@ Run these in order after `make obs-up`; each has a visible result, not a promise
    set -a; . ./.env; set +a
    curl -s -H "Authorization: Bearer $API_AGENT_TOKEN" http://localhost:8000/meta/freshness | python3 -m json.tool | grep max_age
    ```
-2. **An API request becomes a trace.** Fire a request that prints its status, then look in Explore → Tempo for
-   `service.name = hermes-backend` with the range set to **Last 15 minutes**:
+2. **One request, three signals.** Fire a request that prints its status, then look at the same request in Tempo,
+   Loki and Prometheus with the range set to **Last 15 minutes**:
    ```bash
    set -a; . ./.env; set +a
    curl -s -o /dev/null -w 'freshness: %{http_code}\n' -H "Authorization: Bearer $API_AGENT_TOKEN" http://localhost:8000/meta/freshness
    ```
-   The trace `GET /meta/freshness` appears within ~30 s (the SDK batches for 5 s and Tempo flushes); its span
-   attributes include the route and status, not the query string. A silent curl that prints nothing is expected —
-   add `-w` as above.
+   It takes up to ~30 s for the trace and the log to appear (the SDK batches for 5 s, then Tempo/Loki flush); the
+   metric is exported every 15 s. A silent curl that prints nothing is expected — add `-w` as above.
+   - **Tempo:** Explore → Tempo → Search, Service Name `hermes-backend`; the trace `GET /meta/freshness` is there.
+     Its span attributes include the route and status, not the query string.
+   - **Loki:** Explore → Loki → Code, query
+     `{service_name="hermes-backend"} |= "route=/meta/freshness"`; the line
+     `request method=GET route=/meta/freshness status=200 duration_ms=… request_id=…` has a `traceid` you can open
+     in Tempo.
+   - **Prometheus:** Explore → Prometheus → Code, query
+     `sum(hermes_http_requests_total{route="/meta/freshness"})` (or
+     `hermes_http_requests_total{route="/meta/freshness", status="200"}`); the value is at least 1 and increments
+     after another curl.
 3. **A turn is a trace and a count.** `make ask Q="where are Arsenal in the table?"`, then search Tempo for
    `hermes-gateway-cli` / `gateway.turn`, and query `sum(hermes_gateway_turns_total)` in Explore → Prometheus. The
    span has `route`, `complexity`, `grounded`, `tool_calls`, `latency_ms` — no message.

@@ -50,6 +50,10 @@ from telemetry import metrics as telemetry_metrics
 from telemetry import shutdown as shutdown_telemetry
 
 logger = logging.getLogger(__name__)
+# Uvicorn configures the root logger at WARNING, so a child logger's INFO records are never created -
+# and the OTel log handler on the root never sees the request line. The line is deliberately INFO (the
+# per-request audit), so the level is set here rather than left to the server's default.
+logger.setLevel(logging.INFO)
 
 #: The API's own deadline for one embedding call. It sits under the MCP server's wait for the backend
 #: (45 s), which sits under the gateway's wait for the MCP server (50 s); the ordering is asserted in
