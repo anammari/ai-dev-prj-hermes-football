@@ -91,6 +91,31 @@ The detailed map with gaps is [`_docs/scoping.md`](_docs/scoping.md#5-how-the-12
 Only the user message goes to `clef:cloud`. Simple answers stay local; complex answers send the collected results to
 `beam:cloud`. Embeddings and note retrieval stay local.
 
+## Models and technologies
+
+### Models
+
+| Name | Type | Deployed | Role |
+| --- | --- | --- | --- |
+| `clef:cloud` | Decision | Cloud | Routes each message: road, tool, safety, simple or complex |
+| `beam:cloud` | GenAI | Cloud | Plans tools, writes complex answers, checks their claims |
+| `embeddinggemma:300m` | Embedding | Local | Embeds notes and queries for retrieval (768-d) |
+
+### Technologies
+
+| Name | Type | Role |
+| --- | --- | --- |
+| Postgres 16 + pgvector | Database, vector store | Stores football data, the run ledger, turns and note embeddings |
+| FastAPI | Web framework | Serves the 17-operation API |
+| SQLAlchemy + Alembic | ORM, migrations | Schema and queries |
+| Next.js + React + TypeScript | Frontend | Dashboard over the same API |
+| Ollama | Model server | Local embeddings, and the host proxy for the cloud models |
+| Docker Compose | Runtime | Seven services with one command |
+| MCP over HTTP | Protocol | Read-only tool surface for the agent |
+| Telegram Bot API | Interface | Public bot, long polling |
+| httpx | HTTP client | Ingest, MCP and model calls |
+| pytest, ruff, Vitest, Playwright | Tests, lint | The local gates |
+
 ## Run it
 
 Prerequisite: Docker, repository, `.env` (`make setup` once).
@@ -112,6 +137,9 @@ One `make up` starts `db`, `ollama`, `backend`, `frontend`, `mcp-server`, `herme
 (`:8000`) and `frontend` (`:3000`) publish host ports; the dashboard fetches server-side, so no token reaches a
 browser. Review bot setup, the dashboard walk-through and the Telegram test steps are in
 [`_docs/setup-and-review.md`](_docs/setup-and-review.md).
+
+Reproducing the agent end to end needs a signed-in Ollama account with cloud access to `clef:cloud` and `beam:cloud`;
+the tests and the dashboard do not.
 
 ## Documents
 
