@@ -4,7 +4,7 @@
 # and a dashboard that compiles against a stale copy of the contract is exactly the drift the backend
 # test suite exists to prevent. `pnpm check:api` fails the image build if the committed types are not
 # what the contract produces today.
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
@@ -12,7 +12,7 @@ COPY frontend/package.json frontend/pnpm-lock.yaml ./
 # explicitly; pnpm 12 refuses build scripts by default.
 RUN pnpm install --frozen-lockfile --allow-build=unrs-resolver
 
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
@@ -20,7 +20,7 @@ COPY frontend/ ./
 COPY openapi.yaml /openapi.yaml
 RUN pnpm check:api && pnpm build
 
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
