@@ -80,7 +80,7 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install
         working-directory: frontend
-        run: pnpm install --frozen-lockfile --allow-build=unrs-resolver
+        run: pnpm install --frozen-lockfile
       - name: Lint
         working-directory: frontend
         run: pnpm lint
@@ -248,7 +248,7 @@ jobs:
           API_AGENT_TOKEN: ci-agent-token
           API_ADMIN_TOKEN: ci-admin-token
         run: |
-          pnpm install --frozen-lockfile --allow-build=unrs-resolver
+          pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
           pnpm exec playwright test
 
