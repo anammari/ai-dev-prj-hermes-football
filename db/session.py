@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from db.settings import Settings
 
 
-def create_db_engine(settings: Settings, *, echo: bool = False) -> Engine:
-    kwargs: dict = {"future": True, "echo": echo, "pool_pre_ping": True}
+def create_db_engine(settings: Settings, *, echo: bool = False, hide_parameters: bool = False) -> Engine:
+    kwargs: dict = {"future": True, "echo": echo, "pool_pre_ping": True, "hide_parameters": hide_parameters}
     if not settings.is_postgres:
         kwargs["connect_args"] = {"check_same_thread": False}
     engine = create_engine(settings.database_url, **kwargs)

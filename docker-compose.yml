@@ -16,6 +16,10 @@ x-app-env: &app-env
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env - run `make setup`}@db:5432/${POSTGRES_DB:-hermes}
   AGENT_DB_ROLE: ${AGENT_DB_ROLE:-agent_readonly}
   AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-}
+  # The narrow write role behind the dashboard's review button (migration 0004): UPDATE on the two
+  # review columns of `agent_turns` only. The agent containers do not receive it.
+  AGENT_ADMIN_DB_ROLE: ${AGENT_ADMIN_DB_ROLE:-agent_admin}
+  AGENT_ADMIN_DB_PASSWORD: ${AGENT_ADMIN_DB_PASSWORD:-}
   OLLAMA_HOST: http://ollama:11434
   OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-embeddinggemma:300m}
   OLLAMA_EMBED_DIM: ${OLLAMA_EMBED_DIM:-768}
@@ -76,6 +80,8 @@ services:
       <<: *app-env
       # No default: an empty token makes every agent-facing request 401 rather than opening the API.
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      # Empty disables the one write path (the review button); it is never an open door.
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
       FRESHNESS_MAX_AGE_MINUTES: ${FRESHNESS_MAX_AGE_MINUTES:-1560}
       INGEST_SCHEDULE_HOUR: ${INGEST_SCHEDULE_HOUR:-2}
       INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
@@ -97,6 +103,36 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      # Server-side only: the browser never receives either token (frontend/src/lib/api/client.ts is
+      # marked `server-only`, so an accidental client import fails the build).
+      BACKEND_BASE_URL: http://backend:8000
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
+      # Mask stored Telegram text unless the owner asks for it: the review bot is public.
+      DASHBOARD_SHOW_MESSAGES: ${DASHBOARD_SHOW_MESSAGES:-false}
+      NEXT_TELEMETRY_DISABLED: "1"
+    # The second published port, and the last one: the API and the dashboard
+    # (_docs/product-spec.md §4). The tunnel points at this port during a demo.
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     mem_limit: 512m
     cpus: 1
     restart: unless-stopped
@@ -261,9 +297,28 @@ services:
       <<: *app-env
       AGENT_DB_WRITER_ROLE: ${AGENT_DB_WRITER_ROLE:-agent_writer}
       AGENT_DB_WRITER_PASSWORD: ${AGENT_DB_WRITER_PASSWORD:-}
+      AGENT_ADMIN_DB_ROLE: ${AGENT_ADMIN_DB_ROLE:-agent_admin}
+      AGENT_ADMIN_DB_PASSWORD: ${AGENT_ADMIN_DB_PASSWORD:-}
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["alembic", "upgrade", "head"]
+
+  frontend-e2e:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: frontend/e2e/Dockerfile
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      DASHBOARD_URL: http://frontend:3000
+      # The security spec asserts this string never reaches a browser; the test container is the only
+      # place it is compared, and it never leaves it.
+      API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
+    mem_limit: 2g
+    cpus: 2
 
   tests:
     profiles: [tools]
@@ -279,6 +334,9 @@ services:
       # the `backend` service is given. Empty by default: Compose already fails loudly when the token
       # for the API itself is unset, and the suite says so rather than testing an open service.
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:-}
+      # The admin integration test exercises the one write through the same token the dashboard uses;
+      # empty means the test is skipped rather than failing for the wrong reason.
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
       AGENT_DB_WRITER_ROLE: ${AGENT_DB_WRITER_ROLE:-agent_writer}
       AGENT_DB_WRITER_PASSWORD: ${AGENT_DB_WRITER_PASSWORD:-}
       AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}

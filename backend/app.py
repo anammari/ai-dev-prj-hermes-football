@@ -34,9 +34,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend import __version__
 from backend.contract import load_contract
-from backend.db import create_read_engine, read_only
+from backend.db import create_admin_engine, create_read_engine, read_only
 from backend.errors import ApiError, code_for_status
-from backend.routers import admin, agent, competitions, knowledge, matches, teams
+from backend.routers import admin, agent, competitions, evals, knowledge, matches, teams
 from backend.routers import meta as meta_routes
 from backend.routers import open as open_routes
 from backend.settings import BackendSettings
@@ -67,16 +67,25 @@ def create_app(
         app.state.started_at = datetime.now(UTC)
         app.state.engine = engine if engine is not None else create_read_engine(backend_settings.db)
         app.state.session_factory = create_session_factory(app.state.engine)
+        # The one write path exists only when the deployment configured an admin token. Without one
+        # the app holds no write engine at all, which is a stronger statement than a 403.
+        app.state.admin_engine = (
+            create_admin_engine(backend_settings.db) if backend_settings.admin_enabled else None
+        )
+        app.state.admin_session_factory = (
+            create_session_factory(app.state.admin_engine) if app.state.admin_engine is not None else None
+        )
         app.state.embedder = embedder if embedder is not None else OllamaEmbedder(
             host=backend_settings.db.ollama_host,
             model=backend_settings.db.embedding_model,
             dim=backend_settings.db.embedding_dim,
         )
         logger.info(
-            "api %s serving %s; read-only database role: %s",
+            "api %s serving %s; read-only database role: %s; admin writes: %s",
             __version__,
             backend_settings.contract_path,
             read_only(backend_settings.db),
+            "enabled" if backend_settings.admin_enabled else "disabled",
         )
         if not backend_settings.auth_enabled:
             logger.warning("API_AGENT_TOKEN is unset: every authenticated endpoint will answer 401")
@@ -93,6 +102,8 @@ def create_app(
                     close()
             if engine is None:
                 app.state.engine.dispose()
+            if app.state.admin_engine is not None:
+                app.state.admin_engine.dispose()
 
     app = FastAPI(
         title="Hermes Football API",
@@ -183,6 +194,7 @@ def create_app(
     app.include_router(teams.router)
     app.include_router(knowledge.router)
     app.include_router(agent.router)
+    app.include_router(evals.router)
     app.include_router(admin.router)
     return app
 

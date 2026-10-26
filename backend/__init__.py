@@ -1,4 +1,4 @@
-"""The M3 read API: FastAPI over the tables M1/M2 populate.
+"""The read API, plus the one write a human makes: a review decision.
 
 Two properties are deliberate, and both are worth stating before the code:
 
@@ -10,18 +10,17 @@ contract-shaped objects through `backend/schemas.py`; what makes them *typed* is
 `backend/contract.py`, which reads the contract at startup and takes the enums (`CompetitionCode`,
 `MatchStatus`, `ReviewStatus`) from it instead of restating them in Python.
 
-**This service never writes and never calls upstream.** Every request path reads through the
-`agent_readonly` role when the deployment gives that role a password (`AGENTS.md` rule 4), and nothing
-a request touches imports the ingest client (rule 3). That is also why the two `/admin` operations the
-contract declares are not part of M3: the ingest trigger cannot be implemented without either calling
-upstream from request-handling code or building a queue the ingest container drains, and the review
-write is a dashboard feature. Both are declared, not hidden - see `backend/routers/admin.py`.
+**Nothing here calls upstream, and the agent's data path is still read-only.** Every read goes through
+`agent_readonly` (`AGENTS.md` rule 4); the only write the API can make is
+`PATCH /admin/agent-turns/{id}/review`, through a separate `agent_admin` engine that may update the
+two review columns and nothing else. The other declared `/admin` operation, the ingest trigger, stays
+a documented `404` until M6: a request handler must not start an upstream run (rule 3).
 """
 
 from __future__ import annotations
 
 #: The API version, which is also the contract version. `tests/test_api_contract.py` fails when this
 #: and `openapi.yaml`'s `info.version` disagree, so a contract change cannot ship half-applied.
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = ["__version__"]

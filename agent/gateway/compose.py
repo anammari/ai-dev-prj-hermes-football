@@ -152,7 +152,14 @@ def head_to_head(payload: dict) -> tuple[str, bool]:
 def freshness(payload: dict) -> tuple[str, bool]:
     rows = payload.get("competitions") or []
     as_of = _utc(payload.get("as_of"))
-    prefix = f"Freshness report generated at {as_of:%Y-%m-%d %H:%M} UTC." if as_of else "Freshness is unknown."
+    # Rule 2 applies to the freshness answer too: it carries a timestamp and it names where the
+    # number came from. The source here is our own ledger, not the provider - this answer is about our
+    # runs, and saying "football-data.org" would attribute a fact the provider never published.
+    prefix = (
+        f"Freshness report generated at {as_of:%Y-%m-%d %H:%M} UTC, source: hermes-football ingestion ledger."
+        if as_of
+        else "Freshness is unknown."
+    )
     if not rows:
         return prefix, False
     parts = []

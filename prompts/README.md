@@ -24,3 +24,7 @@ the change it makes, so a prompt can be diffed and blamed like code.
 | [`0004-complex-planner.md`](0004-complex-planner.md) | Plan up to four allowlisted tools for a complex database question | Reviewed; used by `agent/gateway/planner.py` |
 | [`0005-complex-composer.md`](0005-complex-composer.md) | Compose a cited answer from the collected results with `beam:cloud` | Reviewed; used by `agent/gateway/answer_composer.py` |
 | [`0006-complex-verifier.md`](0006-complex-verifier.md) | Check a complex draft's factual claims against the results | Reviewed; used by `agent/gateway/answer_verifier.py` |
+
+M5 adds no prompt. The golden-question scoreboard scores deterministically - routing, retrieval, citations and
+required terms - so there is no judge prompt to version (decision 0008). If a model judge is ever added, its prompt
+lands here first, with a hand-labelled validation set and an owner decision about the egress.

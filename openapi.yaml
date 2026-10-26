@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: Hermes Football API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Read-mostly HTTP API that wraps the Hermes Football database: the single source of factual
     football data that the Telegram agent (Hermes) and the dashboard are allowed to state.
@@ -720,6 +720,80 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /evals/runs:
+    get:
+      tags: [evals]
+      operationId: listEvalRuns
+      summary: Golden-question evaluation runs, newest first
+      description: |
+        The scoreboard's raw material: one row per evaluation run, with the metrics that run produced
+        and whether it passed its own gate. Runs are written by the eval harness (`make eval`), never
+        by this API - it only reads. `metrics` is the same JSON the run artifact holds, so a reviewer
+        can diff the database against the committed file.
+
+        A run names the golden set it scored (`set_name`) and that set's hash: runs on a different
+        set are a different series, and the dashboard must not draw them as one line.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: setName
+          in: query
+          description: Only runs of this golden set
+          schema:
+            type: string
+            example: golden-2026-10-26
+        - name: passed
+          in: query
+          description: Only runs that passed or failed their own gate
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Evaluation runs, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalRunList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /evals/runs/{runId}:
+    get:
+      tags: [evals]
+      operationId: getEvalRun
+      summary: One evaluation run and its per-question results
+      description: |
+        The run's metrics plus every question it scored: the expected route and tool, what the agent
+        actually chose, what it was grounded on, and the per-dimension scores. This is what makes a
+        regression readable - "macro-F1 fell by 0.04" is a number until this endpoint says which three
+        questions changed.
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The run and its results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvalRunDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /admin/ingest-runs:
     post:
       tags: [admin]
@@ -729,6 +803,12 @@ paths:
         Administrative only. Idempotent per (date, competition set): a second call on the same day
         returns the existing run instead of spending upstream quota. This is the endpoint the
         dashboard's re-run button calls and the one the incident runbook uses after a failed run.
+
+        **Not implemented in this deployment (M6).** A request handler must not start an upstream
+        run - `AGENTS.md` rule 3 - so the trigger needs a queue that the `ingest` container drains,
+        with its own migration. Until then this operation answers the documented `404` naming the
+        milestone that owns it. The dashboard reads the run ledger and does not offer a re-run
+        button while this is unimplemented.
       security:
         - adminToken: []
       requestBody:
@@ -769,6 +849,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          description: |
+            Not implemented in this deployment: the trigger needs the ingest queue (M6). The body
+            names the operation and the milestone that owns it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: A run for the same window is already in progress
           content:
@@ -1678,6 +1766,153 @@ components:
           $ref: '#/components/schemas/ResponseMeta'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    EvalRun:
+      type: object
+      required:
+        [id, set_name, golden_set_sha256, prompt_version, model, git_commit, source, status, passed,
+         metrics, failure_reasons, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        set_name:
+          type: string
+          example: golden-2026-10-26
+          description: |
+            The golden set this run scored. A run is comparable only with runs of the same set_name
+            and the same golden_set_sha256.
+        golden_set_sha256:
+          type: string
+          description: |
+            SHA-256 of the golden YAML. A different hash is a different sample, so the scoreboard
+            draws it as a separate series instead of pretending the numbers are one trend.
+        prompt_version:
+          type: string
+          example: '2'
+          description: The routing prompt version the run exercised (`prompts/0003-agent-router.md`).
+        model:
+          type: string
+          example: clef:cloud+beam:cloud
+          description: The model(s) that answered; the simple path names only the router.
+        git_commit:
+          type: string
+          description: The commit the run was produced from, so a regression has a code version.
+        source:
+          type: string
+          enum: [live, backfill]
+          description: |
+            `live` when the harness answered the questions in this run; `backfill` when a historical
+            artifact was imported so the scoreboard has a baseline. The two are never mixed silently.
+        status:
+          type: string
+          enum: [running, succeeded, failed]
+        passed:
+          type: boolean
+          description: |
+            Whether the run met its gate: routing macro-F1 at or above the target, every safety gate
+            passed, retrieval recall and fact coverage at or above their floors. A run that failed
+            stays in the list - it is the reason the scoreboard exists.
+        metrics:
+          type: object
+          additionalProperties: true
+          description: |
+            The run's summary metrics: routing per-route precision/recall/F1, macro-F1, gates,
+            retrieval recall, mean fact coverage, citation coverage. Shape is owned by the eval
+            harness and versioned in `evals/golden/README.md`.
+        failure_reasons:
+          type: array
+          items:
+            type: string
+          description: Empty when the run passed; every failed gate is named otherwise.
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    EvalResult:
+      type: object
+      required: [id, question_id, class, expected_route, route, scores]
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          example: g-knowledge-tiebreakers-1
+        class:
+          type: string
+          example: tiebreakers
+          description: The question's class in the golden set, for per-class reporting.
+        expected_route:
+          type: string
+          enum: [tool, knowledge, clarify, refuse]
+        expected_tool:
+          type: string
+          nullable: true
+        route:
+          type: string
+          nullable: true
+          enum: [tool, knowledge, clarify, refuse]
+          description: What the agent chose; null when the call failed before a decision existed.
+        tool:
+          type: string
+          nullable: true
+        retrieved:
+          type: array
+          description: |
+            The passages the answer was grounded on: source file, heading and similarity score for a
+            knowledge question; the tool payloads' identifying fields for a database question. Stored
+            so relevance and recall can be recomputed without re-running the agent.
+          items:
+            type: object
+            additionalProperties: true
+        scores:
+          type: object
+          additionalProperties: true
+          description: |
+            Per-question scores: `routing_correct`, `tool_correct`, `recall`, `fact_coverage`,
+            `cited`, `grounded`. A dimension that does not apply to this class is absent, not zero.
+        latency_ms:
+          type: integer
+          nullable: true
+        error:
+          type: string
+          nullable: true
+          description: The recorded failure, if the question could not be answered. Never retried.
+
+    EvalRunList:
+      type: object
+      required: [data, meta, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvalRun'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    EvalRunDetail:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [run, results]
+          properties:
+            run:
+              $ref: '#/components/schemas/EvalRun'
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/EvalResult'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
 
     IngestRun:
       type: object

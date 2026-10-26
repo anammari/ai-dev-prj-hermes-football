@@ -213,6 +213,42 @@ SCHEMAS: dict[str, dict] = {
             "unchanged": "column:unchanged",
         },
     },
+    "EvalRun": {
+        "table": "eval_runs",
+        "properties": {
+            "id": "column:id",
+            "set_name": "column:set_name",
+            # The contract spells this property with the hash suffix, because the value is a digest.
+            "golden_set_sha256": "column:golden_set_sha256",
+            "prompt_version": "column:prompt_version",
+            "model": "column:model",
+            "git_commit": "column:git_commit",
+            "source": "column:source",
+            "status": "column:status",
+            "passed": "column:passed",
+            "metrics": "json",
+            "failure_reasons": "json",
+            "started_at": "column:started_at",
+            "finished_at": "column:finished_at",
+        },
+    },
+    "EvalResult": {
+        "table": "eval_results",
+        "properties": {
+            "id": "column:id",
+            "question_id": "column:question_id",
+            # `class` is reserved in enough languages that the column is `class_name`.
+            "class": "alias:class_name",
+            "expected_route": "column:expected_route",
+            "expected_tool": "column:expected_tool",
+            "route": "column:route",
+            "tool": "column:tool",
+            "retrieved": "json",
+            "scores": "json",
+            "latency_ms": "column:latency_ms",
+            "error": "column:error",
+        },
+    },
 }
 
 #: Contract schemas with no table of their own, and why.
@@ -227,6 +263,8 @@ UNMAPPED_SCHEMAS: dict[str, str] = {
     "MatchList": "response envelope around matches",
     "AgentTurnList": "response envelope around agent_turns",
     "IngestRunList": "response envelope around ingest_runs",
+    "EvalRunList": "response envelope around eval_runs",
+    "EvalRunDetail": "response envelope around one eval run and its results",
     "KnowledgeSearchResult": "response envelope around knowledge hits",
     "ErrorResponse": "per-response envelope, assembled by the API",
     "TeamForm": "computed from matches over a window (R-F4.x); never stored",
@@ -245,6 +283,9 @@ LOCAL_TABLES: dict[str, str] = {
 
 #: Columns no contract property asks for, with the reason each one exists.
 LOCAL_ONLY: dict[str, dict[str, str]] = {
+    "eval_results": {
+        "run_id": "the run is the response envelope: a result is always served inside its run",
+    },
     "competitions": {"updated_at": "when our ingestion last wrote the row"},
     "seasons": {
         "*": "see LOCAL_TABLES['seasons']",

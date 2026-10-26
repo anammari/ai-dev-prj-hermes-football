@@ -31,6 +31,8 @@ from sqlalchemy.orm import Session
 from db.models import (
     AgentTurn,
     Competition,
+    EvalResult,
+    EvalRun,
     IngestRun,
     KnowledgeChunk,
     Match,
@@ -63,6 +65,8 @@ MATCH_ID = 419823
 TEAM = 57
 OPPONENT = 61
 THIRD = 63
+#: A fixed eval-run id, so the contract sweep can call `getEvalRun` without a lookup first.
+EVAL_RUN_ID = "9f6d2b1a-4c3e-4a5b-8d7f-1e2c3b4a5d60"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -241,6 +245,8 @@ SWEEP_OVERRIDES: dict[str, dict[str, Any]] = {
     # unrelated and the default would drop every hit; 0 exercises the item schema instead. On the real
     # model the default is what an agent sends, so the stack sweep keeps it.
     "searchKnowledgeMinScoreFake": {"minScore": 0.0},
+    # A path parameter cannot come from an example: the sweep needs the id the seed created.
+    "getEvalRun": {"runId": EVAL_RUN_ID},
 }
 
 #: What the *unit* sweep uses; the stack sweep keeps `minScore` at its documented default because the
@@ -293,6 +299,7 @@ class Seeded:
     runs: dict[str, str] = field(default_factory=dict)
     turns: dict[str, str] = field(default_factory=dict)
     chunks: list[str] = field(default_factory=list)
+    eval_run: str | None = None
 
 
 def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
@@ -431,12 +438,16 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
     )
     session.flush()
 
+    # Two fixed snapshots, exactly like the standings fixtures above. They used to be `now - 1 day`,
+    # which made every assertion about "the latest snapshot" depend on the calendar: the contract
+    # sweep sends the documented `snapshot` example, so the suite passed only on the day the example
+    # was written. Fixed dates make "latest" a fact of the fixture, not of the clock.
     session.add_all(
         [
             TopScorer(
                 competition_code=COMPETITION,
                 season=SEASON,
-                snapshot_date=now.date() - timedelta(days=1),
+                snapshot_date=date(2026, 11, 1),
                 player_id=1001,
                 team_id=TEAM,
                 played_matches=7,
@@ -447,11 +458,33 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
             TopScorer(
                 competition_code=COMPETITION,
                 season=SEASON,
-                snapshot_date=now.date() - timedelta(days=1),
+                snapshot_date=date(2026, 11, 1),
                 player_id=1002,
                 team_id=TEAM,
                 played_matches=7,
                 goals=3,
+                assists=1,
+                penalties=0,
+            ),
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=date(2026, 10, 12),
+                player_id=1001,
+                team_id=TEAM,
+                played_matches=5,
+                goals=4,
+                assists=1,
+                penalties=0,
+            ),
+            TopScorer(
+                competition_code=COMPETITION,
+                season=SEASON,
+                snapshot_date=date(2026, 10, 12),
+                player_id=1002,
+                team_id=TEAM,
+                played_matches=5,
+                goals=2,
                 assists=1,
                 penalties=0,
             ),
@@ -819,6 +852,70 @@ def seed_api(session: Session, embedder: Embedder | None = None) -> Seeded:
                     content_hash="a" * 64,
                 )
             )
+
+    # One evaluation run with two results, so `/evals/runs` serves data and `getEvalRun` has a real
+    # id. The row shapes are the harness's: one correct routing question and one miss, which is what
+    # the detail view exists to show.
+    seeded.eval_run = EVAL_RUN_ID
+    session.add(
+        EvalRun(
+            id=EVAL_RUN_ID,
+            set_name="golden-2026-10-26",
+            golden_set_sha256="c5a1" + "0" * 60,
+            prompt_version="2",
+            model="clef:cloud+beam:cloud",
+            git_commit="4f3bde9",
+            source="live",
+            status="succeeded",
+            passed=False,
+            metrics={
+                "routing": {"macro_f1": 0.94, "accuracy": 0.96, "errors": 0},
+                "retrieval": {"recall_at_k": 0.9, "mean_top_score": 0.71},
+                "answers": {"fact_coverage": 0.92, "citation_coverage": 1.0},
+                "gates": {"false_refusals": 0, "database_to_notes": 0},
+            },
+            failure_reasons=["retrieval recall 0.90 is below the 0.92 floor"],
+            started_at=now - timedelta(hours=1),
+            finished_at=now - timedelta(minutes=40),
+        )
+    )
+    session.flush()
+
+    # The results reference the run by foreign key and there is no `relationship()`, so the flush
+    # above is what guarantees the parent row exists first - the same ordering trap this fixture's
+    # docstring describes for matches and teams.
+    session.add_all(
+        [
+            EvalResult(
+                id=new_id(),
+                run_id=EVAL_RUN_ID,
+                question_id="g-tool-standings-1",
+                class_name="standings",
+                expected_route="tool",
+                expected_tool="get_standings",
+                route="tool",
+                tool="get_standings",
+                retrieved=[{"tool": "get_standings", "data_as_of": "2026-10-11T12:42:10Z"}],
+                scores={"routing_correct": True, "tool_correct": True, "fact_coverage": 1.0, "cited": True},
+                latency_ms=820,
+            ),
+            EvalResult(
+                id=new_id(),
+                run_id=EVAL_RUN_ID,
+                question_id="g-knowledge-tiebreakers-1",
+                class_name="tiebreakers",
+                expected_route="knowledge",
+                expected_tool=None,
+                route="tool",
+                tool="get_standings",
+                retrieved=[{"source_file": "tiebreakers/premier-league-goal-difference.md", "score": 0.44}],
+                scores={"routing_correct": False, "recall": 1.0, "fact_coverage": 0.5, "cited": False},
+                latency_ms=1310,
+                error=None,
+            ),
+        ]
+    )
+    session.flush()
 
     session.commit()
     return seeded

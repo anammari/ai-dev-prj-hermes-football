@@ -68,6 +68,39 @@ credentials in MCP/gateway, MCP token propagation, errored routing counted as a 
 Also short club names, argument errors, off-loop MCP handling, SOUL egress wording, freshness label, timestamp check,
 test host mapping, isolated MCP start and test auth. Evidence: 358 unit, 38 integration, lint; live checks.
 
+**S16 — Dashboard, eval scoreboard and the first honest score (2026-10-25).** One session on
+`anammari-m5-dashboard-evals`, one PR. Delegated: an **independent author** wrote the 48-question golden set from the
+product definition, the manifest and the notes only (blinders: no implementation, no prompts, no prior results); a
+second **independent auditor** then reviewed every label against the same sources and found no wrong route, no invented
+heading, two duplicate pairs, and a set of term groups that would have failed *correct* answers. The author applied the
+audit in two more rounds. The agent wrote the contract revision (v0.4.0, two eval reads + the review write), migration
+0004, the eval harness, the dashboard (seven routes, one `server-only` client), the Compose/CI-less test plumbing and
+these docs.
+
+What the run found, and what was changed rather than hidden:
+- the first live eval scored routing macro-F1 0.928 but the scoreboard went red: fact coverage 0.67 and five missing
+  citations. The misses were split into (a) label defects - value-based terms that fail a correct answer, fixed by
+  making tool terms entity-only - and (b) real product misses, kept red: `inter milan vs juventus` is not resolved by
+  the name resolver, three answerable questions routed `clarify`, and one fabricated-fact question asked back instead
+  of refusing.
+- the freshness composer did not name its source; rule 2 applies to the freshness answer too, so it now says
+  `source: hermes-football ingestion ledger` and a test pins it.
+- the eval itself recorded a tool failure as a clean answer at first; it now records `tool_unavailable` and counts it
+  as an error, so a contended machine looks contended instead of incompetent.
+- a knowledge search takes 9-11 s on this machine (local CPU embedding); two of 48 questions hit the 20 s MCP timeout
+  under load. `MCP_TIMEOUT_SECONDS` is now documented in `.env.example` as the knob, and the finding is recorded.
+- harness author's one label correction: `la liga` gained the provider's own name `primera division` as an alias,
+  after the live run showed the composer printing it. No route, tool, note or heading label was changed by the harness
+  author; every other label change came from the author after the audit.
+
+Rejected: a model judge (new egress, judge-validation study), a browser-side API client (token in every visitor's
+bundle), a general admin write engine (rule 4 would stop being a grant), and tuning the first run green.
+
+Evidence: `tests/test_golden_set.py`, `tests/test_eval_metrics.py`, `tests/test_eval_runner.py`,
+`tests/test_eval_store.py`, `tests/test_evals_api.py`, `tests/integration/test_admin_review_stack.py`, 26 Vitest
+tests, 6 Playwright specs, migration 0004, contract v0.4.0, and the stored run in `eval_runs` with its artifact under
+`evals/golden/runs/`.
+
 ## Rejected or revised, in one place
 
 - Deterministic routing, regex, or a second model to paraphrase answers: rejected by the owner and rule 10.
@@ -87,3 +120,4 @@ decisions and specs carry the substance.
 
 [`prompts/`](../prompts/README.md): `0001` backend task, `0002` router comparison, `0003` production router, `0004`
 complex planner, `0005` complex composer, `0006` claim verifier. Each is versioned with the behaviour it shapes.
+M5 adds **no new prompt**: its scoring is deterministic, so there is no judge prompt to version (decision 0008).

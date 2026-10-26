@@ -56,7 +56,8 @@ Telegram long polling -> hermes gateway -> MCP HTTP -> backend -> Postgres
 ingest scheduler -> football-data.org; ollama (local embeddings) -> pgvector
 ```
 
-Only `backend` publishes a host port (`8000`). No Docker socket. The corpus is mounted read-only. See
+Only `backend` (`8000`) and `frontend` (`3000`) publish host ports. No Docker socket. The corpus is mounted read-only.
+The dashboard fetches server-side, so its tokens never reach the browser; a tunnel is demo-only. See
 [`setup-and-review.md`](setup-and-review.md) for the service list and commands.
 
 ## 5. How the 12 course criteria are covered
@@ -67,10 +68,10 @@ Only `backend` publishes a host port (`8000`). No Docker socket. The corpus is m
 | 2 | Product specification | Partly | [`product-spec.md`](product-spec.md), [`openapi.yaml`](../openapi.yaml). Gap: no public task tracker; moving the plan to GitHub Issues is later |
 | 3 | Agent team | Met | [`agent-team.md`](agent-team.md), [`ai-usage-report.md`](ai-usage-report.md), [`prompts/`](../prompts/README.md) |
 | 4 | Context management | Met | [`AGENTS.md`](../AGENTS.md) plus modular docs; rules change in the same PR as behaviour |
-| 5 | Application | Open | Backend, MCP tools and Telegram agent work. Gap: dashboard |
-| 6 | Testing | Partly | 358 unit, 38 integration, contract drift tests. Gap: one command for both; no e2e until dashboard |
-| 7 | Containerization | Partly | `make up` starts six services, health checks, one port. Gap: dashboard |
-| 8 | Deployment | Partly | Telegram long polling; tunnel for dashboard planned. Gap: no public deployment yet |
+| 5 | Application | Met | Backend, MCP tools, Telegram agent and the dashboard (`frontend/`, seven routes) over one contract |
+| 6 | Testing | Met | 411 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
+| 7 | Containerization | Met | `make up` starts seven services with health checks and exactly two published ports |
+| 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a Cloudflare tunnel is demo-only. Gap: no permanent public host |
 | 9 | CI/CD | Open | Local gates only; workflows, deploy, rollback are later |
 | 10 | Observability | Open | OTel/Prometheus/Loki/Tempo/Grafana planned |
 | 11 | Alerting | Open | Staleness or repeated failure alert planned |
@@ -85,8 +86,8 @@ Only `backend` publishes a host port (`8000`). No Docker socket. The corpus is m
 | 3 | Read-only API against the contract, read-only role, freshness report, drift tests | Done |
 | 3b | Two model-first routers compared on 85 hand-labelled questions; `clef:cloud` selected | Done |
 | 4 | Safety gate, MCP tools, Telegram gateway, reviewed notes, scorer tool | Done |
-| 5 | Dashboard and golden-question scoreboard | Next |
-| 6 | CI/CD, observability, alerting, on-call, security artifacts, final Mermaid diagram in README | Later |
+| 5 | Dashboard and golden-question scoreboard | Done |
+| 6 | CI/CD, observability, alerting, on-call, security artifacts, final Mermaid diagram in README | Next |
 
 **Routing result.** Independent 60-question holdout, authored and audited separately, frozen, one run. Prompt v1:
 gated macro-F1 **0.979**; adversarial 8/8, fabricated 4/4, refusal 3/3, unsupported 4/4, zero false refusals. Prompt
@@ -98,13 +99,26 @@ pgvector, and one `agent_turns` row per answered turn. The public review bot is
 [@review_soccer_bot](https://t.me/review_soccer_bot). The live Telegram smoke test is the owner's step; `make ask`
 and integration tests exercise the same pipeline.
 
+**Dashboard result.** Seven server-rendered routes over the same 17-operation contract, with provenance on every
+factual page and no token in the browser. The one write is the review decision, behind `API_ADMIN_TOKEN` and a
+column-scoped `agent_admin` role; the ingest trigger stays a documented 404 until the M6 queue exists.
+
+**Eval result.** A 48-question golden set, authored independently and audited by a second reviewer, scored end to end
+through the shipped pipeline: `make eval` stores a run in `eval_runs`/`eval_results` and an artifact, and the
+scoreboard draws one series per set hash with the 0.90 target. The first live run passes routing (macro-F1 0.928,
+retrieval 0.906) and fails the gate on completeness (0.858) and three missing citations - all real product misses it
+kept red rather than tuned away: `inter milan vs juventus` defeats the name resolver, two answerable questions routed
+`clarify`, and one fabricated-fact question asked back instead of refusing (fabricated 2/3). Scores are deterministic:
+no model judge, and therefore no new cloud egress.
+
 **Known gap.** Top-scorer data is now served by `get_top_scorers`; lineups, odds, live scores and xG are not available.
 
 ## 7. Still to decide
 
 1. **Dashboard address:** temporary Cloudflare tunnel for the demo, no permanent hostname. A permanent tunnel would
    need a machine that never sleeps.
-2. **Dashboard permissions:** read-only at first; any action that changes data is admin-only and logged.
+2. **Dashboard permissions:** read-only, plus the one admin write (the review decision), which is admin-token only and
+   recorded on the row. There is no login; the tunnel is demo-only and message text is masked by default.
 3. **Licence:** no licence chosen yet.
 
 ## 8. Where to look next

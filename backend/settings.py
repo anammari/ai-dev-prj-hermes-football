@@ -27,6 +27,9 @@ DEFAULT_CONTRACT_PATH = REPO_ROOT / "openapi.yaml"
 class BackendSettings:
     db: Settings
     agent_token: str | None = None
+    #: The token for the one write path (the review decision). Empty means admin actions are
+    #: *disabled*, not unauthenticated: the route answers 403 and the dashboard hides the buttons.
+    admin_token: str | None = None
     freshness_max_age_minutes: int = DEFAULT_FRESHNESS_MAX_AGE_MINUTES
     contract_path: Path = DEFAULT_CONTRACT_PATH
     schedule_hour: int = 2
@@ -37,6 +40,10 @@ class BackendSettings:
     def auth_enabled(self) -> bool:
         return bool(self.agent_token)
 
+    @property
+    def admin_enabled(self) -> bool:
+        return bool(self.admin_token)
+
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> BackendSettings:
         source = os.environ if env is None else env
@@ -46,6 +53,9 @@ class BackendSettings:
             # the app logs a warning at startup. `.env.example` ships a placeholder so a fresh clone
             # has something to change rather than something to forget.
             agent_token=(source.get("API_AGENT_TOKEN") or "").strip() or None,
+            # Empty is "admin disabled", never "admin open": the review route answers 403 and the
+            # dashboard renders read-only (see `require_admin_token`).
+            admin_token=(source.get("API_ADMIN_TOKEN") or "").strip() or None,
             freshness_max_age_minutes=int(
                 source.get("FRESHNESS_MAX_AGE_MINUTES") or DEFAULT_FRESHNESS_MAX_AGE_MINUTES
             ),

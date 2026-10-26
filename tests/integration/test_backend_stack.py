@@ -33,7 +33,7 @@ from backend.app import create_app
 from backend.db import agent_database_url, create_read_engine, read_only
 from backend.routers import admin
 from backend.settings import BackendSettings
-from db.models import Competition, Match, Team
+from db.models import Competition, EvalRun, Match, Team
 from db.session import create_db_engine
 from db.settings import Settings
 from ingest.knowledge.embedding import OllamaEmbedder
@@ -133,6 +133,16 @@ def ids(stack_session: Session) -> dict[str, int | str]:
         "competition": match.competition_code,
         "season": match.season,
     }
+
+
+@pytest.fixture(scope="module")
+def eval_run_id(stack_session: Session) -> str | None:
+    """The newest eval run in this volume, if `make eval` has ever run against it.
+
+    The contract sweep needs a real id and this file must not invent rows: an empty scoreboard is a
+    legitimate state on a fresh volume, and the sweep says so rather than skipping silently.
+    """
+    return stack_session.scalar(select(EvalRun.id).order_by(EvalRun.started_at.desc()).limit(1))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -279,18 +289,28 @@ def real_ids(ids: dict[str, int | str]) -> dict:
     }
 
 
-def test_every_implemented_operation_answers_from_the_real_volume(api, auth, ids) -> None:
+def test_every_implemented_operation_answers_from_the_real_volume(api, auth, ids, eval_run_id) -> None:
     """The contract sweep again, with real Postgres types behind it: `numeric` scores, `jsonb` scopes,
     timezone-aware dates, `vector(768)`. Each response is validated against the schema its operation
     declares, so drift from `openapi.yaml` fails here too - and a query that only works on SQLite fails
-    here and nowhere else."""
+    here and nowhere else.
+
+    `getEvalRun` is the one operation whose data may legitimately be absent: a volume where `make eval`
+    has never run has no scoreboard, and this file does not invent a row to fill it. When a run exists,
+    the sweep covers it like anything else.
+    """
     covered = 0
+    absent: list[str] = []
     for operation_id, (method, path, node) in api_helpers.operations().items():
         if method != "GET" or operation_id in DOCUMENT_OPERATIONS:
             continue
-        _method, path, params = api_helpers.request_for_with(
-            operation_id, overrides={**api_helpers.SWEEP_OVERRIDES.get(operation_id, {}), **real_ids(ids)}
-        )
+        overrides = {**api_helpers.SWEEP_OVERRIDES.get(operation_id, {}), **real_ids(ids)}
+        if operation_id == "getEvalRun":
+            if eval_run_id is None:
+                absent.append(operation_id)
+                continue
+            overrides["runId"] = eval_run_id
+        _method, path, params = api_helpers.request_for_with(operation_id, overrides=overrides)
         response = api.request(method, path, params=params, headers=auth)
         assert response.status_code == 200, (
             f"{operation_id} {path} {params}: {response.status_code} {response.text[:200]}"
@@ -300,7 +320,10 @@ def test_every_implemented_operation_answers_from_the_real_volume(api, auth, ids
             validate(response.json(), schema, where=operation_id)
         covered += 1
     expected = [name for name in IMPLEMENTED_GET if name not in DOCUMENT_OPERATIONS]
-    assert covered == len(expected), f"the sweep covered {covered} of {len(expected)} JSON operations"
+    assert absent in ([], ["getEvalRun"]), absent
+    assert covered == len(expected) - len(absent), (
+        f"the sweep covered {covered} of {len(expected) - len(absent)} JSON operations"
+    )
 
 
 def test_a_real_match_round_trips_the_providers_own_fields(api, auth, ids) -> None:

@@ -11,3 +11,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.db
+
+# The dashboard's build context is the repository root (the API types come from openapi.yaml), so keep
+# its local install and build output out of every image.
+frontend/node_modules/
+frontend/.next/
+frontend/playwright-report/
+frontend/test-results/

@@ -10,6 +10,7 @@ to reverse, when two documents disagreed, or when a reviewer asks "why is it lik
 - [0005 — The Ollama image: a flattened CPU-only build, because the CUDA trees cannot load here](0005-ollama-image.md)
 - [0006 — The routing safety gate: one pass, a binding answer, no regex](0006-routing-safety-gate.md)
 - [0007 — The Telegram gateway is our own thin client](0007-telegram-gateway.md)
+- [0008 — The dashboard is server-rendered, and eval scores are deterministic](0008-dashboard-and-evals.md)
 
 Format: Status, Milestone, Related, Context, Decision, Alternatives, Consequences, Verification. Keep it under a page.
 A decision that changes gets a new record that supersedes the old one; old records are not edited into agreement with

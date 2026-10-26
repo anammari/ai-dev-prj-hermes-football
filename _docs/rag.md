@@ -77,16 +77,26 @@ never padded. `data_as_of` is null: notes carry no upstream timestamp.
   status.
 - Corpus is mounted read-only in `backend`, `ingest`, `migrate`, `tests` and `hermes`.
 
-## 6. How retrieval will be scored
+## 6. How retrieval is scored
 
-1. **Context relevance:** are the retrieved passages useful? Share relevant in top `k`; mean score.
-2. **Context recall:** did we find every expected note/heading? Hand-annotated golden set.
-3. **Faithfulness:** is every claim supported by the retrieved text? The runtime verifier is a first guard; M5 checks
-   the verifier itself.
-4. **Completeness:** does the answer cover every part of the question?
+These are the four dimensions of `_docs/rag.md`, as they ship in M5 (`evals/golden/`), all deterministic:
 
-A model judge is validated on hand-labelled cases before its numbers count. Seeded bad retrieval and bad answer must
-both fail. Every run is reproducible from a file, a pinned model and a local index.
+1. **Context relevance / recall:** `recall@k` is the share of `expected_notes` that appear in the passages the answer
+   was actually grounded on; `heading_recall` is the same for the expected headings. Both come from the golden set,
+   not from a model's opinion.
+2. **Faithfulness:** every knowledge answer must carry a `Source:` line, and every database answer its timestamp and
+   source; the runtime verifier is the first guard, and the eval reports the `grounded` flag it sets. There is **no
+   model judge** in M5, so there is no judge-human agreement to report - a judge would need its own hand-labelled
+   validation and a new egress decision, and neither was signed off.
+3. **Completeness:** `fact_coverage`, the share of the question's required term groups present in the answer. For
+   knowledge questions the terms are the rule's own keywords; for tool questions they are only the entity names a
+   correct answer must mention, never a value (a position or a score depends on the state of the table).
+4. **Citations:** coverage of the composer's own lines, which makes a missing timestamp a composer regression rather
+   than a model mood.
+
+Seeded bad retrieval and bad answer must both fail: `make eval-self-check` scores a synthetic perfect run, then three
+tampered ones, and exits non-zero if any tamper passes. Every run is reproducible from the golden file, the pinned
+model and the local index, and the run stores the set hash and the commit.
 
 ## 7. Where to look
 

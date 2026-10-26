@@ -19,13 +19,17 @@ from db.settings import REPO_ROOT
 #: Directories that are generated, local-only, or a checkout's plumbing.
 SKIP_DIRS = {
     ".git",
+    ".next",
     ".pytest_cache",
     ".ruff_cache",
     ".uv-cache",
     ".venv",
     "__pycache__",
+    "coverage",
     "data",
     "node_modules",
+    "playwright-report",
+    "test-results",
 }
 
 #: Files with no suffix that still carry prose a reviewer reads.

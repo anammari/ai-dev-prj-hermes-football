@@ -9,9 +9,10 @@ SPEC  := openapi.yaml
 SWAGGER_PORT ?= 8081
 SWAGGER_NAME ?= hermes-football-swagger
 Q ?=
+EVAL_ARGS ?=
 
 .PHONY: help setup build up down db-port migrate models model-ready test itest itest-isolated lint check-notes index-notes search ingest score-delay \
-        logs swagger swagger-stop validate-spec
+        eval eval-self-check eval-backfill frontend-test frontend-types e2e logs swagger swagger-stop validate-spec
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -30,7 +31,7 @@ up: ## Start the stack, apply migrations, serve the API
 	$(COMPOSE) up -d db ollama
 	@$(MAKE) --no-print-directory model-ready
 	@$(MAKE) --no-print-directory migrate
-	$(COMPOSE) up -d backend mcp-server hermes ingest
+	$(COMPOSE) up -d backend frontend mcp-server hermes ingest
 	@sleep 5
 	@if [ -z "$$($(COMPOSE) ps --status running --services ingest)" ]; then \
 	  echo "ingest scheduler exited at startup (usually a missing UPSTREAM_API_KEY):"; \
@@ -41,7 +42,11 @@ up: ## Start the stack, apply migrations, serve the API
 	@if [ -z "$$($(COMPOSE) ps --status running --services hermes)" ]; then \
 	  echo "hermes gateway exited at startup (check AGENT_TURN_DSN, MCP_SERVER_TOKEN and ROUTER_*):"; \
 	  $(COMPOSE) logs --tail=20 hermes; exit 1; fi
-	@echo "stack up: db, ollama, backend on http://localhost:$${BACKEND_PORT:-8000} (docs at /docs), mcp-server, hermes gateway, ingest scheduler."
+	@if [ -z "$$($(COMPOSE) ps --status running --services frontend)" ]; then \
+	  echo "frontend exited at startup (check API_AGENT_TOKEN and the build log):"; \
+	  $(COMPOSE) logs --tail=20 frontend; exit 1; fi
+	@echo "stack up: db, ollama, backend on http://localhost:$${BACKEND_PORT:-8000} (docs at /docs),"
+	@echo "dashboard on http://localhost:$${FRONTEND_PORT:-3000}, mcp-server, hermes gateway, ingest scheduler."
 	@echo "gateway health: docker compose exec -T hermes python -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8200/health').read().decode())\""
 
 down: ## Stop everything, keep the volumes
@@ -115,8 +120,28 @@ ask: ## Ask the agent one question through the real pipeline: make ask Q="where 
 score-delay: ## Poll a live or recent match and report how old the provider's data is
 	$(COMPOSE) run --rm ingest python -m ingest measure-score-delay $(if $(MATCH_ID),--match-id $(MATCH_ID),)
 
+eval: ## Run the golden-question eval (EVAL_ARGS="--limit 4" is a smoke run: metrics only, not stored)
+	$(TOOLS) run --rm tests python -m evals.golden.runner $(EVAL_ARGS)
+
+eval-self-check: ## Prove the eval gate can fail (no model, no database)
+	$(TOOLS) run --rm tests python -m evals.golden.runner --self-check
+
+eval-backfill: ## Import the two M4 routing artifacts as the scoreboard baseline
+	$(TOOLS) run --rm tests python -m evals.golden.backfill
+
 logs: ## Tail logs: make logs S=db
 	$(COMPOSE) logs -f --tail=100 $(S)
+
+frontend-types: ## Regenerate the dashboard's API types from openapi.yaml (run after a contract change)
+	cd frontend && pnpm gen:api
+
+frontend-test: ## Dashboard lint, typecheck and Vitest, in the pinned browser tool image
+	$(COMPOSE) --profile tools run --rm frontend-e2e pnpm lint
+	$(COMPOSE) --profile tools run --rm frontend-e2e pnpm typecheck
+	$(COMPOSE) --profile tools run --rm frontend-e2e pnpm test
+
+e2e: ## Playwright against the running dashboard (needs `make up`)
+	$(COMPOSE) --profile tools run --rm frontend-e2e
 
 swagger: ## Serve the API contract in Swagger UI at http://localhost:$(SWAGGER_PORT)
 	@docker rm -f $(SWAGGER_NAME) >/dev/null 2>&1 || true

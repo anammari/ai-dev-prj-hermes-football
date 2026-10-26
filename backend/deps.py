@@ -20,7 +20,7 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from backend.contract import Contract
-from backend.errors import Unauthorized
+from backend.errors import Forbidden, Unauthorized
 from backend.settings import BackendSettings
 from ingest.knowledge.embedding import Embedder
 
@@ -67,4 +67,47 @@ def require_agent_token(
         raise Unauthorized(
             "A valid bearer token is required. Send 'Authorization: Bearer <token>'.",
             details={"scheme": "bearer"},
+        )
+
+
+def get_admin_session(request: Request) -> Iterator[Session]:
+    """A session on the one write engine, or nothing.
+
+    The dependency that guards this session (`require_admin_token`) already refuses when no admin
+    token is configured, so reaching here without an engine means the app was built with an injected
+    engine and no admin engine - a configuration a test can create on purpose.
+    """
+    factory = getattr(request.app.state, "admin_session_factory", None)
+    if factory is None:
+        raise Forbidden(
+            "Administrative actions are disabled in this deployment: no admin engine is configured."
+        )
+    with factory() as session:
+        yield session
+
+
+def require_admin_token(
+    request: Request, settings: Annotated[BackendSettings, Depends(get_settings)]
+) -> None:
+    """The admin token, and the difference between "disabled" and "unauthenticated".
+
+    No admin token configured is a deployment that has no write path at all: that is `403 forbidden`,
+    not `401`, and it is a deliberate state rather than a missing secret. With a token configured, a
+    wrong or missing bearer is `401`, the same shape every other protected operation uses.
+    """
+    expected = settings.admin_token
+    if not expected:
+        raise Forbidden(
+            "Administrative actions are disabled in this deployment: "
+            "set API_ADMIN_TOKEN to enable the review endpoint.",
+            details={"admin": "disabled"},
+        )
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    authenticated = scheme.lower() == "bearer" and hmac.compare_digest(
+        token.strip().encode("utf-8"), expected.encode("utf-8")
+    )
+    if not authenticated:
+        raise Unauthorized(
+            "A valid admin bearer token is required for this operation.",
+            details={"scheme": "bearer", "scope": "admin"},
         )

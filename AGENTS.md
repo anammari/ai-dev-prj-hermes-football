@@ -17,7 +17,12 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 criteria and how each is covered live in `_docs/scoping.md` §5 — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
-Status: **M1–M4 done; M5 next.** M4 wired the selected router behind a binding safety gate, measured it on a new
+Status: **M1–M5 done; M6 next.** M5 added the dashboard and the golden-question scoreboard: a Next.js app over the
+same contract with seven routes, one admin write (the review decision) behind `API_ADMIN_TOKEN` and a column-scoped
+`agent_admin` role, and `make eval`, which answers a 48-question golden set through the shipped pipeline and stores the
+run in `eval_runs`/`eval_results`. Scoring is deterministic - no model judge, no new cloud path - and the first live
+run is recorded with its misses (macro-F1 0.928, retrieval 0.906, fact coverage 0.858, three answers without a
+citation). M4 wired the selected router behind a binding safety gate, measured it on a new
 independent 60-question holdout (gated macro-F1 0.979 on prompt v1, 0.960 on the v2 regression; 8/8 adversarial,
 4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the eight read-only MCP tools and the Telegram gateway, reviewed
 thirteen notes and indexed 41 chunks. The gateway splits on the model's `complexity` label: simple answers use one
@@ -29,8 +34,8 @@ routing model. Its cloud egress is an accepted exception: the user message goes 
 and note text stay local. tev1 is rejected. Selection is not adoption: the refusal gap (3/5 across all 85) and the
 0.90 target were the M4 gate, now measured on a new independent holdout (0.979 on v1, 0.960 on v2). The numbers are in
 `_docs/scoping.md` §6 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
-pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing 15
-read-only operations against `openapi.yaml` (v0.3.0), the freshness report, the contract's own error semantics, and a
+pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing the read
+operations against `openapi.yaml` (now v0.4.0, 17 operations), the freshness report, the contract's own error semantics, and a
 test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
 document, a reused `operationId`, a changed parameter bound, and an enum value the contract does not list. An
 adversarial review of the finished milestone is what produced those cases; its findings and the fixes are in
@@ -77,12 +82,13 @@ db/                     SQLAlchemy models, Alembic migrations, settings, session
 backend/                FastAPI app
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
                         knowledge/ (corpus manifest, chunker, embedding client, indexer)
-frontend/               Next.js dashboard (centralized API client, unit tests)
+frontend/               Next.js dashboard: seven routes, one typed `server-only` API client,
+                        Vitest unit tests, Playwright e2e under frontend/e2e
 mcp_server/             MCP server over HTTP: read-only tools, backend client, name resolver
 hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
 agent/                  routing (prompt loader, clef:cloud client, hard gate), turn writer, Telegram gateway
 skills/ subagents/ hooks/ plugins/    agent extension pack
-evals/                  golden questions, groundedness/accuracy scoring
+evals/                  routing holdout; evals/golden/ = questions, runner, metrics, scoreboard store
 observability/          otel collector, prometheus, grafana, loki, alerts
 security/ ops/          scans + policy; runbooks + incident evidence
 prompts/                versioned prompt bank used during development
@@ -100,7 +106,9 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 - The Ollama *server* is a derived CPU-only build (`Dockerfile.ollama`: 637 MB against upstream's 7.05 GB), because a
   container on Apple Silicon can never load the CUDA trees upstream ships. Rebuild it with `make build`; the reasoning
   and the GPU-host escape hatch are [decision 0005](_docs/decisions/0005-ollama-image.md).
-- Next.js (TypeScript, strict) + a single typed API client module; Vitest + Testing Library; Playwright for e2e
+- Next.js 16 (TypeScript, strict) + a single typed API client generated from `openapi.yaml`; Vitest + Testing Library;
+  Playwright for e2e. The client is `server-only`, so no token can reach the browser; pages are server-rendered and
+  `force-dynamic`, because a cached dashboard would quote stale freshness.
 - The M4 gateway is `agent/gateway` in the `hermes` container: Telegram long polling, one routed tool call on the
   simple path, a planner plus `beam:cloud` on the complex path, and a turn row. `hermes/SOUL.md` is the shared
   policy; `hermes/config.yaml` records the equivalent MCP surface for a future Nous Hermes Agent deployment. MCP
@@ -111,13 +119,17 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # start db, ollama, backend, mcp-server, the hermes gateway and ingest; migrate
+make up        # start db, ollama, backend, frontend, mcp-server, the gateway and ingest; migrate
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)
 make itest-isolated # same tests against a throwaway Compose project; use when the volume must stay untouched
-make e2e       # Playwright end-to-end
-make eval      # golden-question eval run against the agent
+make e2e       # Playwright end-to-end against the running dashboard
+make frontend-test   # dashboard lint, typecheck and Vitest
+make frontend-types  # regenerate the dashboard's API types from openapi.yaml
+make eval      # golden-question eval run; stores the scoreboard row
+make eval-self-check # prove the eval gate can fail, no model needed
+make eval-backfill   # import the M4 routing artifacts as the baseline
 make ingest    # trigger one ingestion run manually
 make ask Q="where are Arsenal in the table?" # ask the agent through routing, MCP and the turn writer
 make score-delay [MATCH_ID=…] # poll a live or recent match and report how old the provider's data is
@@ -161,7 +173,9 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
    competition list is plan-filtered upstream (13 exposed on 2026-10-10, not the documented 12): never hardcode it.
    All API access goes through the ingest client — never call upstream from request-handling code.
 4. **The agent's data path is read-only.** The MCP server and every agent-facing endpoint use a read-only DB role.
-   No write tool, no DDL, no arbitrary SQL from model output.
+   No write tool, no DDL, no arbitrary SQL from model output. The one write in the API is the human review decision
+   (`PATCH /admin/agent-turns/{id}/review`): admin token, `agent_admin` role, UPDATE on the two review columns only, and
+   a test that names it and holds it to that.
 5. **No Docker socket inside the Hermes container.** Isolation comes from the container boundary plus read-only
    mounts; do not add `/var/run/docker.sock`, and keep `terminal.backend` local inside the container.
 6. **Secrets never enter the repo or a prompt.** `.env` is local only; `.env.example` documents keys with dummy
@@ -169,7 +183,7 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 7. **Telegram input is untrusted.** Treat every user message as a prompt-injection candidate: keep the allowlists,
    the tool schema, and the refusal behavior intact. New tool = new row in `security/capability-table.md`.
 8. **Every capability is declared.** Skills, subagents, hooks, MCP tools, cron jobs and their permissions are
-   written down in `docs/permissions.md`. Undocumented capability = not shippable.
+   written down in `_docs/permissions.md`. Undocumented capability = not shippable.
 9. **Every note is declared.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source citation and
    owner; the build fails on a note missing from it or an entry with no file. The corpus is hand-written, English, one
    topic per file, reviewed like code — never generated at runtime, never scraped.
@@ -195,7 +209,7 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-the API contract reviewed and now at v0.3.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
+the API contract reviewed and now at v0.4.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
 corpus + manifest, 0002 embedding model, 0003 routing model comparison, 0004 the embedding tag that runs in the container). M1 is done:
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
@@ -215,7 +229,8 @@ Next, in order:
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
-3. M5: `frontend/` dashboard and the golden-question eval scoreboard, including routing precision/recall over time.
-4. M6: CI/CD, observability, the alert and on-call agent, security artifacts, and the AI-usage report close-out.
-5. Remaining M4 follow-ups, recorded rather than hidden: multi-turn conversation memory and the optional Nous Hermes
-   Agent deployment described in `hermes/config.yaml`. The scorer tool now closes `R-F4.1`.
+3. M6: CI/CD, observability, the alert and on-call agent, security artifacts, and the AI-usage report close-out.
+4. Remaining follow-ups, recorded rather than hidden: multi-turn conversation memory; the optional Nous Hermes Agent
+   deployment described in `hermes/config.yaml`; the ingest-trigger queue that `POST /admin/ingest-runs` needs; and the
+   resolver misses the eval surfaced (`inter milan vs juventus`, and three clarify decisions on answerable questions).
+   The scorer tool closed `R-F4.1`.
