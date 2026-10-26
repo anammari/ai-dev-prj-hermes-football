@@ -24,7 +24,7 @@ fixtures, the masked audit log with its one admin write, and the golden-question
 no API token reaches the browser, and every factual page carries its data timestamp and source. The API serves
 `openapi.yaml` verbatim, so the Swagger UI at `/docs` shows the reviewed contract rather than a second, generated one.
 
-Screenshots of all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
+Screenshots of the Telegram bot, all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
 
 ## Repository map
 
