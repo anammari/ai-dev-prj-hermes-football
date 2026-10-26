@@ -57,6 +57,35 @@ generated one.
 
 Screenshots of the Telegram bot, all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
 
+## Models and technologies
+
+### Models
+
+| Name | Type | Deployed | Role |
+| --- | --- | --- | --- |
+| `clef:cloud` | Decision | Cloud | Routes each message: road, tool, safety, simple or complex |
+| `beam:cloud` | GenAI | Cloud | Plans tools, writes complex answers, checks their claims |
+| `embeddinggemma:300m` | Embedding | Local | Embeds notes and queries for retrieval (768-d) |
+
+There is no model judge and no model in the on-call agent: evaluation is deterministic and the digest is SQL.
+
+### Technologies
+
+| Name | Type | Role |
+| --- | --- | --- |
+| Postgres 16 + pgvector | Database, vector store | Football data, run ledger, turns, note embeddings, eval history |
+| FastAPI | Web framework | Serves the 19-operation API |
+| SQLAlchemy + Alembic | ORM, migrations | Schema and queries (migrations 0001–0004) |
+| Next.js + React + TypeScript | Frontend | Dashboard over the same API |
+| Ollama | Model server | Local embeddings, and the host proxy for the cloud models |
+| Docker Compose | Runtime | Eight services by default, five more with the opt-in obs profile |
+| MCP over HTTP | Protocol | Read-only tool surface for the agent |
+| Telegram Bot API | Interface | Public bot, long polling |
+| httpx | HTTP client | Ingest, MCP and model calls |
+| OpenTelemetry → Prometheus/Loki/Tempo → Grafana | Observability | Opt-in traces, metrics and logs on loopback |
+| GitHub Actions | CI/CD | Pull-request gates, nightly audits, no eval in CI |
+| pytest, ruff, Vitest, Playwright, gitleaks, pip-audit, trivy | Tests, lint, scans | The local gates and the security artifacts |
+
 ## Run it
 
 Prerequisite: Docker, this repository, `.env` (`make setup` once).
