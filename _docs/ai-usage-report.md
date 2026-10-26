@@ -144,6 +144,19 @@ sync. The manual test cases are in `observability/README.md#manual-checks`; the 
 `ops/drills/2026-10-27-ingest-stale.md`; the cleanup report is in the final message. No prompt or model was changed in
 M6, so `prompts/` gained no file.
 
+**S20 — Observability gallery and final doc audit (2026-10-27).** Delegated: inspect six Grafana screenshots, add
+them to the gallery in the existing style under a last "Observability Dashboard" section, and audit every `_docs` file,
+`README.md` and `CLAUDE.md` against the shipped M6 code before opening the PR.
+
+Reviewed: the screenshots show the overview, freshness/on-call, Tempo, Loki and two Prometheus views; the sub-headers
+follow what each image actually contains. The audit found and fixed stale text: the product spec still called the owner
+dashboard "planned", the scoping testing row still said 411 unit tests (now 450), and decision 0008 still said the ingest
+trigger would close "until M6" (now a recorded post-M6 deferral). The criteria table now states the count explicitly:
+10 Met, 2 Partly (2 and 8), none Open.
+
+Evidence: `_docs/gallery.md` with six images, `_docs/scoping.md` §5, `README.md`, `_docs/gallery.md` image paths checked,
+and the PR. No code changed in this session.
+
 ## Rejected or revised, in one place
 
 - Deterministic routing, regex, or a second model to paraphrase answers: rejected by the owner and rule 10.

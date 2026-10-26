@@ -69,13 +69,16 @@ The dashboard fetches server-side, so its tokens never reach the browser; a tunn
 | 3 | Agent team | Met | [`agent-team.md`](agent-team.md), [`ai-usage-report.md`](ai-usage-report.md), [`prompts/`](../prompts/README.md) |
 | 4 | Context management | Met | [`AGENTS.md`](../AGENTS.md) plus modular docs; rules change in the same PR as behaviour |
 | 5 | Application | Met | Backend, MCP tools, Telegram agent and the dashboard (`frontend/`, seven routes) over one contract |
-| 6 | Testing | Met | 411 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
+| 6 | Testing | Met | 450 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
 | 7 | Containerization | Met | `make up` starts eight services with health checks; two published ports, plus a loopback-only Grafana in the opt-in obs profile |
 | 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a Cloudflare tunnel is demo-only. Gap: no permanent public host |
 | 9 | CI/CD | Met | `.github/workflows/ci.yml` gates lint, unit/contract, dashboard, security scans, integration and build; nightly re-scans; `make ci` is local parity |
 | 10 | Observability | Met | OTel collector → Prometheus/Loki/Tempo → Grafana on `127.0.0.1:3001`; five signals, two dashboards, no app `/metrics` route |
 | 11 | Alerting | Met | `ingest_unhealthy` (stale / repeated failure / stuck) evaluated by `agent/oncall`; log + `alerts.json` + `hermes_alert_firing`; drill in `ops/drills/` |
 | 12 | On-call agent | Met | daily read-only digest in the `oncall` container; alert loop; eval-age check; no model, no write path |
+
+Ten criteria are **Met**. Two are **Partly**, each with a named gap: 2 has no public task tracker, and 8 has no
+permanent public host. None is **Open**.
 
 ## 6. Plan and results
 

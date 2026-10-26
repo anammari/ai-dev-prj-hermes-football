@@ -28,7 +28,7 @@ is exposed locally on `:3000`; a tunnel is demo-only and is stopped after a demo
 **2. The one write is the review decision, and it is narrower than a write engine.** `PATCH
 /admin/agent-turns/{id}/review` uses `API_ADMIN_TOKEN` and the `agent_admin` role, whose grant is UPDATE on
 `review_status` and `review_note` and nothing else. Empty admin token means `403` disabled, not an open door. The
-agent token cannot call it. `POST /admin/ingest-runs` stays a documented `404` until M6, because a request handler
+agent token cannot call it. `POST /admin/ingest-runs` stays a documented `404` until the queue exists, because a request handler
 must not start an upstream run (rule 3) and the trigger needs a queue the ingest container drains.
 
 **3. Eval scores are deterministic, and there is no model judge.** The golden set carries expected routes, tools,
@@ -68,3 +68,10 @@ a different sample is a different series, and the dashboard draws one line per s
 `tests/integration/test_admin_review_stack.py` (the column grant on real Postgres), `frontend/e2e/security.spec.ts`
 (no token in a browser, no request off-origin), `tests/test_golden_set.py`, `tests/test_eval_metrics.py`,
 `evals/golden/runner.py --self-check`, and the stored first run in `eval_runs`.
+
+## Update (M6, 2026-10-26)
+
+The ingest trigger is still a documented `404`. Closing it was deferred out of M6 because it needs a queue the
+scheduler drains, a second narrow write role and a contract-visible queue state (a queued request is not yet an
+`IngestRun`). The decision, the design sketch and the owner string are in
+[`0009`](0009-m6-operations.md) and [`../follow-ups.md`](../follow-ups.md). Nothing else in this record changed.

@@ -55,7 +55,7 @@ server-side, so no API token reaches the browser, and every factual page carries
 API serves `openapi.yaml` verbatim, so the Swagger UI at `/docs` shows the reviewed contract rather than a second,
 generated one.
 
-Screenshots of the Telegram bot, all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
+Screenshots of the Telegram bot, all seven dashboard pages, both Swagger views and the six observability screens: [`_docs/gallery.md`](_docs/gallery.md).
 
 ## Dashboards and key pages
 
@@ -203,7 +203,8 @@ Details, signal matrix and troubleshooting: [`observability/README.md`](observab
 | 11 | Alerting | Met | `ingest_unhealthy` in [`agent/oncall/alerts.py`](agent/oncall/alerts.py), drill in [`ops/drills/`](ops/drills/2026-10-27-ingest-stale.md) |
 | 12 | On-call agent | Met | [`agent/oncall/`](agent/oncall), daily digest and alert loop, read-only and no model |
 
-The detailed map with gaps is [`_docs/scoping.md`](_docs/scoping.md#5-how-the-12-course-criteria-are-covered).
+Ten criteria are Met; 2 (public task tracker) and 8 (permanent public host) are Partly with the gap stated above.
+None is Open. The detailed map is [`_docs/scoping.md`](_docs/scoping.md#5-how-the-12-course-criteria-are-covered).
 
 ## The agent in one minute
 

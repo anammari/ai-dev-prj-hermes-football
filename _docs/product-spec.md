@@ -14,7 +14,7 @@ support an answer.
 | User | Need | Surface |
 | --- | --- | --- |
 | Football fan | Correct fixtures, results, tables, form, head-to-head, rules | Telegram bot |
-| Owner | Freshness, quality, turn audit, ingestion control | Dashboard (planned) + Telegram admin |
+| Owner | Freshness, quality, turn audit, ingestion control | Dashboard + Telegram admin |
 | Reviewer | Reproduce and check the claims | Repository, tests, evals, docs |
 
 ## 3. Scope
