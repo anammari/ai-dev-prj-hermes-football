@@ -55,7 +55,7 @@ server-side, so no API token reaches the browser, and every factual page carries
 API serves `openapi.yaml` verbatim, so the Swagger UI at `/docs` shows the reviewed contract rather than a second,
 generated one.
 
-Screenshots of the Telegram bot, all seven dashboard pages, both Swagger views and the six observability screens: [`_docs/gallery.md`](_docs/gallery.md).
+Screenshots of the Telegram bot, six dashboard pages (the eval-run detail is the seventh route), both Swagger views and the six observability screens: [`_docs/gallery.md`](_docs/gallery.md).
 
 ## Dashboards and key pages
 
