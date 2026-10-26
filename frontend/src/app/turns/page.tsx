@@ -101,7 +101,7 @@ export default async function TurnsPage({ searchParams }: { searchParams: Search
                 <th>Asked</th>
                 <th>Road</th>
                 <th>Source</th>
-                <th className="num">Conf.</th>
+                <th className="num">Latency</th>
                 <th>Grounded</th>
                 <th>Message</th>
                 <th>Answer</th>
@@ -124,7 +124,7 @@ export default async function TurnsPage({ searchParams }: { searchParams: Search
                     {turn.route_source ?? "—"}
                     {turn.route_confidence !== null && turn.route_confidence !== undefined ? (
                       <div className="muted mono" style={{ fontSize: 11 }}>
-                        {turn.route_confidence.toFixed(2)}
+                        conf {turn.route_confidence.toFixed(2)}
                       </div>
                     ) : null}
                   </td>
