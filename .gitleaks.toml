@@ -1,0 +1,48 @@
+# Secret scan configuration.
+#
+# The default rule set is the point: a hand-written list of patterns would miss the next provider.
+# The allowlist below is deliberately narrow and names values that are *documented placeholders* or
+# literals that exist only inside the test process. A real secret would not match these.
+
+title = "Hermes Football secret scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders, test-only literals and generated scan output"
+paths = [
+  '''security/scans/''',
+  '''frontend/pnpm-lock.yaml''',
+  # Local state and generated output are not part of the repository. `.env` is the real local secret
+  # store and is gitignored; scanning it would report the owner's own values instead of a leak.
+  '''(^|/)\.env(\.|$)''',
+  '''(^|/)\.uv-cache/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)frontend/\.next/''',
+  '''(^|/)data/''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)\.ruff_cache/''',
+  '''(^|/)playwright-report/''',
+  '''(^|/)test-results/''',
+  '''(^|/)\.git/''',
+]
+regexes = [
+  '''change-me-locally''',
+  '''change-me-locally-too''',
+  '''change-me-locally-three''',
+  '''change-me-locally-four''',
+  '''replace-with-your-football-data-org-token''',
+  '''itest-only''',
+  '''itest-only-agent''',
+  '''test-agent-token''',
+  '''test-admin-token''',
+  '''ci-agent-token''',
+  '''ci-admin-token''',
+  '''ci-postgres''',
+  '''ci-agent''',
+  '''ci-writer''',
+  '''ci-admin''',
+  '''ci-salt''',
+]

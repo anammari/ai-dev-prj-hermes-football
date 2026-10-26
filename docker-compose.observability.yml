@@ -1,0 +1,136 @@
+# The observability stack, opt-in.
+#
+#   make obs-up     # Grafana at http://127.0.0.1:3001
+#
+# It joins the same Compose project and network as the app, so services resolve by name, but it is a
+# separate file and a `obs` profile: `make up` never starts it and a laptop that does not want the
+# 1.4 GB cost never pays it. Grafana is the only published port and it is bound to loopback; there is
+# no login, so it must never be tunnelled or exposed.
+#
+# Every container has a healthcheck and a resource limit, no container has the Docker socket, and the
+# pipeline is push-only: apps send OTLP to the collector; Prometheus scrapes the collector's exporter.
+# No application exposes a `/metrics` route, which keeps the API contract unchanged.
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    networks: [obs]
+    profiles: [obs]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "--version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    networks: [obs]
+    profiles: [obs]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.1
+    networks: [obs]
+    profiles: [obs]
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    mem_limit: 256m
+    cpus: 0.25
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    networks: [obs]
+    profiles: [obs]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3200/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    mem_limit: 256m
+    cpus: 0.25
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    # The one observability container that also joins the default network. Docker does not publish a
+    # host port for a container attached only to an internal network, and the dashboard has to be
+    # reachable at 127.0.0.1:3001. Its egress is therefore disabled at the application level
+    # (no analytics, no plugin download, no update check) rather than at the network level; the four
+    # storage/scrape containers stay internal-only.
+    networks: [default, obs]
+    profiles: [obs]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGINS_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # No plugin download at startup: the observability stack must not call out for a convenience
+      # plugin. The provisioning files and the two dashboards are all this deployment needs.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      GF_PLUGINS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
