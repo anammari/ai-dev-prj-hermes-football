@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Telegram agent that answers football questions, grounded in a local database refreshed daily"
 requires-python = ">=3.12"
 dependencies = [
-    "SQLAlchemy>=2.0,<2.1",
+    "SQLAlchemy>=2.0,<2.2",
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
     "pgvector>=0.3",
