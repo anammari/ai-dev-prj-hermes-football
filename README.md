@@ -57,6 +57,32 @@ generated one.
 
 Screenshots of the Telegram bot, all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
 
+## Dashboards and key pages
+
+| Surface | URL | What to look at |
+| --- | --- | --- |
+| **Product dashboard** (`:3000`) | | |
+| Dashboard (freshness home) | <http://localhost:3000> | overall status, per-competition age, recent runs, next scheduled run |
+| Standings | <http://localhost:3000/standings> | table explorer with `data_as_of` and the source |
+| Fixtures and results | <http://localhost:3000/fixtures> | fixtures, results and match detail |
+| Agent audit log | <http://localhost:3000/turns> | route, source, confidence, latency; message text masked; the review form when `API_ADMIN_TOKEN` is set |
+| Eval scoreboard | <http://localhost:3000/evals> | one series per golden set, the 0.90 target and the stored red run |
+| Eval run detail | `http://localhost:3000/evals/{runId}` | per-question misses and the stored metrics |
+| System | <http://localhost:3000/system> | API health, version, schema revision |
+| Liveness | <http://localhost:3000/healthz> | static probe; does not touch the API |
+| **API** (`:8000`) | | |
+| Swagger UI | <http://localhost:8000/docs> | the reviewed contract served verbatim |
+| Contract file | <http://localhost:8000/openapi.yaml> | `openapi.yaml` v0.4.1 |
+| API health | <http://localhost:8000/health> | status, version, database schema revision |
+| Freshness JSON | <http://localhost:8000/meta/freshness> | the report the dashboard reads (bearer token required) |
+| **Observability** (`:3001`, `make obs-up`) | | |
+| Grafana home | <http://127.0.0.1:3001> | datasources and the provisioned dashboards |
+| Overview | <http://127.0.0.1:3001/d/hermes-overview> | API, gateway, MCP, ingest, alert state and Loki logs |
+| Freshness & alert | <http://127.0.0.1:3001/d/hermes-freshness> | data age per competition, alert timeline, on-call logs |
+| Explore | <http://127.0.0.1:3001/explore> | Tempo traces, Loki logs, Prometheus metrics |
+| **Telegram** | | |
+| Public review bot | <https://t.me/review_soccer_bot> | the same pipeline, without a local browser |
+
 ## Models and technologies
 
 ### Models
@@ -120,11 +146,7 @@ make obs-down   # stop it; app containers return to telemetry-off
 make telemetry-smoke
 ```
 
-| URL | What it shows |
-| --- | --- |
-| <http://127.0.0.1:3001/d/hermes-overview> | API, gateway, MCP, ingest, alert state and logs |
-| <http://127.0.0.1:3001/d/hermes-freshness> | data age per competition, alert timeline, on-call logs |
-| <http://127.0.0.1:3001/explore> | Explore: Tempo traces, Loki logs, Prometheus metrics |
+The URLs and what each shows are in [Dashboards and key pages](#dashboards-and-key-pages).
 
 Grafana is loopback-only, anonymous Viewer and has no login: never tunnel it. The alert is evaluated by `oncall`
 against Postgres, not by Grafana, so it still works when the obs stack is down. Telemetry is push-only to a local
