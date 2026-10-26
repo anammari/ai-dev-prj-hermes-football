@@ -14,13 +14,13 @@ contract-shaped objects through `backend/schemas.py`; what makes them *typed* is
 `agent_readonly` (`AGENTS.md` rule 4); the only write the API can make is
 `PATCH /admin/agent-turns/{id}/review`, through a separate `agent_admin` engine that may update the
 two review columns and nothing else. The other declared `/admin` operation, the ingest trigger, stays
-a documented `404` until M6: a request handler must not start an upstream run (rule 3).
+a documented `404` until the post-M6 queue: a request handler must not start an upstream run (rule 3).
 """
 
 from __future__ import annotations
 
 #: The API version, which is also the contract version. `tests/test_api_contract.py` fails when this
 #: and `openapi.yaml`'s `info.version` disagree, so a contract change cannot ship half-applied.
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 __all__ = ["__version__"]
