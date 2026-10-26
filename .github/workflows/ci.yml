@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v4
@@ -117,7 +117,7 @@ jobs:
           pip install -e ".[dev]" pip-audit
           pip-audit --progress-spinner off
       - name: Frontend dependency audit
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v4
@@ -235,7 +235,7 @@ jobs:
             if curl -fsS http://127.0.0.1:3000/healthz >/dev/null; then break; fi
             sleep 2
           done
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v4
