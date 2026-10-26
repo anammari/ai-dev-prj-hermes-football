@@ -17,33 +17,31 @@ Course context: this is the final project for the DataTalks.Club **AI Dev Tools 
 criteria and how each is covered live in `_docs/scoping.md` §5 — that mapping is a deliverable, not decoration.
 If you add or change a component, keep that table true. The agent team is written down in `_docs/agent-team.md`.
 
-Status: **M1–M5 done; M6 next.** M5 added the dashboard and the golden-question scoreboard: a Next.js app over the
-same contract with seven routes, one admin write (the review decision) behind `API_ADMIN_TOKEN` and a column-scoped
-`agent_admin` role, and `make eval`, which answers a 48-question golden set through the shipped pipeline and stores the
-run in `eval_runs`/`eval_results`. Scoring is deterministic - no model judge, no new cloud path - and the first live
-run is recorded with its misses (macro-F1 0.928, retrieval 0.906, fact coverage 0.858, three answers without a
-citation). M4 wired the selected router behind a binding safety gate, measured it on a new
-independent 60-question holdout (gated macro-F1 0.979 on prompt v1, 0.960 on the v2 regression; 8/8 adversarial,
-4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the eight read-only MCP tools and the Telegram gateway, reviewed
-thirteen notes and indexed 41 chunks. The gateway splits on the model's `complexity` label: simple answers use one
-tool and the deterministic composer; complex answers plan several tools or notes and compose with `beam:cloud`.
-The live Telegram smoke test needs the owner's bot token; `make ask` and the integration suite exercise the same
-pipeline. M3b compared two model-first routers on the same 85 hand-labelled questions:
-`clef:cloud` beat `tev1:0.8b` (71% v 53% accuracy, macro-F1 0.70 v 0.43) and was **selected on 2026-10-20** as the
-routing model. Its cloud egress is an accepted exception: the user message goes to Ollama's cloud, while embeddings
-and note text stay local. tev1 is rejected. Selection is not adoption: the refusal gap (3/5 across all 85) and the
-0.90 target were the M4 gate, now measured on a new independent holdout (0.979 on v1, 0.960 on v2). The numbers are in
-`_docs/scoping.md` §6 and the reasoning in [decision 0003](_docs/decisions/0003-prompt-router.md). M2 supplies the client, bronze store, normalized ingestion
-pipeline, run ledger, daily scheduler and score-delay polling. M3 adds `backend/`: a FastAPI service implementing the read
-operations against `openapi.yaml` (now v0.4.0, 17 operations), the freshness report, the contract's own error semantics, and a
-test suite that fails when the code drifts from the contract - including a route hidden from FastAPI's generated
-document, a reused `operationId`, a changed parameter bound, and an enum value the contract does not list. An
-adversarial review of the finished milestone is what produced those cases; its findings and the fixes are in
-`_docs/ai-usage-report.md` (S8). Unit tests and lint pass; integration tests pass against the running stack on the
-retained volume. The retained Postgres volume and a real upstream run still need the matching local `.env` password
-and a valid `UPSTREAM_API_KEY`; never put either value in the repo or a prompt.
+Status: **M1–M6 done.** The product is built end to end and the operations layer is in place. M6 added:
+GitHub Actions gates plus a nightly audit; an opt-in observability stack (OTel collector -> Prometheus/Loki/Tempo ->
+Grafana on loopback); one alert (`ingest_unhealthy`) evaluated by the `oncall` container against the ledger; a
+read-only on-call digest; and the security artifacts (`security/capability-table.md`, a threat model, gitleaks and
+dependency scans). It also fixed a real baseline defect the integration suite exposed: a knowledge search took
+13-18.5 s while the MCP server waited 15 s, so the first notes question after a restart failed. The timeout budget is
+now nested and asserted (40 s embedding < 45 s MCP->API < 50 s gateway). Contract v0.4.1, 19 operations. The newest
+live eval run is stored red on purpose (macro-F1 0.928, retrieval 0.906, fact coverage 0.858, three answers without a
+citation), and its three product misses are recorded in `_docs/follow-ups.md` rather than tuned away.
 
-## Architecture (target)
+M5 added the dashboard and the scoreboard: a Next.js app over the same contract with seven routes, one admin write
+(the review decision) behind `API_ADMIN_TOKEN` and a column-scoped `agent_admin` role, and `make eval`, which answers
+a 48-question golden set through the shipped pipeline. M4 wired the selected router behind a binding safety gate,
+measured it on a new independent 60-question holdout (gated macro-F1 0.979 on prompt v1, 0.960 on the v2 regression;
+8/8 adversarial, 4/4 fabricated, 3/3 refusal and 4/4 unsupported refused), built the eight read-only MCP tools and
+the Telegram gateway, reviewed thirteen notes and indexed 41 chunks. M3b selected `clef:cloud` over `tev1:0.8b`; its
+cloud egress is the accepted exception for the user message, and complex answers add `beam:cloud` (decision 0007).
+M2 supplies the client, bronze store, normalized pipeline, run ledger, scheduler and score-delay polling. M3 adds the
+FastAPI service implementing the read operations against the contract (now v0.4.1), the freshness report, the
+contract's own error semantics, and drift tests that fail on a hidden route, a reused `operationId`, a changed bound
+or an undeclared enum. The retained volume and a real upstream run still need the matching local `.env` password and
+a valid `UPSTREAM_API_KEY`; never put either value in the repo or a prompt. The full history and the criteria map are
+in `_docs/scoping.md` §5-6.
+
+## Architecture
 
 ```text
 Telegram users
@@ -51,7 +49,6 @@ Telegram users
       v
 hermes            container: Hermes Football gateway (agent/gateway)
       |           SOUL.md (role + grounding policy); optional Nous Hermes Agent
-      |           cron: daily data-quality digest, owner report, weekly evals
       |  MCP (HTTP) — read-only, allowlisted tools
       v
 mcp-server        thin adapter: tool schema -> backend REST calls, compact JSON out
@@ -68,31 +65,34 @@ football-data.org v4 (free tier)        Postgres (+ pgvector for the knowledge c
                                         ollama (embeddinggemma:300m): local model, no egress
 ```
 
-Supporting, all in the same Compose project: `observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana),
-`security/` (scan outputs, capability + threat tables), `ops/` (runbooks, incident drills), `evals/` (golden Q&A set).
+Supporting, all in the same Compose project: `oncall` (`agent/oncall`: alert loop + daily digest, read-only),
+`observability/` (OTel collector -> Prometheus, Loki, Tempo, Grafana; opt-in profile), `security/` (capability +
+threat tables, scan policy), `ops/` (runbooks, incident drills), `evals/` (golden Q&A set).
 
-## Repo layout (target)
+## Repo layout
 
 ```text
-README.md               product-spec.md        openapi.yaml      docker-compose.yml   Makefile
-AGENTS.md               .env.example          Dockerfile
-_docs/                  setup-and-review.md, scoping.md (criteria map), product-spec.md, rag.md,
-                        data-model.md, notes-sources.md, agent-team.md, decisions/, ai-usage-report.md
+README.md               AGENTS.md              openapi.yaml         docker-compose.yml   Makefile
+CLAUDE.md               .env.example           Dockerfile
+.github/                CI, nightly scans, dependabot, PR template
+_docs/                  setup-and-review.md, scoping.md, product-spec.md, rag.md, data-model.md,
+                        notes-sources.md, agent-team.md, follow-ups.md, decisions/, ai-usage-report.md
 db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
-backend/                FastAPI app
+backend/                FastAPI app (one admin write, one documented 404)
 ingest/                 football-data.org client, rate limiter, loaders, scheduler, run ledger,
                         knowledge/ (corpus manifest, chunker, embedding client, indexer)
 frontend/               Next.js dashboard: seven routes, one typed `server-only` API client,
                         Vitest unit tests, Playwright e2e under frontend/e2e
-mcp_server/             MCP server over HTTP: read-only tools, backend client, name resolver
-hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml, context files, cron definitions
-agent/                  routing (prompt loader, clef:cloud client, hard gate), turn writer, Telegram gateway
-skills/ subagents/ hooks/ plugins/    agent extension pack
+mcp_server/             MCP server over HTTP: eight read-only tools, backend client, name resolver
+hermes/                 SOUL.md, config.yaml, agent-knowledge/*.md + manifest.yaml
+agent/                  routing, hard gate, turn writer, Telegram gateway, oncall/ (alert + digest)
+telemetry/              OTel setup and metric instruments; a no-op unless configured
+observability/          collector, Prometheus, Loki, Tempo, Grafana provisioning and dashboards
+security/               capability table, threat model, scan policy and baseline
+ops/                    runbooks and incident-drill evidence
 evals/                  routing holdout; evals/golden/ = questions, runner, metrics, scoreboard store
-observability/          otel collector, prometheus, grafana, loki, alerts
-security/ ops/          scans + policy; runbooks + incident evidence
 prompts/                versioned prompt bank used during development
-tests/                  unit, integration (Compose stack), e2e (Playwright)
+tests/                  unit, integration (Compose stack), policy, e2e (Playwright)
 ```
 
 ## Stack
@@ -113,13 +113,15 @@ tests/                  unit, integration (Compose stack), e2e (Playwright)
   simple path, a planner plus `beam:cloud` on the complex path, and a turn row. `hermes/SOUL.md` is the shared
   policy; `hermes/config.yaml` records the equivalent MCP surface for a future Nous Hermes Agent deployment. MCP
   tools are HTTP, not stdio.
-- Docker Compose for everything; GitHub Actions for CI/CD; OpenTelemetry for telemetry
+- OpenTelemetry (SDK -> local collector -> Prometheus/Loki/Tempo -> Grafana), opt-in through
+  `docker-compose.observability.yml`; the app is a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
+- Docker Compose for everything; GitHub Actions for CI/CD; no cloud host for the agent.
 
 ## Commands (make targets land with the scaffold — keep them working)
 
 ```bash
 make setup     # create .env from .env.example, install deps
-make up        # start db, ollama, backend, frontend, mcp-server, the gateway and ingest; migrate
+make up        # start db, ollama, backend, frontend, mcp-server, the gateway, ingest and oncall; migrate
 make down      # stop everything
 make test      # unit tests (fast, no network)
 make itest     # integration tests against the RETAINED stack db (cleans its fixture rows)
@@ -130,6 +132,13 @@ make frontend-types  # regenerate the dashboard's API types from openapi.yaml
 make eval      # golden-question eval run; stores the scoreboard row
 make eval-self-check # prove the eval gate can fail, no model needed
 make eval-backfill   # import the M4 routing artifacts as the baseline
+make ci        # local parity with the pull-request gates
+make ci-full   # ci + integration + browser
+make security-scan   # gitleaks + pip-audit + pnpm audit
+make obs-up    # opt-in observability stack, Grafana on 127.0.0.1:3001
+make alert-fire      # demonstrate the alert with a synthetic stale observation
+make alert-drill     # real evaluation with a 1-minute threshold
+make oncall-report   # copy the digest/alert volume to data/oncall
 make ingest    # trigger one ingestion run manually
 make ask Q="where are Arsenal in the table?" # ask the agent through routing, MCP and the turn writer
 make score-delay [MATCH_ID=…] # poll a live or recent match and report how old the provider's data is
@@ -176,18 +185,21 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
    No write tool, no DDL, no arbitrary SQL from model output. The one write in the API is the human review decision
    (`PATCH /admin/agent-turns/{id}/review`): admin token, `agent_admin` role, UPDATE on the two review columns only, and
    a test that names it and holds it to that.
-5. **No Docker socket inside the Hermes container.** Isolation comes from the container boundary plus read-only
-   mounts; do not add `/var/run/docker.sock`, and keep `terminal.backend` local inside the container.
+5. **No Docker socket in any container.** Isolation comes from the container boundary plus read-only mounts; do not
+   add `/var/run/docker.sock` anywhere, and keep `terminal.backend` local inside the container.
 6. **Secrets never enter the repo or a prompt.** `.env` is local only; `.env.example` documents keys with dummy
    values. Never log tokens, chat IDs, or full prompts with secrets.
 7. **Telegram input is untrusted.** Treat every user message as a prompt-injection candidate: keep the allowlists,
    the tool schema, and the refusal behavior intact. New tool = new row in `security/capability-table.md`.
 8. **Every capability is declared.** Skills, subagents, hooks, MCP tools, cron jobs and their permissions are
-   written down in `_docs/permissions.md`. Undocumented capability = not shippable.
-9. **Every note is declared.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source citation and
+   written down in `_docs/permissions.md`, and every runtime capability has a row in `security/capability-table.md`.
+   Undocumented capability = not shippable. `tests/test_capability_table.py` enforces the rows.
+9. **Every new container is bounded.** No Docker socket, a healthcheck, a `mem_limit`/`cpus`, a line in
+   `_docs/permissions.md`, and an entry in `tests/test_compose_policy.py` if it introduces a new rule.
+10. **Every note is declared.** `hermes/agent-knowledge/manifest.yaml` lists every note with its source citation and
    owner; the build fails on a note missing from it or an entry with no file. The corpus is hand-written, English, one
    topic per file, reviewed like code — never generated at runtime, never scraped.
-10. **Every answer says which road it took.** Each turn records whether it came from a tool or from the notes
+11. **Every answer says which road it took.** Each turn records whether it came from a tool or from the notes
     (`route`, `route_source`, `route_confidence`), and routing is scored in the evals. Routing is **model-first**: a
     decision model sees the user message and a fixed label set only — never retrieved text, never tool output. There is
     no regex and no deterministic pre-router. The model is `clef:cloud` (decision 0003), wired behind the binding
@@ -209,7 +221,7 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 ## Current status / next steps
 
 Done: repo scaffolded, scoping written (`_docs/scoping.md`), product spec for the tooling (`_docs/product-spec.md`),
-the API contract reviewed and now at v0.4.0 (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
+the API contract reviewed and now at v0.4.1, 19 operations (`openapi.yaml`), and decision records in `_docs/decisions/` (0001 notes
 corpus + manifest, 0002 embedding model, 0003 routing model comparison, 0004 the embedding tag that runs in the container). M1 is done:
 schema/migration `0001_init`, the corpus with `hermes/agent-knowledge/manifest.yaml`, the chunker and embedding
 client, and one note indexed/retrieved end to end in Postgres. M2 implementation adds migration `0002`, upstream
@@ -229,8 +241,10 @@ Next, in order:
 2. Nothing left for M2 except re-running `make score-delay` during a live match (see `_docs/scoping.md` §3). It
    reports the gap between the provider's own `lastUpdated` stamp and the moment we fetch the match — the number the
    freshness note quotes — and warns when a match has stopped being updated rather than quoting a closed record.
-3. M6: CI/CD, observability, the alert and on-call agent, security artifacts, and the AI-usage report close-out.
-4. Remaining follow-ups, recorded rather than hidden: multi-turn conversation memory; the optional Nous Hermes Agent
-   deployment described in `hermes/config.yaml`; the ingest-trigger queue that `POST /admin/ingest-runs` needs; and the
-   resolver misses the eval surfaced (`inter milan vs juventus`, and three clarify decisions on answerable questions).
-   The scorer tool closed `R-F4.1`.
+3. M6 is done: CI/CD, observability, the alert and on-call agent, security artifacts and the AI-usage close-out. Its
+   manual verification steps are in `_docs/setup-and-review.md` and `observability/README.md`.
+4. Remaining follow-ups, recorded rather than hidden in `_docs/follow-ups.md`: multi-turn conversation memory; the
+   optional Nous Hermes Agent deployment described in `hermes/config.yaml`; the ingest-trigger queue that
+   `POST /admin/ingest-runs` needs; the resolver misses the eval surfaced (`inter milan vs juventus`, and two clarify
+   decisions on answerable questions); a dashboard login/permanent host; and a licence. The scorer tool closed
+   `R-F4.1`.

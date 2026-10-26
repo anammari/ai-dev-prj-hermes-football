@@ -70,12 +70,12 @@ The dashboard fetches server-side, so its tokens never reach the browser; a tunn
 | 4 | Context management | Met | [`AGENTS.md`](../AGENTS.md) plus modular docs; rules change in the same PR as behaviour |
 | 5 | Application | Met | Backend, MCP tools, Telegram agent and the dashboard (`frontend/`, seven routes) over one contract |
 | 6 | Testing | Met | 411 unit, 41 integration, 27 dashboard unit, 6 browser tests, contract drift tests. Evidence: `make test`, `make itest`, `make frontend-test`, `make e2e` |
-| 7 | Containerization | Met | `make up` starts seven services with health checks and exactly two published ports |
+| 7 | Containerization | Met | `make up` starts eight services with health checks; two published ports, plus a loopback-only Grafana in the opt-in obs profile |
 | 8 | Deployment | Partly | Telegram long polling; the dashboard runs locally and a Cloudflare tunnel is demo-only. Gap: no permanent public host |
-| 9 | CI/CD | Open | Local gates only; workflows, deploy, rollback are later |
-| 10 | Observability | Open | OTel/Prometheus/Loki/Tempo/Grafana planned |
-| 11 | Alerting | Open | Staleness or repeated failure alert planned |
-| 12 | On-call agent | Open | Cron digests and answer-verifier planned |
+| 9 | CI/CD | Met | `.github/workflows/ci.yml` gates lint, unit/contract, dashboard, security scans, integration and build; nightly re-scans; `make ci` is local parity |
+| 10 | Observability | Met | OTel collector → Prometheus/Loki/Tempo → Grafana on `127.0.0.1:3001`; five signals, two dashboards, no app `/metrics` route |
+| 11 | Alerting | Met | `ingest_unhealthy` (stale / repeated failure / stuck) evaluated by `agent/oncall`; log + `alerts.json` + `hermes_alert_firing`; drill in `ops/drills/` |
+| 12 | On-call agent | Met | daily read-only digest in the `oncall` container; alert loop; eval-age check; no model, no write path |
 
 ## 6. Plan and results
 
@@ -87,7 +87,7 @@ The dashboard fetches server-side, so its tokens never reach the browser; a tunn
 | 3b | Two model-first routers compared on 85 hand-labelled questions; `clef:cloud` selected | Done |
 | 4 | Safety gate, MCP tools, Telegram gateway, reviewed notes, scorer tool | Done |
 | 5 | Dashboard and golden-question scoreboard | Done |
-| 6 | CI/CD, observability, alerting, on-call, security artifacts, final Mermaid diagram in README | Next |
+| 6 | CI/CD, observability, alerting, on-call, security artifacts, final Mermaid diagram in README | Done |
 
 **Routing result.** Independent 60-question holdout, authored and audited separately, frozen, one run. Prompt v1:
 gated macro-F1 **0.979**; adversarial 8/8, fabricated 4/4, refusal 3/3, unsupported 4/4, zero false refusals. Prompt
@@ -99,7 +99,7 @@ pgvector, and one `agent_turns` row per answered turn. The public review bot is
 [@review_soccer_bot](https://t.me/review_soccer_bot). The live Telegram smoke test is the owner's step; `make ask`
 and integration tests exercise the same pipeline.
 
-**Dashboard result.** Seven server-rendered routes over the same 17-operation contract, with provenance on every
+**Dashboard result.** Seven server-rendered routes over the same 19-operation contract, with provenance on every
 factual page and no token in the browser. The one write is the review decision, behind `API_ADMIN_TOKEN` and a
 column-scoped `agent_admin` role; the ingest trigger stays a documented 404 until the M6 queue exists.
 
@@ -111,15 +111,32 @@ kept red rather than tuned away: `inter milan vs juventus` defeats the name reso
 `clarify`, and one fabricated-fact question asked back instead of refusing (fabricated 2/3). Scores are deterministic:
 no model judge, and therefore no new cloud egress.
 
+**Operations result.** CI runs the pull-request gates on a GitHub runner and keeps the eval and the router suite
+local, because both need the signed-off cloud models. The observability stack is opt-in: five containers on an
+internal network, Grafana loopback-only, dashboards for API/gateway/MCP/ingest/on-call, and no new application route.
+One alert (`ingest_unhealthy`) is evaluated by the on-call container against the ledger and demonstrated by a real
+drill, in minutes, in `ops/drills/2026-10-27-ingest-stale.md`. The on-call digest is read-only and carries no message
+text. Security artifacts are `security/capability-table.md`, `security/threat-model.md` and the gitleaks/pip-audit/
+pnpm-audit/trivy scans. The integration suite went from red to green on the way in: a knowledge search took
+13-18.5 s while the MCP server waited 15 s, so the first notes question after a restart failed; the timeout budget
+is now nested and asserted (`tests/test_timeout_budget.py`).
+
 **Known gap.** Top-scorer data is now served by `get_top_scorers`; lineups, odds, live scores and xG are not available.
+The ingest trigger, the three eval-surfaced agent misses, the dashboard login/permanent host and the licence are
+recorded follow-ups in [`follow-ups.md`](follow-ups.md).
 
 ## 7. Still to decide
 
 1. **Dashboard address:** temporary Cloudflare tunnel for the demo, no permanent hostname. A permanent tunnel would
-   need a machine that never sleeps.
+   need a machine that never sleeps and a login; both are out of scope.
 2. **Dashboard permissions:** read-only, plus the one admin write (the review decision), which is admin-token only and
    recorded on the row. There is no login; the tunnel is demo-only and message text is masked by default.
-3. **Licence:** no licence chosen yet.
+3. **Licence:** deliberately deferred. A public repository without a licence is all-rights-reserved, which is the
+   conservative default; choosing one grants rights and is the owner's decision. Recorded in
+   [`decisions/0009`](decisions/0009-m6-operations.md) and [`follow-ups.md`](follow-ups.md).
+4. **Ingest trigger:** `POST /admin/ingest-runs` remains a documented `404`; closing it needs a queue table, a second
+   API write role, a scheduler restructure and a contract-visible queue state (v0.5.0). Design sketch in
+   [`follow-ups.md`](follow-ups.md).
 
 ## 8. Where to look next
 

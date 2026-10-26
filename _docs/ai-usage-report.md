@@ -101,6 +101,49 @@ Evidence: `tests/test_golden_set.py`, `tests/test_eval_metrics.py`, `tests/test_
 tests, 6 Playwright specs, migration 0004, contract v0.4.0, and the stored run in `eval_runs` with its artifact under
 `evals/golden/runs/`.
 
+**S17 — M6a: CI and security artifacts (2026-10-26).** One session on `anammari-m6-ci-observability`. Delegated:
+the GitHub Actions workflow (lint, unit/contract, frontend, security, integration with Postgres+pgvector+Ollama, build,
+main-only e2e), nightly scans, Dependabot, the PR template, the capability table and threat model, the
+capability/compose policy tests, and `make ci`/`make security-scan`.
+
+What the work found and changed rather than hid:
+- the integration suite was **red before any M6 code**: a knowledge search took 13–18.5 s while the MCP server waited
+  15 s, so the first notes question after a restart failed. Fixed the timeout budget (40 < 45 < 50 s) and added
+  `tests/test_timeout_budget.py`; `make itest` is 41/41 again.
+- the docs claimed 17 operations; the contract has 19. Corrected in the same commit; v0.4.1 records the description
+  change for the deferred ingest trigger.
+- `backend` held the owner `DATABASE_URL` through `x-app-env`; it now receives an `agent_readonly` DSN, and
+  `tests/test_compose_policy.py` holds that. The MCP bearer comparison is constant-time.
+Rejected: running `make eval` or the router suite in CI (new cloud egress and a signed-in model the runner lacks);
+an internal-only network for Grafana (Docker will not publish its port; recorded in decision 0010). Evidence: the
+workflow files, `make security-scan` (gitleaks clean), 450 unit, 41 integration, lint.
+
+**S18 — M6b: observability, alerting and on-call (2026-10-26).** Delegated: the OTel setup and metric instruments,
+the opt-in Compose stack (collector, Prometheus, Loki, Tempo, Grafana), the two provisioned dashboards, the alert
+state machine and digest, the `oncall` container, and the runbooks. Owner signed off the whole M6 scope and the
+opt-in owner-Telegram alert channel.
+
+What was reviewed and corrected:
+- the first Grafana start downloaded a plugin and checked for updates; both were disabled, and the four storage
+  containers were put on an internal network. Grafana itself must also join the default network so its loopback port
+  can be published — recorded as an explicit exception in decision 0010 rather than a silent one.
+- the first on-call container never ran its loop: the FastAPI app was built without `lifespan=`, so the start-up
+  task was never attached. Found by the health endpoint, fixed and re-verified.
+- the retained ledger had an orphaned `running` row, so the alert fired for a crash that had already happened. Added
+  `close_orphaned_runs` at scheduler start; the alert now resolves.
+- traces were initially sampled at 10 % and a single manual turn was invisible. The default is now 100 % (low-traffic
+  stack), with `OTEL_TRACES_SAMPLER_ARG` documented for a busier host.
+Rejected: a hosted observability vendor (new egress), scraping app `/metrics` (new contract route), a Grafana alert
+rule (the alert must work when Grafana is down), a model-backed answer verifier on-call (new egress and a judge
+validation). Evidence: `make obs-up`, both dashboards, `make alert-fire`, the real drill in `ops/drills/`, the on-call
+digest, 450 unit and the policy tests.
+
+**S19 — Verification and handover (2026-10-26).** The owner asked for the branch without a PR until a manual
+inspection of the dashboards. Delegated: the full local gate run, the alert drill, the Docker cleanup and the doc
+sync. The manual test cases are in `observability/README.md#manual-checks`; the alert evidence is
+`ops/drills/2026-10-27-ingest-stale.md`; the cleanup report is in the final message. No prompt or model was changed in
+M6, so `prompts/` gained no file.
+
 ## Rejected or revised, in one place
 
 - Deterministic routing, regex, or a second model to paraphrase answers: rejected by the owner and rule 10.
@@ -121,3 +164,5 @@ decisions and specs carry the substance.
 [`prompts/`](../prompts/README.md): `0001` backend task, `0002` router comparison, `0003` production router, `0004`
 complex planner, `0005` complex composer, `0006` claim verifier. Each is versioned with the behaviour it shapes.
 M5 adds **no new prompt**: its scoring is deterministic, so there is no judge prompt to version (decision 0008).
+M6 adds **no new prompt** either: telemetry, the alert and the digest are deterministic, and the on-call agent calls
+no model (decision 0010).

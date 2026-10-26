@@ -7,7 +7,8 @@ The project is built mostly by agents, so the roles are explicit.
 | Owner | Ahmad Ammari | Scope, policy (egress, model), final PR review | — |
 | Coding agent | DeepSeek Harness | Plan, code, tests, docs, commits on one branch | Merge own work, push to main, decide policy |
 | Independent reviewer | Separate agent, no author context | Adversarial review of a milestone, label/data audit | Edit the branch under review |
-| Verifier (planned) | `answer-verifier` | Check every factual claim against tools/notes | Answer users |
+| On-call agent | `oncall` container (`agent/oncall`) | Alert evaluation, daily data-quality digest, eval-age check | Write the database, read message text, call a model or upstream, answer users |
+| Verifier (deterministic) | `agent/oncall` digest checks | Check that recent answers carry a timestamp or `Source:`; report the rate | Judge prose or re-answer the question |
 | Human reviewers | Course peers | Score the 12 criteria | — |
 
 ## Process

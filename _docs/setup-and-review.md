@@ -23,14 +23,17 @@ from data carry the provider timestamp.
 - Complex answer: planner up to four tools or eight notes; `beam:cloud` composition; citation and second-model claim
   check; deterministic fallback.
 - Thirteen reviewed notes, 41 chunks in pgvector, public source links.
+- M6: GitHub Actions gates, an opt-in observability stack, one actionable alert, a read-only on-call digest, and the
+  security artifacts (`security/capability-table.md`, threat model, gitleaks and dependency scans).
 
 Egress: only the user message goes to `clef:cloud`. Simple answers stay local. Complex answers send results to
-`beam:cloud`. Embeddings and note retrieval stay local.
+`beam:cloud`. Embeddings and note retrieval stay local. M6 telemetry is local-only; owner-Telegram alert delivery is
+opt-in and sends counters/timestamps only (decision 0010).
 
 ## Local test runbook
 
-Prerequisite: Docker, repo, `.env`. One `make up` starts seven services; `backend` publishes `8000` and the dashboard
-`3000`.
+Prerequisite: Docker, repo, `.env`. One `make up` starts eight services; `backend` publishes `8000`, the dashboard
+`3000`, and `make obs-up` adds a loopback-only Grafana on `3001`.
 
 ```bash
 docker compose ps
@@ -41,12 +44,15 @@ make frontend-test        # dashboard lint, typecheck, Vitest
 make e2e                  # Playwright against the running stack
 make eval                 # golden-question run, stored in the scoreboard
 make ask Q="where are Arsenal in the table?"
+make ci                   # local parity with the pull-request gates
+make security-scan        # gitleaks + pip-audit + pnpm audit
+make obs-up               # opt-in observability stack (Grafana on 127.0.0.1:3001)
 ```
 
 The runbook:
 
-1. **Stack.** `docker compose ps` shows `db`, `ollama`, `backend`, `frontend`, `mcp-server`, `hermes`, `ingest`; all
-   but `ingest` healthy.
+1. **Stack.** `docker compose ps` shows `db`, `ollama`, `backend`, `frontend`, `mcp-server`, `hermes`, `ingest` and
+   `oncall`; all but `ingest` (a scheduler with no HTTP surface) report healthy, and `oncall` reports healthy.
 2. **Corpus.** `make check-notes` → `corpus ok`; `make index-notes` → `13 notes: 13 unchanged`.
 3. **Simple database.** `where are Arsenal in the table?` → timestamped row, `route: tool`, `complexity: simple`.
 4. **Simple notes.** `how does the championship playoff work?` → passage + public GitHub `Source:`, `route:
@@ -74,6 +80,18 @@ The runbook:
     `read-only` and the endpoint answers `403`. Record a decision and check it survives a reload.
 13. **Eval.** `make eval` answers 48 golden questions and stores a run; `make eval-self-check` proves the gate can
     fail without calling a model; `/evals` shows the run, its macro-F1 and its misses, one series per set hash.
+14. **CI.** Open the branch's first GitHub Actions run (or run `make ci` locally): lint, unit/contract, dashboard,
+    security, integration and build are the pull-request gates; e2e runs on `main`. `make ci` is local parity.
+15. **Security.** `make security-scan` → gitleaks finds no leak and the dependency audit is clean;
+    `security/capability-table.md` names every service, tool, token and job; `tests/test_compose_policy.py` holds the
+    no-socket/limits/ports rules.
+16. **Observability.** `make obs-up`; open the two dashboards and follow the manual checks in
+    [`observability/README.md`](../observability/README.md#manual-checks). `make telemetry-smoke` is the quick probe.
+17. **Alert.** `make alert-fire` prints a firing payload with no wait; `make alert-drill` runs the real evaluator with
+    a 1-minute threshold against the live ledger and then resolves; the recorded drill is
+    [`ops/drills/2026-10-27-ingest-stale.md`](../ops/drills/2026-10-27-ingest-stale.md).
+18. **On-call.** `make oncall-report` and read `data/oncall/digest-<date>.md`: freshness, runs, turns and eval age,
+    and no message text.
 
 ## Dashboard notes
 
@@ -126,6 +144,10 @@ tag.
 | `route_source: fallback` | host Ollama down/signed out | start/sign in; check `ROUTER_BASE_URL` |
 | `I can't check that right now` | MCP/backend down | `docker compose ps`, `make logs S=mcp-server` |
 | `I couldn't record that answer` | writer DSN/role | `make migrate`; check `.env` |
+| Grafana unreachable | not started, or the port is loopback-only | `make obs-up`; open `127.0.0.1:3001` |
+| dashboards empty | app containers predate the OTLP endpoint | `make obs-up` (it recreates them) |
+| `make itest` notes question fails | MCP/API timeout budget | check `MCP_BACKEND_TIMEOUT_SECONDS`/`MCP_TIMEOUT_SECONDS`; the defaults nest 40 < 45 < 50 |
+| alert fires with `stuck_run` | a killed ingest container left a `running` row | `docker compose restart ingest`; the scheduler closes it at startup |
 | Wrong note cited | retrieval near-match | improve note wording; do not lower threshold blindly |
 
 ## Evidence

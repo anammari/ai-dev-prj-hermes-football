@@ -50,3 +50,12 @@ real responses against the contract's own schemas.
 6. **Eval `metrics`:** stored as JSON rather than a column per metric, because the metric set is owned by the harness
    (`evals/golden/README.md`) and a contract-shaped column each would invite the two to drift. `eval_results.run_id` is
    the one eval column the contract does not expose: a result is always served inside its run.
+
+## Operations state (M6, no schema change)
+
+M6 adds no migration. The alert state lives in the `oncall-reports` volume (`alerts.json`) and as the
+`hermes_alert_firing` metric, not in a table: a firing flag in Postgres would be a second source of truth next to the
+ledger, and the ledger is what the evaluator reads. The daily digest is a Markdown file in the same volume. The
+`oncall` role is `agent_readonly`, and its queries never select `agent_turns.user_message` or `.answer`
+(`tests/test_oncall.py`). The four observability volumes (`prometheus-data`, `loki-data`, `tempo-data`, `grafana-data`)
+hold 7-day telemetry and are not product state.

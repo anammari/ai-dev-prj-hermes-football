@@ -126,7 +126,7 @@ not a continuation of the same trend; the hollow point is a run that failed. The
 
 ### System — the API's own probe
 
-![The system page: API ok on version 0.4.0, database ok on schema 0004, uptime, a contract card linking Swagger UI, and a table of the degraded states](assets/dashboard_system.png)
+![The system page: API ok on version 0.4.0 (M5 screenshot), database ok on schema 0004, uptime, a contract card linking Swagger UI, and a table of the degraded states](assets/dashboard_system.png)
 
 The one unauthenticated operation in the contract, and the page that still works when a token is misconfigured. Schema
 revision `0004_evals_and_admin_review` is the same one the migration created.
@@ -138,7 +138,7 @@ deliberately not published: one contract, one source of truth, checked by a drif
 
 ### The served description
 
-![The top of Swagger UI: title "Hermes Football API", version 0.4.0 and OAS 3.0 badges, and the normative sections on the grounding contract, free-tier coverage, data freshness, authentication and MCP tools](assets/swagger_p1.png)
+![The top of Swagger UI: title "Hermes Football API", version 0.4.0 (M5 screenshot) and OAS 3.0 badges, and the normative sections on the grounding contract, free-tier coverage, data freshness, authentication and MCP tools](assets/swagger_p1.png)
 
 The document's own front matter: what every factual response must carry (`source`, `data_as_of`,
 `upstream_delay_minutes`), why some fields are optional, the two tokens and their scopes, and the `x-mcp-tool`
