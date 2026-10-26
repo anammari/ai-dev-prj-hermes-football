@@ -17,12 +17,21 @@ Try it: open the bot, send `/start`, then ask:
 
 Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#local-test-runbook).
 
+## Dashboard and API contract
+
+The dashboard is a Next.js app over the same 17-operation contract the agent uses: freshness first, then standings,
+fixtures, the masked audit log with its one admin write, and the golden-question scoreboard. It renders server-side, so
+no API token reaches the browser, and every factual page carries its data timestamp and source. The API serves
+`openapi.yaml` verbatim, so the Swagger UI at `/docs` shows the reviewed contract rather than a second, generated one.
+
+Screenshots of all seven dashboard pages and both Swagger views: [`_docs/gallery.md`](_docs/gallery.md).
+
 ## Repository map
 
 ```text
 .
 ├── README.md, AGENTS.md, CLAUDE.md        entry point, agent rules, operational rules
-├── openapi.yaml                          API contract, v0.3.0
+├── openapi.yaml                          API contract, v0.4.0
 ├── docker-compose.yml, Dockerfile, Makefile
 ├── _docs/
 │   ├── setup-and-review.md               launch, test, review, troubleshooting
@@ -33,8 +42,9 @@ Local reviewer runbook: [`_docs/setup-and-review.md`](_docs/setup-and-review.md#
 │   ├── notes-sources.md                  public source URL per note
 │   ├── agent-team.md                     roles and hand-offs
 │   ├── ai-usage-report.md                delegated, reviewed, rejected, evidence
-│   └── decisions/                        one-page records 0001–0007
-├── backend/                              FastAPI read-only API over Postgres
+│   ├── gallery.md                        screenshots of the dashboard and the contract
+│   └── decisions/                        one-page records 0001–0008
+├── backend/                              FastAPI API over Postgres (one admin write)
 ├── db/                                   SQLAlchemy models, Alembic migrations
 ├── ingest/                               football-data.org client, loaders, scheduler, knowledge index
 ├── mcp_server/                           eight read-only MCP tools over HTTP
@@ -110,6 +120,7 @@ browser. Review bot setup, the dashboard walk-through and the Telegram test step
 - [`_docs/product-spec.md`](_docs/product-spec.md) — requirements, acceptance criteria, milestones
 - [`_docs/rag.md`](_docs/rag.md) — notes, chunking, embeddings, retrieval
 - [`_docs/data-model.md`](_docs/data-model.md) — tables and open items
+- [`_docs/gallery.md`](_docs/gallery.md) — the dashboard and the served contract, in screenshots
 - [`_docs/notes-sources.md`](_docs/notes-sources.md) — source URLs for every note
 - [`_docs/agent-team.md`](_docs/agent-team.md) — roles and process
 - [`_docs/permissions.md`](_docs/permissions.md) — every capability, its role and its bound
