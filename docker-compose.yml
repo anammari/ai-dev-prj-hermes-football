@@ -77,7 +77,19 @@ services:
       ollama:
         condition: service_healthy
     environment:
-      <<: *app-env
+      # The read path logs in as `agent_readonly`; M6 hands it that DSN directly so the owner password
+      # never enters this container (rule 4). The admin engine swaps in the narrow `agent_admin` role
+      # only when API_ADMIN_TOKEN is set, and it still uses this base URL's host and database.
+      DATABASE_URL: postgresql+psycopg://${AGENT_DB_ROLE:-agent_readonly}:${AGENT_DB_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
+      AGENT_DB_ROLE: ${AGENT_DB_ROLE:-agent_readonly}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-}
+      AGENT_ADMIN_DB_ROLE: ${AGENT_ADMIN_DB_ROLE:-agent_admin}
+      AGENT_ADMIN_DB_PASSWORD: ${AGENT_ADMIN_DB_PASSWORD:-}
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-embeddinggemma:300m}
+      OLLAMA_EMBED_DIM: ${OLLAMA_EMBED_DIM:-768}
+      OLLAMA_EMBED_TIMEOUT_SECONDS: ${OLLAMA_EMBED_TIMEOUT_SECONDS:-40}
+      KNOWLEDGE_DIR: /corpus
       # No default: an empty token makes every agent-facing request 401 rather than opening the API.
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       # Empty disables the one write path (the review button); it is never an open door.
@@ -86,13 +98,18 @@ services:
       INGEST_SCHEDULE_HOUR: ${INGEST_SCHEDULE_HOUR:-2}
       INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
       INGEST_TIMEZONE: ${INGEST_TIMEZONE:-UTC}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-backend
+    networks: [default, obs]
     # The API is the only published port in the stack (_docs/product-spec.md §4). Everything else
     # talks to it over the Compose network by service name.
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
-    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # `--no-access-log`: uvicorn prints the query string, and `/search/knowledge?q=...` is user text.
+    # The app logs the route template instead (backend/app.py).
+    command: ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     # The probe hits the one operation the contract marks `security: []`, so a healthy container is
     # also one whose token is misconfigured without the healthcheck failing for the wrong reason.
     healthcheck:
@@ -149,7 +166,12 @@ services:
       BACKEND_BASE_URL: http://backend:8000
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      # One budget under the gateway's wait, and over the API's own embedding deadline.
+      MCP_BACKEND_TIMEOUT_SECONDS: ${MCP_BACKEND_TIMEOUT_SECONDS:-45}
       PUBLIC_NOTES_BASE_URL: ${PUBLIC_NOTES_BASE_URL:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-mcp
+    networks: [default, obs]
     command: ["python", "-m", "mcp_server"]
     healthcheck:
       test:
@@ -177,6 +199,9 @@ services:
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       MCP_URL: http://mcp-server:8100/mcp
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      MCP_TIMEOUT_SECONDS: ${MCP_TIMEOUT_SECONDS:-50}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-gateway
       AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
       CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
       ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
@@ -187,6 +212,7 @@ services:
       TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
       TELEGRAM_ADMIN_USERS: ${TELEGRAM_ADMIN_USERS:-}
       GATEWAY_PORT: "8200"
+    networks: [default, obs]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -217,6 +243,9 @@ services:
       API_AGENT_TOKEN: ${API_AGENT_TOKEN:?set API_AGENT_TOKEN in .env - run `make setup`}
       MCP_URL: http://mcp-server:8100/mcp
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      MCP_TIMEOUT_SECONDS: ${MCP_TIMEOUT_SECONDS:-50}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-review
       AGENT_TURN_DSN: postgresql+psycopg://${AGENT_DB_WRITER_ROLE:-agent_writer}:${AGENT_DB_WRITER_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
       CHAT_HASH_SALT: ${CHAT_HASH_SALT:-}
       ROUTER_BASE_URL: ${ROUTER_BASE_URL:-http://host.docker.internal:11434}
@@ -230,6 +259,7 @@ services:
       TELEGRAM_MIN_INTERVAL_SECONDS: ${TELEGRAM_REVIEW_MIN_INTERVAL_SECONDS:-5}
       TELEGRAM_MAX_MESSAGE_CHARS: ${TELEGRAM_REVIEW_MAX_MESSAGE_CHARS:-500}
       GATEWAY_PORT: "8201"
+    networks: [default, obs]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -264,11 +294,58 @@ services:
       INGEST_SCHEDULE_MINUTE: ${INGEST_SCHEDULE_MINUTE:-0}
       INGEST_TIMEZONE: ${INGEST_TIMEZONE:-UTC}
       RAW_PAYLOAD_RETENTION_DAYS: ${RAW_PAYLOAD_RETENTION_DAYS:-30}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-ingest
+    networks: [default, obs]
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["python", "-m", "ingest", "schedule"]
     mem_limit: 512m
     cpus: 1
+
+  oncall:
+    build:
+      context: .
+      target: app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Read-only role. The owner DSN is not passed: a digest that could write would not be an audit.
+      ONCALL_DB_DSN: postgresql+psycopg://${AGENT_DB_ROLE:-agent_readonly}:${AGENT_DB_PASSWORD:-}@db:5432/${POSTGRES_DB:-hermes}
+      ONCALL_STALE_MINUTES: ${FRESHNESS_MAX_AGE_MINUTES:-1560}
+      ONCALL_CONSECUTIVE_FAILURES: ${ONCALL_CONSECUTIVE_FAILURES:-2}
+      ONCALL_REQUIRED_BREACHES: ${ONCALL_REQUIRED_BREACHES:-2}
+      ONCALL_RUNNING_STALE_HOURS: ${ONCALL_RUNNING_STALE_HOURS:-3}
+      ONCALL_CHECK_SECONDS: ${ONCALL_CHECK_SECONDS:-60}
+      ONCALL_DIGEST_HOUR: ${ONCALL_DIGEST_HOUR:-7}
+      ONCALL_TIMEZONE: ${ONCALL_TIMEZONE:-UTC}
+      ONCALL_EVAL_MAX_AGE_DAYS: ${ONCALL_EVAL_MAX_AGE_DAYS:-8}
+      ONCALL_REPORT_DIR: /reports
+      ONCALL_PORT: "8300"
+      # Off by default: enabling this is the owner's egress decision (decision 0010). The token is a
+      # separate bot token, and `agent/oncall/notify.py` can only send the fixed alert template.
+      ALERT_TELEGRAM_ENABLED: ${ALERT_TELEGRAM_ENABLED:-false}
+      TELEGRAM_ALERT_BOT_TOKEN: ${TELEGRAM_ALERT_BOT_TOKEN:-}
+      TELEGRAM_ALERT_CHAT_ID: ${TELEGRAM_ALERT_CHAT_ID:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: hermes-oncall
+      GIT_COMMIT: ${GIT_COMMIT:-}
+    networks: [default, obs]
+    volumes:
+      - oncall-reports:/reports
+    command: ["python", "-m", "agent.oncall"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8300/health').read()"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
 
   # ---------------------------------------------------------------------------------------------
   # Tools. On demand, never started by `make up`: `make models`, `make migrate`, `make test`, ...
@@ -346,12 +423,22 @@ services:
       COMPOSER_MODEL: ${COMPOSER_MODEL:-beam:cloud}
       MCP_URL: http://mcp-server:8100/mcp
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN:-}
+      MCP_TIMEOUT_SECONDS: ${MCP_TIMEOUT_SECONDS:-50}
+    networks: [default, obs]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./hermes/agent-knowledge:/corpus:ro
     command: ["pytest", "-q", "-m", "not integration"]
 
+networks:
+  # The telemetry network is internal: containers on it can talk to each other and nothing else.
+  # It is how "observability is local" is enforced rather than promised. The app services join it in
+  # addition to the default network; the obs stack joins only this one.
+  obs:
+    internal: true
+
 volumes:
   pgdata:
   ollama-data:
+  oncall-reports:

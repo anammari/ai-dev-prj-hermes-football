@@ -1,9 +1,10 @@
-# Gallery — the Telegram bot, the dashboard and the served API contract
+# Gallery — the Telegram bot, the dashboard, the served API contract and observability
 
-The dashboard and contract screenshots are from a local `make up` on 26 October 2026; the Telegram screenshots are
-from the public review bot on 23 October 2026. The free tier is delayed, so every timestamp here is the provider's, never
-the clock. Nothing is mocked: the pages read the same `openapi.yaml` the agent reads, and the bot answers through the
-same router, tools and notes the tests exercise.
+The dashboard and contract screenshots are from a local `make up` on 26 October 2026; the observability screenshots
+are from the opt-in `make obs-up` stack on 27 October 2026; the Telegram screenshots are from the public review bot on
+23 October 2026. The free tier is delayed, so every timestamp here is the provider's, never the clock. Nothing is
+mocked: the pages read the same `openapi.yaml` the agent reads, and the bot answers through the same router, tools and
+notes the tests exercise.
 
 ## The Hermes Soccer Telegram Bot
 
@@ -126,7 +127,7 @@ not a continuation of the same trend; the hollow point is a run that failed. The
 
 ### System — the API's own probe
 
-![The system page: API ok on version 0.4.0, database ok on schema 0004, uptime, a contract card linking Swagger UI, and a table of the degraded states](assets/dashboard_system.png)
+![The system page: API ok on version 0.4.0 (M5 screenshot), database ok on schema 0004, uptime, a contract card linking Swagger UI, and a table of the degraded states](assets/dashboard_system.png)
 
 The one unauthenticated operation in the contract, and the page that still works when a token is misconfigured. Schema
 revision `0004_evals_and_admin_review` is the same one the migration created.
@@ -138,7 +139,7 @@ deliberately not published: one contract, one source of truth, checked by a drif
 
 ### The served description
 
-![The top of Swagger UI: title "Hermes Football API", version 0.4.0 and OAS 3.0 badges, and the normative sections on the grounding contract, free-tier coverage, data freshness, authentication and MCP tools](assets/swagger_p1.png)
+![The top of Swagger UI: title "Hermes Football API", version 0.4.0 (M5 screenshot) and OAS 3.0 badges, and the normative sections on the grounding contract, free-tier coverage, data freshness, authentication and MCP tools](assets/swagger_p1.png)
 
 The document's own front matter: what every factual response must carry (`source`, `data_as_of`,
 `upstream_delay_minutes`), why some fields are optional, the two tokens and their scopes, and the `x-mcp-tool`
@@ -151,3 +152,66 @@ convention that marks the operations the agent may call.
 Operations grouped by tag, with a padlock on each one that needs the bearer token. `/health`, `/openapi.yaml` and
 `/docs` are the only open ones; the eval reads and the admin write carry no `x-mcp-tool`, so the agent can never read
 its own score or review itself.
+
+## Observability Dashboard
+
+The screenshots below are from the local observability stack on 27 October 2026, started with `make obs-up`. Five
+containers sit beside the application: an OpenTelemetry collector, Prometheus, Loki, Tempo and Grafana. They run on a
+separate Compose profile and cost about 1.4 GB, so the default `make up` does not start them. The collector receives
+OTLP from the API, the MCP server, the gateway, ingest and the on-call agent; Prometheus scrapes the collector, Loki
+stores logs and Tempo stores traces. Grafana is bound to `127.0.0.1:3001`, has no login and runs as an anonymous
+Editor (the Viewer role cannot open Explore in Grafana 11.3, but an Editor cannot manage datasources, users or org
+settings). It must never be tunnelled. Nothing here leaves the machine: there is no vendor endpoint, and the alert is
+evaluated by `oncall` against Postgres, not by Grafana.
+
+### Grafana — the overview board
+
+![The Grafana dashboard "Hermes Football — overview" over the last six hours: API requests 256, API p95 latency 4.75 s, Turns (1h) No data, Alert firing 0, an API requests by route chart with /health, /meta/freshness and /meta/ingest-runs, and the start of the p95-by-route and tool panels below](assets/Observability%20-%20Grafana%20overview.png)
+
+One screen over the five services. The API counters and the p95 are the request path; the routes are templates, so
+`/meta/freshness` is one series rather than one per call. Turns shows **No data** because the six-hour window had no
+Telegram or `make ask` turn — an honest empty state, not a broken panel. Alert firing is `0`; the alert itself is
+covered on the next board.
+
+### Grafana — freshness and on-call
+
+![The Grafana dashboard "Hermes Football — freshness and on-call" over the last 24 hours: max data age 19.6 hours, alert firing 0, 506 on-call checks, a digests counter, data age by competition rising towards 20 hours against the 1560-minute threshold, alert state over time with a short spike near 01:00, and on-call log lines including "digest written" and "telemetry enabled"](assets/Observability%20-%20freshness%20and%20on-call.png)
+
+The data-age panel is the same number `/meta/freshness` serves, one line per competition; at 19.6 hours it is under
+the 26-hour threshold, which is why the alert is `0`. The orange spike in the alert timeline is the recorded
+stale-ingestion drill, not an incident: the evaluator fired with a one-minute threshold, then resolved. The log panel
+is live Loki output from `oncall` and `ingest`, including the digest write at 08:19.
+
+### Explore — Tempo traces
+
+![Grafana Explore with the Tempo datasource over the last 15 minutes: Service Name hermes-backend, TraceQL {resource.service_name="hermes-backend"}, a Traces table with GET /meta/freshness at 50 ms and 118 ms and GET /meta/ingest-runs at 83 ms](assets/Observability%20-%20Grafana%20-%20Explore%20-%20Tempo.png)
+
+A trace per API request. The table names the route and the service; opening a row shows the child spans and the
+`request_id`. The span attributes carry the route template and the status, never the query string, so a search term
+cannot leak into Tempo.
+
+### Explore — Loki logs
+
+![Grafana Explore with the Loki datasource over the last hour: query {service_name="hermes-backend"} |= "route=/meta/freshness", a logs-volume chart and two expanded log lines showing request method=GET route=/meta/freshness status=200 duration_ms=53.5 request_id=... with a traceid](assets/Observability%20-%20Grafana%20-%20Explore%20-%20Loki.png)
+
+The same request as a log line. It carries `request_id`, the route template, the status and the duration — not the
+query string. The `traceid` in the line opens the trace in Tempo, which is how a log and a span are joined without
+copying text into either. This is the line the app logs instead of uvicorn's access log, which prints the query.
+
+### Explore — Prometheus metrics
+
+#### A counter over time
+
+![Grafana Explore with the Prometheus datasource over the last 15 minutes: query sum(hermes_http_requests_total{route="/meta/freshness"}), a graph rising from 5 to 6, then dropping to 2 at 09:18 and remaining there](assets/Observability%20-%20Grafana%20-%20Explore%20-%20Prometheus%20P1.png)
+
+Each curl increments the counter. The drop at 09:18 is the backend process restarting after a rebuild: a Prometheus
+counter resets to zero in the new process, and the graph shows the reset rather than a negative rate. The series is
+exported every 15 seconds.
+
+#### The exact series and its labels
+
+![Grafana Explore with the Prometheus datasource: query hermes_http_requests_total{route="/meta/freshness", status="200"}, a label tooltip listing _name_, deployment_environment=local, exported_job=hermes-backend, instance=otel-collector:8889, method=GET, route=/meta/freshness, service_name=hermes-backend, service_version=0.4.1, status=200, and the OpenTelemetry SDK version](assets/Observability%20-%20Grafana%20-%20Explore%20-%20Prometheus%20P2.png)
+
+The labels are the join key for every panel: `service_name`, `route`, `status` and `service_version`. The
+`instance` is the collector, because Prometheus scrapes the collector rather than the app — the application exposes
+no `/metrics` route, which keeps the reviewed API contract at 19 operations.

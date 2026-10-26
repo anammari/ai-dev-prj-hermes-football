@@ -21,8 +21,13 @@ from agent.config import AgentSettings
 from agent.gateway.factory import Runtime, build_runtime
 from agent.gateway.telegram import Incoming, TelegramClient, TelegramError, parse_update
 from agent.turn_log import TurnLogError, hash_chat_id
+from telemetry import configure as configure_telemetry
+from telemetry import instrument_app as instrument_telemetry
+from telemetry import shutdown as shutdown_telemetry
 
 LOGGER = logging.getLogger("hermes.gateway")
+# Same reason as backend/app.py: uvicorn's root is WARNING, and "turn recorded" is an INFO audit line.
+LOGGER.setLevel(logging.INFO)
 
 WELCOME = (
     "I'm Hermes Football. I answer from stored football data and from a small set of rules notes.\n\n"
@@ -154,6 +159,7 @@ def create_app(
     telegram: TelegramClient | None = None,
 ) -> FastAPI:
     settings = settings or AgentSettings.from_env()
+    telemetry_on = configure_telemetry("hermes-gateway")
     runtime = runtime or build_runtime(settings)
     if telegram is None and settings.telegram_enabled:
         telegram = TelegramClient(settings.telegram_bot_token or "")
@@ -166,6 +172,8 @@ def create_app(
             yield
         finally:
             await asyncio.to_thread(gateway.shutdown)
+            if telemetry_on:
+                shutdown_telemetry()
 
     app = FastAPI(
         title="Hermes Football gateway",
@@ -174,6 +182,7 @@ def create_app(
         redoc_url=None,
         lifespan=lifespan,
     )
+    instrument_telemetry(app)
     app.state.gateway = gateway
 
     @app.get("/health")

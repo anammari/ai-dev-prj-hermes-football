@@ -1,0 +1,11 @@
+# CI-only override: use the stock upstream Ollama image instead of building the derived CPU-only one.
+#
+# The derived image exists to return ~6.4 GB of CUDA trees on a developer laptop; on an ephemeral
+# runner that space saving is irrelevant, and pulling the pinned upstream image is faster than
+# building the flattening stage. `build: null` removes the inherited build stanza so Compose cannot
+# decide to rebuild the local image.
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.2
+    build: null

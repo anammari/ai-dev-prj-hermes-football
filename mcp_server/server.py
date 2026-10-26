@@ -1,4 +1,4 @@
-"""MCP over HTTP: a minimal JSON-RPC server exposing the seven read-only football tools.
+"""MCP over HTTP: a minimal JSON-RPC server exposing the eight read-only football tools.
 
 The protocol surface is the small part of MCP needed by a tool host: `initialize`, `tools/list` and
 `tools/call` over one POST endpoint. It is HTTP rather than stdio so the server is its own container
@@ -12,22 +12,35 @@ Authentication reuses the backend's agent token (`MCP_SERVER_TOKEN` if set, othe
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
+import time
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.responses import JSONResponse
 
 from mcp_server import __version__
-from mcp_server.backend import Backend, BackendError
+from mcp_server.backend import DEFAULT_BACKEND_TIMEOUT, Backend, BackendError
 from mcp_server.tools import TOOLS, ToolContext, call
+from telemetry import configure as configure_telemetry
+from telemetry import get_tracer
+from telemetry import instrument_app as instrument_telemetry
+from telemetry import metrics as telemetry_metrics
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "hermes-football-mcp"
 
+tracer = get_tracer("hermes.mcp")
+
 
 def _server_token() -> str | None:
     return (os.environ.get("MCP_SERVER_TOKEN") or os.environ.get("API_AGENT_TOKEN") or "").strip() or None
+
+
+def backend_timeout() -> float:
+    """The wait for one backend response. Read at request time so a container can be retuned."""
+    return float(os.environ.get("MCP_BACKEND_TIMEOUT_SECONDS") or DEFAULT_BACKEND_TIMEOUT)
 
 
 def _error(request_id: object, code: int, message: str) -> dict:
@@ -48,7 +61,9 @@ def _tool_result(payload: dict, *, is_error: bool = False) -> dict:
 
 
 def create_app(*, backend: Backend | None = None, token: str | None = None) -> FastAPI:
+    configure_telemetry("hermes-mcp", version=__version__)
     app = FastAPI(title="Hermes Football MCP", version=__version__, docs_url=None, redoc_url=None)
+    instrument_telemetry(app)
     app.state.backend = backend
     app.state.context = ToolContext(backend) if backend is not None else None
     app.state.token = token
@@ -58,6 +73,7 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
             app.state.context = ToolContext(Backend(
                 base_url=os.environ.get("BACKEND_BASE_URL", "http://backend:8000"),
                 token=os.environ.get("API_AGENT_TOKEN"),
+                timeout=backend_timeout(),
             ))
         return app.state.context
 
@@ -65,10 +81,16 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
         return app.state.token if app.state.token is not None else _server_token()
 
     def authorised(header: str | None) -> bool:
+        """Constant-time comparison of the whole credential.
+
+        The token guards a tool server that can read every served table, so a str `==` is a timing
+        side channel that costs nothing to remove. Comparing the rendered header also covers the
+        scheme, exactly as the backend does for its own bearer token.
+        """
         expected = expected_token()
         if not expected:
             return False
-        return header == f"Bearer {expected}"
+        return hmac.compare_digest((header or "").encode("utf-8"), f"Bearer {expected}".encode())
 
     def handle_batch(messages: list) -> list[dict]:
         return [response for response in (handle(item) for item in messages) if response is not None]
@@ -112,8 +134,19 @@ def create_app(*, backend: Backend | None = None, token: str | None = None) -> F
                 return _error(request_id, -32602, f"unknown tool {name!r}")
             if not isinstance(arguments, dict):
                 return _error(request_id, -32602, "arguments must be an object")
+            started = time.perf_counter()
             try:
-                payload = call(context(), name, arguments)
+                with tracer.start_as_current_span("mcp.tool.call", record_exception=False) as span:
+                    span.set_attribute("tool", name)
+                    try:
+                        payload = call(context(), name, arguments)
+                    except (ValueError, TypeError, BackendError):
+                        span.set_attribute("status", "error")
+                        telemetry_metrics.MCP_CALLS.add(1, {"tool": name, "status": "error"})
+                        raise
+                    span.set_attribute("status", "ok")
+                    telemetry_metrics.MCP_CALLS.add(1, {"tool": name, "status": "ok"})
+                    telemetry_metrics.MCP_DURATION.record(time.perf_counter() - started, {"tool": name})
             except (ValueError, TypeError) as error:
                 return _error(request_id, -32602, str(error))
             except BackendError as error:

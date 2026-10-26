@@ -11,6 +11,13 @@ from dataclasses import dataclass
 
 import httpx
 
+#: How long the MCP server waits for the backend. A knowledge search embeds the query on local CPU
+#: and was measured at 13-18.5 s on the retained stack; the old 15 s budget made that endpoint a coin
+#: flip (S16 recorded 9-11 s, and the corpus/load has grown since). The three budgets must nest: the
+#: embedding call is innermost, then this HTTP wait, then the gateway's MCP wait. The ordering is
+#: asserted in `tests/test_timeout_budget.py`, so one number cannot drift out of place unnoticed.
+DEFAULT_BACKEND_TIMEOUT = 45.0
+
 
 class BackendError(RuntimeError):
     def __init__(self, message: str, *, status: int | None = None) -> None:
@@ -25,7 +32,7 @@ class Envelope:
 
 
 class Backend:
-    def __init__(self, base_url: str, token: str | None, timeout: float = 15.0) -> None:
+    def __init__(self, base_url: str, token: str | None, timeout: float = DEFAULT_BACKEND_TIMEOUT) -> None:
         if not token:
             raise BackendError("API_AGENT_TOKEN is unset: the tool server refuses to call an open API")
         self._client = httpx.Client(

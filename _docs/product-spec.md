@@ -14,13 +14,14 @@ support an answer.
 | User | Need | Surface |
 | --- | --- | --- |
 | Football fan | Correct fixtures, results, tables, form, head-to-head, rules | Telegram bot |
-| Owner | Freshness, quality, turn audit, ingestion control | Dashboard (planned) + Telegram admin |
+| Owner | Freshness, quality, turn audit, ingestion control | Dashboard + Telegram admin |
 | Reviewer | Reproduce and check the claims | Repository, tests, evals, docs |
 
 ## 3. Scope
 
 **In:** daily ingestion, read-only API, MCP tools, Telegram agent, notes corpus + retrieval, turn log, routing gate,
-dashboard, golden-question eval scoreboard, tests.
+dashboard, golden-question eval scoreboard, CI/CD, observability, one alert, on-call digest, security artifacts,
+tests.
 
 **Out:** live scores, odds, lineups, xG, predictions, betting advice, accounts/payments, Kubernetes, model training.
 
@@ -30,19 +31,22 @@ Everything runs in one Compose project. `hermes` long-polls Telegram (no inbound
 backend API. `backend` is the only component that reads Postgres for serving; `frontend` is the only other component
 with a published port. `ingest` writes; `ollama` embeds locally; `db` stores data and vectors.
 
-**Published ports, and only these two:** `backend` on `${BACKEND_PORT:-8000}` and `frontend` (the dashboard) on
-`${FRONTEND_PORT:-3000}`. Both are for a human on this machine; the Telegram bot needs no inbound port. The dashboard
-reaches the API server-side with `API_AGENT_TOKEN` and never sends that token to the browser, so a tunnel exposes
-rendered pages, not credentials. A tunnel is demo-only: no permanent hostname, and it is stopped after a demo.
+**Published ports in the default stack, and only these two:** `backend` on `${BACKEND_PORT:-8000}` and `frontend`
+(the dashboard) on `${FRONTEND_PORT:-3000}`. Both are for a human on this machine; the Telegram bot needs no inbound
+port. The dashboard reaches the API server-side with `API_AGENT_TOKEN` and never sends that token to the browser, so a
+tunnel exposes rendered pages, not credentials. A tunnel is demo-only: no permanent hostname, and it is stopped after
+a demo. The opt-in observability profile adds one more: Grafana on `127.0.0.1:${GRAFANA_PORT:-3001}`, loopback-bound,
+anonymous Editor, never tunnelled. `docker-compose.observability.yml` is not started by `make up`.
 
 No service mounts the Docker socket. The corpus is read-only. `hermes` `terminal.backend` stays local inside its
 container.
 
 **Egress:** routing sends the user message to `clef:cloud` (decision 0003). The simple answer path stays local. The
 complex path sends the collected tool results or note passages to `beam:cloud`; signed off for complex questions only
-(decision 0007). Embeddings and note retrieval stay local. **M5 adds no new egress path:** the eval scores
-deterministically (no model judge), and the verifier it validates is the same complex-path guard that was already
-signed off. No other cloud call is allowed without a policy decision.
+(decision 0007). Embeddings and note retrieval stay local. **M6 adds no data egress path:** telemetry is push-only to a
+local collector on an internal network; `agent/oncall` reads Postgres and calls no model; owner-Telegram alert delivery
+is opt-in, off by default, uses a separate bot token and a fixed counter/timestamp template (decision 0010). No other
+cloud call is allowed without a policy decision.
 
 ## 5. Functional requirements
 
@@ -66,14 +70,16 @@ signed off. No other cloud call is allowed without a policy decision.
 
 ### F3 — Backend API (`backend/`)
 
-- FastAPI against `openapi.yaml` v0.4.0; every agent-facing endpoint needs `API_AGENT_TOKEN`.
+- FastAPI against `openapi.yaml` v0.4.1; every agent-facing endpoint needs `API_AGENT_TOKEN`.
 - No token configured means refuse everything, not open up.
 - Errors use the contract's own shape (`400`, `401`, `404`, `503`); `data_as_of` on factual payloads.
-- 17 operations: the 15 read operations, the two eval reads, and the one admin write the dashboard uses.
+- **19 operations** (contract v0.4.1): 3 open meta operations, 12 read operations, the 2 eval reads, and the 2 admin
+  operations (the review write and the documented ingest-trigger `404`).
 - `PATCH /admin/agent-turns/{id}/review` is the only write: `API_ADMIN_TOKEN`, the `agent_admin` role, review columns
   only. An empty admin token answers `403` (disabled), never "open".
-- `POST /admin/ingest-runs` stays a documented `404` naming M6: it needs the ingest queue, because a request handler
-  must not start an upstream run (rule 3).
+- `POST /admin/ingest-runs` stays a documented `404`: it needs a queue the scheduler drains and a contract-visible
+  queue state, because a request handler must not start an upstream run (rule 3). Recorded as a post-M6 follow-up
+  (`_docs/follow-ups.md`); the contract description says so instead of naming a milestone that has passed.
 - **AC:** contract served verbatim, response validation in tests, drift fails on a renamed field, hidden route,
   reused operationId, changed bound or undeclared enum; the review write is the only writer in `backend/` and a test
   names it and the columns it may set.
@@ -145,10 +151,60 @@ through the shipped pipeline and stores a run in `eval_runs`/`eval_results` plus
   no citation fails); `make eval` on an unchanged set and index reproduces the routing score; the dashboard shows the
   run, its metrics and its per-question misses.
 
-### F10 — Observability, security, reproducibility
+### F10 — CI/CD, observability, alerting, on-call, security, reproducibility
 
-OTel traces/metrics/logs; one actionable alert; secret scan and dependency scan; no secrets in images or logs; one
-`make up` reproduces the stack. **Later.**
+**CI/CD.** `.github/workflows/ci.yml` runs on every pull request and on `main`: ruff + OpenAPI lint +
+actionlint; the unit and contract suite and the eval self-check; the dashboard lint/typecheck/Vitest and
+API-type check; gitleaks, `pip-audit`, `pnpm audit` and a `trivy fs` scan; the integration suite against a real
+Postgres + pgvector and a real, cached embedding model (the router/gateway test is excluded); and a Docker build. On
+`main` a browser job runs the Playwright suite. A nightly workflow re-runs the scans with fresh advisories and a
+full-history secret scan. **The eval and the router suite never run in CI:** both need the signed-off cloud models
+and are local, owner-run gates recorded in the PR template. CI holds no repository secret; the database values are
+throwaway literals.
+
+- **AC:** every required check is green on the pull request; a seeded secret and a seeded failing test each fail the
+  right job; no workflow job receives a repository secret; `make ci` is local parity and passes.
+
+**Observability.** `docker-compose.observability.yml`, opt-in through `profiles: [obs]` and `make obs-up`. Applications
+push OTLP to `otel-collector`; Prometheus scrapes the collector's exporter; Loki stores logs; Tempo stores traces;
+Grafana (loopback `:3001`, anonymous Editor) renders two provisioned dashboards. The four storage/scrape containers are
+on an internal network; Grafana also joins the default network only so its port can be published, with analytics,
+plugin download and update checks disabled. Telemetry is a no-op when `OTEL_EXPORTER_OTLP_ENDPOINT` is empty. A span
+or log carries a route, tool, status, latency or alert name — never a message, answer, chat id or token; the backend
+access log is disabled because its query string is user text.
+
+- **AC:** `make obs-up` gives five healthy containers; each of the five services has a metric and a trace; a request
+  appears in Prometheus, Tempo and Loki; no log line contains a user query; the obs profile costs < 2 GB and < 5 %
+  idle CPU; `make obs-down` restores a telemetry-off default stack.
+
+**Alerting.** One alert, `ingest_unhealthy`, evaluated every 60 s by `agent/oncall` against Postgres (not by Grafana
+and not by Prometheus): stale (newest successful/partial run older than `FRESHNESS_MAX_AGE_MINUTES`, 2 checks),
+repeated failure (2 consecutive, or 3 of 5), and a `running` row older than 3 h. It emits a structured transition log,
+`alerts.json`, and `hermes_alert_firing`. Owner Telegram is opt-in and off by default, with a separate bot token and a
+fixed template. The scheduler closes orphaned `running` rows at startup so a crash does not page forever.
+
+- **AC:** unit tests cover fresh/stale/failure/stuck/recovery with a frozen clock; `make alert-fire` prints a firing
+  payload with no wait; the recorded drill fires on the real ledger and resolves; no notification contains user text.
+
+**On-call agent.** The `oncall` container (same app image, `agent_readonly`, no model, no upstream, no DB write) runs
+the alert loop and, at `ONCALL_DIGEST_HOUR`, writes a daily digest: freshness per competition, run outcomes, stuck
+runs, turn mix/grounded rate, and eval age. It reports eval age but does **not** run the eval. Reports live in the
+`oncall-reports` volume and are copied out with `make oncall-report`.
+
+- **AC:** a digest is generated deterministically from one snapshot; the integration test proves the read-only role
+  and that no message/answer column is selected; the digest header names the window, the commit and the counts.
+
+**Security artifacts.** `security/capability-table.md` (every service, tool, token and job, with its bound),
+`security/threat-model.md`, `security/scans/` (generated; a redacted baseline committed), `.gitleaks.toml` and
+`Dependabot`. `make security-scan` runs gitleaks + `pip-audit` + `pnpm audit`; `make scan-images` runs trivy. A new
+capability without a row is a failing test.
+
+- **AC:** `tests/test_capability_table.py` covers every Compose service, MCP tool, token and job;
+  `tests/test_compose_policy.py` holds no-socket, limits, healthchecks, ports and the owner-DSN rule; `make
+  security-scan` passes with no secret and no high/critical production dependency.
+
+**Reproducibility.** One `make up` starts the eight default services; `make ci` reproduces the pull-request gates
+locally; the retained volumes survive `make down`; the cleanup routine is in `CLAUDE.md`.
 
 ## 6. Non-functional
 
@@ -167,7 +223,7 @@ Details and open items:
 ## 8. Milestones
 
 M1 schema/corpus/embedder → M2 ingestion/re-index → M3 API → M3b routing comparison → M4 agent on Telegram + notes
-→ M5 dashboard + eval scoreboard (done) → M6 CI/CD, observability, alerting, on-call, security.
+→ M5 dashboard + eval scoreboard → **M6 CI/CD, observability, alerting, on-call, security (done)**.
 
 ## 9. Success measures
 
@@ -179,6 +235,11 @@ M1 schema/corpus/embedder → M2 ingestion/re-index → M3 API → M3b routing c
 6. Routing at or above the selected target; no factual answer sourced from notes.
 7. The scoreboard shows the 0.90 target, one series per golden set, and keeps a failed run visible with its reasons.
 8. The dashboard shows provenance on every factual page, and no token reaches a browser.
+9. Every push is gated by lint, unit/contract, dashboard, security scans, the integration suite and a Docker build;
+   the eval stays a local owner gate.
+10. One alert fires on stale, repeatedly failing or stuck ingestion, is visible in the log, the metric and Grafana,
+    and can be demonstrated by a drill in minutes rather than a day.
+11. The on-call digest is read-only, carries no message text, and reports freshness, ingestion, turns and eval age.
 
 ## 10. Known limits
 
@@ -187,5 +248,9 @@ M1 schema/corpus/embedder → M2 ingestion/re-index → M3 API → M3b routing c
 - Scorer data is served; lineups, odds, live scores and xG are not available.
 - Complex answers use `beam:cloud`; the simple path is local.
 - The dashboard has no login: it is local, and a tunnel is demo-only. Message text on `/turns` is masked by default.
+- Observability is local-only. Grafana is loopback-bound, anonymous Editor and has no login; it must not be tunnelled.
+- Owner-Telegram alert delivery is opt-in and off by default; when enabled it carries counters and timestamps only.
+- The ingest trigger (`POST /admin/ingest-runs`) is still a documented `404`; closing it is a post-M6 follow-up.
+- No licence has been chosen; the repository is all-rights-reserved until the owner picks one.
 - Golden-set scoring is deterministic, not a model judge; "completeness" means required terms present, not prose
   quality.

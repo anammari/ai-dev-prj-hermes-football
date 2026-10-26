@@ -15,13 +15,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first, as their own layer.
+# Dependencies first, as their own layer. pip itself is upgraded first: the base image's pip is a
+# packaging tool, not a runtime dependency, but `pip-audit` reports its advisories too and a stale
+# installer is not worth a permanent exception in the security baseline.
+RUN pip install --no-cache-dir --upgrade pip
+
 COPY pyproject.toml ./
 COPY db ./db
 COPY ingest ./ingest
 COPY backend ./backend
 COPY agent ./agent
 COPY mcp_server ./mcp_server
+COPY telemetry ./telemetry
 RUN pip install --no-cache-dir ".[dev]"
 
 # Then everything else, so editing a test or a note does not rebuild the dependency layer.
@@ -31,8 +36,13 @@ COPY tests ./tests
 COPY evals ./evals
 COPY prompts ./prompts
 COPY hermes ./hermes
+# The capability table is read by `tests/test_capability_table.py`: the rule-7 register is a test
+# input, so the image has to carry it.
+COPY security ./security
 
-RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /reports \
+    && chown -R appuser:appuser /app /reports
 USER appuser
 
 # A bare `docker compose run tests` validates the corpus; the Makefile overrides this per target.

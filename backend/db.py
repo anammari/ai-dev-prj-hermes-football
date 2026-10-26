@@ -36,8 +36,15 @@ def agent_database_url(settings: Settings) -> str:
 
 
 def read_only(settings: Settings) -> bool:
-    """Whether the read path really connects as a different, read-only role."""
-    return agent_database_url(settings) != settings.database_url
+    """Whether the read path really connects as the read-only role.
+
+    Two deployments reach that state: the usual one swaps the owner credentials for the agent role,
+    and the M6 Compose service now hands the API an `agent_readonly` DSN in the first place so the
+    owner password never enters the container. Both are read-only; a SQLite dev run is not.
+    """
+    if agent_database_url(settings) != settings.database_url:
+        return True
+    return settings.is_postgres and make_url(settings.database_url).username == settings.agent_db_role
 
 
 def create_read_engine(settings: Settings) -> Engine:

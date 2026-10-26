@@ -24,8 +24,16 @@ from db.session import create_db_engine, create_session_factory, session_scope
 from db.settings import Settings
 from ingest.client import FootballDataClient
 from ingest.knowledge.embedding import OllamaEmbedder
-from ingest.pipeline import DEFAULT_RAW_RETENTION_DAYS, _safe_error, prune_raw_payloads, run_ingestion
+from ingest.pipeline import (
+    DEFAULT_RAW_RETENTION_DAYS,
+    _safe_error,
+    close_orphaned_runs,
+    prune_raw_payloads,
+    run_ingestion,
+)
 from ingest.scheduler import run_daily
+from telemetry import configure as configure_telemetry
+from telemetry import shutdown as shutdown_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +53,13 @@ def main() -> None:
     delay.add_argument("--recent-hours", type=int, default=6, help="how far back the default match may have kicked off")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    configure_telemetry("hermes-ingest")
     settings = Settings.from_env()
     engine = create_db_engine(settings)
     factory = create_session_factory(engine)
 
     raw_retention_days = int(os.environ.get("RAW_PAYLOAD_RETENTION_DAYS", DEFAULT_RAW_RETENTION_DAYS))
+
 
     def action(trigger: str = "manual") -> dict[str, Any]:
         with FootballDataClient(
@@ -81,6 +91,13 @@ def main() -> None:
         elif args.command == "schedule":
             # Fail at startup, not at the first scheduled run, when the token is missing or a placeholder.
             FootballDataClient(base_url=settings.upstream_base_url, api_key=settings.upstream_api_key).close()
+            # A killed container leaves a `running` row behind. The scheduler is the long-lived owner of
+            # the ledger, so this is where a dead run is decided dead. A manual `run` does not need it;
+            # the next scheduled start would close it anyway.
+            if factory is not None:
+                closed = close_orphaned_runs(factory)
+                if closed:
+                    logger.warning("closed %d orphaned running run(s): %s", len(closed), ", ".join(closed))
             run_daily(
                 lambda: print(json.dumps(action("schedule"), sort_keys=True), flush=True),
                 hour=int(os.environ.get("INGEST_SCHEDULE_HOUR", "2")),
@@ -99,6 +116,7 @@ def main() -> None:
             )
     finally:
         engine.dispose()
+        shutdown_telemetry()
 
 
 def _utc_now() -> datetime:

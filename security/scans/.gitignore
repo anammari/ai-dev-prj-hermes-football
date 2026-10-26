@@ -1,0 +1,5 @@
+# Generated scan output. The committed evidence is the baseline summary in this directory.
+latest/
+ci/
+*.json
+*.sarif

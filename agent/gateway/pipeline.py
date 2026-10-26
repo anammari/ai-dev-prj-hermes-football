@@ -27,6 +27,8 @@ from agent.gateway.planner import Planner
 from agent.gateway.verify import verify_complex
 from agent.router import Router
 from agent.turn_log import TurnLog
+from telemetry import get_tracer
+from telemetry import metrics as telemetry_metrics
 
 REFUSALS = {
     "instruction_override": (
@@ -41,6 +43,8 @@ REFUSALS = {
 CLARIFY = "Which team or competition do you mean? Name one and I'll look it up."
 TOOL_FAILED = "I can't check that right now. Please try again in a moment."
 COMPLEX_KNOWLEDGE_LIMIT = 8
+
+tracer = get_tracer("hermes.gateway")
 
 #: Called with (tool name, payload) for every successful tool call, when a caller wants the evidence
 #: as well as the answer. The eval harness is the only user: it needs to know exactly what an answer
@@ -109,7 +113,46 @@ class Pipeline:
         if self._record_evidence is not None:
             self._record_evidence(tool, payload)
 
+    def _call_tool(self, name: str, arguments: dict) -> dict:
+        """One MCP call, traced and counted. The arguments never reach a span: the query is user text."""
+        with tracer.start_as_current_span("mcp.tool.call", record_exception=False) as span:
+            span.set_attribute("tool", name)
+            started = time.perf_counter()
+            try:
+                payload = self._tools.call(name, arguments)
+            except (MCPToolError, MCPError):
+                span.set_attribute("status", "error")
+                telemetry_metrics.MCP_CALLS.add(1, {"tool": name, "status": "error"})
+                raise
+            telemetry_metrics.MCP_CALLS.add(1, {"tool": name, "status": "ok"})
+            telemetry_metrics.MCP_DURATION.record(time.perf_counter() - started, {"tool": name})
+            span.set_attribute("status", "ok")
+            return payload
+
     def answer(self, message: str, *, chat_id_hash: str | None = None) -> Answer:
+        """The one entry point, wrapped so every turn is a span and two counters.
+
+        The span records the route, source, complexity, tool count and latency. It deliberately does
+        not record the message, the answer or the chat id; `tests/test_telemetry.py` holds that line.
+        """
+        with tracer.start_as_current_span("gateway.turn", record_exception=False) as span:
+            answer = self._answer(message, chat_id_hash=chat_id_hash)
+            span.set_attribute("route", answer.route)
+            span.set_attribute("route_source", answer.route_source)
+            span.set_attribute("complexity", answer.complexity)
+            span.set_attribute("grounded", answer.grounded)
+            span.set_attribute("tool_calls", len(answer.tool_calls))
+            span.set_attribute("latency_ms", answer.latency_ms)
+            attributes = {
+                "route": answer.route,
+                "source": answer.route_source,
+                "complexity": answer.complexity,
+            }
+            telemetry_metrics.GATEWAY_TURNS.add(1, attributes)
+            telemetry_metrics.GATEWAY_DURATION.record(answer.latency_ms / 1000.0, attributes)
+            return answer
+
+    def _answer(self, message: str, *, chat_id_hash: str | None = None) -> Answer:
         started = time.perf_counter()
         decision = self._router.route(message)
         tool_calls: list[dict] = []
@@ -179,7 +222,7 @@ class Pipeline:
     def _simple_tool(self, message: str, tool: str) -> tuple[str, bool, datetime | None, list[dict]]:
         started = time.perf_counter()
         try:
-            payload = self._tools.call(tool, {"query": message})
+            payload = self._call_tool(tool, {"query": message})
         except (MCPToolError, MCPError):
             return TOOL_FAILED, False, None, [
                 {"tool": tool, "args_summary": {"query": message}, "status": "error", "latency_ms": 0}
@@ -197,7 +240,7 @@ class Pipeline:
     def _simple_knowledge(self, message: str) -> tuple[str, bool, list[dict]]:
         started = time.perf_counter()
         try:
-            payload = self._tools.call("search_knowledge", {"query": message})
+            payload = self._call_tool("search_knowledge", {"query": message})
         except (MCPToolError, MCPError):
             return TOOL_FAILED, False, [
                 {"tool": "search_knowledge", "args_summary": {"query": message}, "status": "error", "latency_ms": 0}
@@ -224,7 +267,7 @@ class Pipeline:
         for name in steps:
             started = time.perf_counter()
             try:
-                payload = self._tools.call(name, {"query": message})
+                payload = self._call_tool(name, {"query": message})
                 payloads[name] = payload
                 self._evidence(name, payload)
                 calls.append(
@@ -270,7 +313,7 @@ class Pipeline:
         assert self._composer is not None
         started = time.perf_counter()
         try:
-            payload = self._tools.call("search_knowledge", {"query": message, "k": COMPLEX_KNOWLEDGE_LIMIT})
+            payload = self._call_tool("search_knowledge", {"query": message, "k": COMPLEX_KNOWLEDGE_LIMIT})
         except (MCPToolError, MCPError):
             failed = {
                 "tool": "search_knowledge",

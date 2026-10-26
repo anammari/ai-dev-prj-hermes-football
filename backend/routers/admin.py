@@ -10,9 +10,10 @@ engine. Three things keep it bounded:
   and nothing else (`0004_evals_and_admin_review`);
 * it writes `agent_turns` only. No football table, no DDL, no arbitrary SQL.
 
-**`POST /admin/ingest-runs` stays a contract-shaped `404`, now owned by M6.** A request handler must
-not start an upstream run (`AGENTS.md` rule 3); the trigger needs a queue the `ingest` container
-drains, which is a scheduler feature with its own migration. `UNIMPLEMENTED` is the single list this
+**`POST /admin/ingest-runs` stays a contract-shaped `404`, owned by a recorded post-M6 follow-up.**
+A request handler must not start an upstream run (`AGENTS.md` rule 3); the trigger needs a queue the
+`ingest` container drains, and a contract-visible queue state, which is a product/API change rather
+than an operations one (`_docs/follow-ups.md`). `UNIMPLEMENTED` is the single list this
 module and `tests/test_api_contract.py` share, so the gap can only ever be closed by deleting an
 entry, never by forgetting one.
 """
@@ -41,9 +42,10 @@ from backend.services import reviews
 #: operation id -> (the milestone that owns it, why it is not here)
 UNIMPLEMENTED: dict[str, tuple[str, str]] = {
     "triggerIngestRun": (
-        "M6",
-        "needs the ingest container to own the run: rule 3 forbids upstream access from "
-        "request-handling code, so the trigger requires a queue the scheduler drains",
+        "post-M6",
+        "needs the ingest container to own the run, a queue-draining scheduler and a contract-visible "
+        "queue state: rule 3 forbids upstream access from request-handling code. Recorded in "
+        "_docs/follow-ups.md",
     ),
 }
 

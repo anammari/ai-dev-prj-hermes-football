@@ -399,10 +399,11 @@ export interface paths {
          *     returns the existing run instead of spending upstream quota. This is the endpoint the
          *     dashboard's re-run button calls and the one the incident runbook uses after a failed run.
          *
-         *     **Not implemented in this deployment (M6).** A request handler must not start an upstream
-         *     run - `AGENTS.md` rule 3 - so the trigger needs a queue that the `ingest` container drains,
-         *     with its own migration. Until then this operation answers the documented `404` naming the
-         *     milestone that owns it. The dashboard reads the run ledger and does not offer a re-run
+         *     **Not implemented in this deployment.** A request handler must not start an upstream run -
+         *     `AGENTS.md` rule 3 - so the trigger needs a queue that the `ingest` container drains, with its
+         *     own migration and a contract-visible queue state (a queued request is not yet an `IngestRun`).
+         *     That is recorded as a post-M6 follow-up in `_docs/follow-ups.md`; until then this operation
+         *     answers the documented `404`. The dashboard reads the run ledger and does not offer a re-run
          *     button while this is unimplemented.
          */
         post: operations["triggerIngestRun"];
@@ -1855,8 +1856,8 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /**
-             * @description Not implemented in this deployment: the trigger needs the ingest queue (M6). The body
-             *     names the operation and the milestone that owns it.
+             * @description Not implemented in this deployment: the trigger needs the ingest queue, recorded as a
+             *     post-M6 follow-up. The body names the operation and the follow-up.
              */
             404: {
                 headers: {

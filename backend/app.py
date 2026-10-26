@@ -20,6 +20,8 @@ rules 3 and 4).
 from __future__ import annotations
 
 import logging
+import os
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -42,8 +44,21 @@ from backend.routers import open as open_routes
 from backend.settings import BackendSettings
 from db.session import create_session_factory
 from ingest.knowledge.embedding import Embedder, OllamaEmbedder
+from telemetry import configure as configure_telemetry
+from telemetry import instrument_app as instrument_telemetry
+from telemetry import metrics as telemetry_metrics
+from telemetry import shutdown as shutdown_telemetry
 
 logger = logging.getLogger(__name__)
+# Uvicorn configures the root logger at WARNING, so a child logger's INFO records are never created -
+# and the OTel log handler on the root never sees the request line. The line is deliberately INFO (the
+# per-request audit), so the level is set here rather than left to the server's default.
+logger.setLevel(logging.INFO)
+
+#: The API's own deadline for one embedding call. It sits under the MCP server's wait for the backend
+#: (45 s), which sits under the gateway's wait for the MCP server (50 s); the ordering is asserted in
+#: `tests/test_timeout_budget.py`. Indexing keeps the embedder's longer default because it is offline.
+DEFAULT_EMBED_TIMEOUT = 40.0
 
 
 def create_app(
@@ -59,6 +74,7 @@ def create_app(
     runnable with no stack at all. Production passes neither.
     """
     backend_settings = settings or BackendSettings.from_env()
+    telemetry_on = configure_telemetry("hermes-backend", version=__version__)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -79,6 +95,7 @@ def create_app(
             host=backend_settings.db.ollama_host,
             model=backend_settings.db.embedding_model,
             dim=backend_settings.db.embedding_dim,
+            timeout=float(os.environ.get("OLLAMA_EMBED_TIMEOUT_SECONDS") or DEFAULT_EMBED_TIMEOUT),
         )
         logger.info(
             "api %s serving %s; read-only database role: %s; admin writes: %s",
@@ -92,6 +109,8 @@ def create_app(
         try:
             yield
         finally:
+            if telemetry_on:
+                shutdown_telemetry()
             # Close only what this app built. An injected engine and an injected embedder belong to
             # whoever passed them - a test that reuses one embedder across apps (the stack suite does,
             # it is module-scoped and points at Ollama) would otherwise find its client closed by the
@@ -117,9 +136,29 @@ def create_app(
 
     @app.middleware("http")
     async def attach_request_id(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        """Attach an id, time the request, and log one line that cannot contain a message.
+
+        The access log is disabled in Compose (`--no-access-log`) because uvicorn prints the query
+        string, and `/search/knowledge?q=...` is user text. This line logs the route template instead,
+        so a search for a note never becomes a log line or a Loki entry.
+        """
         request.state.request_id = str(uuid.uuid4())
+        started = time.perf_counter()
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
+        route = getattr(request.scope.get("route"), "path", None) or "unmatched"
+        elapsed = time.perf_counter() - started
+        attributes = {"route": route, "method": request.method, "status": str(response.status_code)}
+        telemetry_metrics.HTTP_REQUESTS.add(1, attributes)
+        telemetry_metrics.HTTP_DURATION.record(elapsed, {"route": route, "status": str(response.status_code)})
+        logger.info(
+            "request method=%s route=%s status=%s duration_ms=%.1f request_id=%s",
+            request.method,
+            route,
+            response.status_code,
+            elapsed * 1000,
+            request.state.request_id,
+        )
         return response
 
     def error_response(
@@ -187,6 +226,7 @@ def create_app(
             message="Unexpected server error.",
         )
 
+    instrument_telemetry(app)
     app.include_router(open_routes.router)
     app.include_router(meta_routes.router)
     app.include_router(competitions.router)
