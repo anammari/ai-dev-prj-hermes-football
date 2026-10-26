@@ -1,8 +1,12 @@
-# Gallery — the dashboard and the served API contract
+# Gallery — the Telegram bot, the dashboard and the served API contract
 
 Screenshots from a local `make up` on 26 October 2026, on the retained volume. The free tier is delayed, so every
 timestamp here is the provider's, never the clock. Nothing in these pages is mocked: they are the app reading the same
 `openapi.yaml` the agent reads.
+
+## The Hermes Soccer Telegram Bot
+
+Telegram gallery under development.
 
 ## Dashboard
 
@@ -75,9 +79,3 @@ convention that marks the operations the agent may call.
 Operations grouped by tag, with a padlock on each one that needs the bearer token. `/health`, `/openapi.yaml` and
 `/docs` are the only open ones; the eval reads and the admin write carry no `x-mcp-tool`, so the agent can never read
 its own score or review itself.
-
-## The bot
-
-![The Hermes Football avatar: a winged-helmet robot in a HERMES shirt holding a glowing football, inside a neon "HERMES FOOTBALL" ring, against a floodlit stadium with holographic stat panels](assets/telegram_bot_logo.jpeg)
-
-The avatar of the public review bot, [@review_soccer_bot](https://t.me/review_soccer_bot).
