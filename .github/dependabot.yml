@@ -1,24 +1,47 @@
+# Version updates only; security updates stay immediate and ungrouped.
+#
+# Monthly, one group per ecosystem and a hard cap on open pull requests: the first weekly run opened
+# seven at once, one per action, which is more review traffic than the project can absorb while the
+# milestone branches are under review. Closing a version-update pull request is not a permanent
+# dismissal, so a dependency that moves still reappears in the next group.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     labels: [dependencies]
+    groups:
+      python:
+        patterns: ["*"]
+
   - package-ecosystem: npm
     directory: /frontend
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     labels: [dependencies]
+    groups:
+      frontend:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 1
     labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /frontend
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 1
     labels: [dependencies]
+    groups:
+      docker:
+        patterns: ["*"]
