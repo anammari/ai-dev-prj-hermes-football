@@ -16,6 +16,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Manual runs so the main-only e2e job can be exercised on a branch before it is merged.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -72,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.34.9
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -119,7 +121,7 @@ jobs:
       - name: Frontend dependency audit
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.34.9
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -215,7 +217,9 @@ jobs:
 
   e2e:
     name: e2e (main only)
-    if: github.event_name == 'push'
+    # The browser suite needs rows to look at. It runs on a push to main and on a deliberate manual
+    # dispatch (used to prove a fix on a branch); pull requests keep the fast gates only.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -226,18 +230,37 @@ jobs:
           sed -i 's/^API_AGENT_TOKEN=.*/API_AGENT_TOKEN=ci-agent-token/' .env
           sed -i 's/^API_ADMIN_TOKEN=.*/API_ADMIN_TOKEN=ci-admin-token/' .env
           sed -i 's/^CHAT_HASH_SALT=.*/CHAT_HASH_SALT=ci-salt/' .env
-      - name: Build the two services the dashboard needs
-        run: docker compose build backend frontend
-      - name: Start db, embeddings, API and dashboard
+      - name: Build the images this job needs
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml build backend frontend migrate
+      - name: Start the database and the embedding model
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait db ollama
+      - name: Migrate the throwaway database
+        # A fresh Postgres has no schema, and /health answers 200 while it is missing, so without this
+        # step the dashboard starts and every page renders its error panel.
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml --profile tools run --rm -T migrate
+      - name: Seed the sample world the browser specs read
+        # The suite's own fixture, so the rows the specs assert on are the rows the API tests use. This
+        # replaces the live data `make e2e` reads from the owner's stack; no upstream call, no secret.
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d db ollama backend frontend
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml --profile tools run --rm -T migrate python - <<'PY'
+          from db.session import create_db_engine, create_session_factory, session_scope
+          from db.settings import Settings
+          from tests.api_helpers import seed_api
+
+          engine = create_db_engine(Settings.from_env())
+          with session_scope(create_session_factory(engine)) as session:
+              seed_api(session)
+          PY
+      - name: Start the API and the dashboard
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --wait backend frontend
           for _ in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000/healthz >/dev/null; then break; fi
             sleep 2
           done
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.34.9
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

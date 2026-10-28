@@ -9,8 +9,9 @@ WORKDIR /app
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 # One native postinstall (unrs-resolver, reached through openapi-typescript) has to be allowed
-# explicitly; pnpm 12 refuses build scripts by default.
-RUN pnpm install --frozen-lockfile --allow-build=unrs-resolver
+# explicitly; pnpm 10 reads the allowlist from `pnpm.onlyBuiltDependencies` in package.json. The
+# version comes from `packageManager`, so the image, CI and a developer's checkout run the same pnpm.
+RUN pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS build
 WORKDIR /app
