@@ -11,7 +11,7 @@ from agent.turn_log import hash_chat_id
 from db.session import create_db_engine
 from db.settings import Settings
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.router]
 
 
 @pytest.fixture(scope="module")
