@@ -105,7 +105,7 @@ chunk contains the agent or admin token and that the browser makes no request of
 
 `pgdata` and `ollama-data` hold the product state; `oncall-reports` holds the digest history;
 `prometheus-data`, `loki-data`, `tempo-data` and `grafana-data` hold telemetry. None is a secret store,
-and none is removed by the cleanup routine in `CLAUDE.md` without the owner's explicit confirmation.
+and none is removed by the cleanup routine in `AGENTS.md` without the owner's explicit confirmation.
 
 ## Egress
 

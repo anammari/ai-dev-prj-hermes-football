@@ -204,7 +204,7 @@ capability without a row is a failing test.
   security-scan` passes with no secret and no high/critical production dependency.
 
 **Reproducibility.** One `make up` starts the eight default services; `make ci` reproduces the pull-request gates
-locally; the retained volumes survive `make down`; the cleanup routine is in `CLAUDE.md`.
+locally; the retained volumes survive `make down`; the cleanup routine is in `AGENTS.md`.
 
 ## 6. Non-functional
 

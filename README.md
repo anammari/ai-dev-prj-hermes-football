@@ -166,7 +166,7 @@ Details, signal matrix and troubleshooting: [`observability/README.md`](observab
 
 ```text
 .
-├── README.md, AGENTS.md, CLAUDE.md        entry point, agent rules, operational rules
+├── README.md, AGENTS.md                   entry point, agent rules (CLAUDE.md points here)
 ├── openapi.yaml                          API contract, v0.4.1 (19 operations)
 ├── docker-compose.yml, docker-compose.observability.yml, Dockerfile, Makefile
 ├── .github/                              CI, nightly scans, Dependabot, PR template

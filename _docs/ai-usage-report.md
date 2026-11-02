@@ -146,7 +146,8 @@ M6, so `prompts/` gained no file.
 
 **S20 — Observability gallery and final doc audit (2026-10-27).** Delegated: inspect six Grafana screenshots, add
 them to the gallery in the existing style under a last "Observability Dashboard" section, and audit every `_docs` file,
-`README.md` and `CLAUDE.md` against the shipped M6 code before opening the PR.
+`README.md` and the agent rules (then `CLAUDE.md`, now `AGENTS.md`) against the shipped M6 code before
+opening the PR.
 
 Reviewed: the screenshots show the overview, freshness/on-call, Tempo, Loki and two Prometheus views; the sub-headers
 follow what each image actually contains. The audit found and fixed stale text: the product spec still called the owner
@@ -165,7 +166,7 @@ and the PR. No code changed in this session.
 - Reusing the archived 85-question sample for the new gate: rejected; a new independent holdout was frozen.
 - Answering scorer questions from the nearest table: rejected; the gap is now closed with a real endpoint/tool.
 - Sending simple answers to `beam:cloud`: rejected; only complex answers leave the machine.
-- Requesting Copilot reviews from an agent: now forbidden in `CLAUDE.md`; the owner decides.
+- Requesting Copilot reviews from an agent: forbidden in `AGENTS.md`; the owner decides.
 
 ## Sessions that predate this log (backfill needed)
 
