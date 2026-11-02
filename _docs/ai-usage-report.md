@@ -158,6 +158,22 @@ trigger would close "until M6" (now a recorded post-M6 deferral). The criteria t
 Evidence: `_docs/gallery.md` with six images, `_docs/scoping.md` §5, `README.md`, `_docs/gallery.md` image paths checked,
 and the PR. No code changed in this session.
 
+**S21 — Stale ingestion after a Docker restart, and one rules file (2026-11-02).** Delegated: explain why every
+competition on `/` was stale (age 2 d 4 h, ledger's last run 31 October, next window 3 November) and fix it; move the
+`CLAUDE.md` working notes into `AGENTS.md` so one file holds the rules for every agent. The retained evidence names
+two linked defects rather than one: `ingest` had been stopped before the 1–2 November windows and, unlike every other
+long-running service, had `restart: no`, so it stayed down; and `run_daily` slept the whole interval and computed the
+next window from scratch, so when the scheduler was started again at 02:48 - after that day's window - it waited for
+3 November instead of catching up. (The event that stopped the container is not in the retained Docker event log; the
+defect is that nothing brought it back and nothing caught up.) Fixed with a ledger-aware window check, short sleep
+slices and a retry floor in `ingest/scheduler.py`, `restart: unless-stopped` in Compose, and `tests/test_scheduler.py`
+plus a restart-policy case in `tests/test_compose_policy.py`. Reviewed: no prompt, model or label changed; the live
+catch-up run, `make test`, `make lint` and the Docker cleanup are the evidence. One pre-existing test expired with the
+calendar (it compared a seeded standings `updated_at` with a hardcoded `2026-11-01`), so the fixture now writes fixed
+snapshot times and the assertion names the value it means. `CLAUDE.md` now only imports
+`AGENTS.md`; no rule was dropped (the cleanup routine and the review-request rule moved across verbatim, and the
+duplicate branch rules folded into the ones already in `AGENTS.md`).
+
 ## Rejected or revised, in one place
 
 - Deterministic routing, regex, or a second model to paraphrase answers: rejected by the owner and rule 10.

@@ -270,6 +270,12 @@ renders the contract file): every agent-facing endpoint needs `API_AGENT_TOKEN` 
 configured it refuses everything instead of opening up. It reads through the `agent_readonly` role. Rebuild images
 (`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
 
+The daily scheduler is window-based and ledger-aware. `ingest/scheduler.py` sleeps in short slices and compares the
+newest `succeeded`/`partial` run with the most recent `INGEST_SCHEDULE_*` window, so a host suspend, a Docker engine
+restart or a recreated container produces a **late** run instead of a skipped day; `ingest` carries
+`restart: unless-stopped` like every other long-running service. A manual `make ingest` still runs one collection on
+demand. `tests/test_scheduler.py` and `tests/test_compose_policy.py` hold both halves.
+
 Next, in order:
 1. Telegram is live: the public review bot is [@review_soccer_bot](https://t.me/review_soccer_bot), and the reviewer
    steps are in [`_docs/setup-and-review.md`](_docs/setup-and-review.md). The main bot remains allowlisted. The pipeline

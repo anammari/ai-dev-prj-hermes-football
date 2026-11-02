@@ -131,7 +131,13 @@ A Next.js dashboard over the same API the agent uses: read-only except the revie
 
 ### F8 — Scheduling
 
-Daily ingestion, re-index changed notes, manual ingest. **AC:** schedule survives restart; failures are recorded.
+Daily ingestion, re-index changed notes, manual ingest. The scheduler reads the run ledger: a `succeeded`/`partial`
+run that finished after the newest `INGEST_SCHEDULE_*` window serves that window, and a window that passed while the
+container was down or the host was suspended is caught up on startup instead of skipped. The loop re-reads the wall
+clock in short slices, so a suspend, a clock jump or a recreated service cannot sleep through a window, and a failed
+attempt is retried after a floor rather than in a tight loop. **AC:** the schedule survives a container restart and a
+Docker engine restart (`restart: unless-stopped`); a missed window runs immediately on startup; failures are recorded;
+`tests/test_scheduler.py` and `tests/test_compose_policy.py` hold the schedule and the restart policy.
 
 ### F9 — Evaluation
 

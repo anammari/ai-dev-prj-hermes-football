@@ -302,6 +302,11 @@ services:
     command: ["python", "-m", "ingest", "schedule"]
     mem_limit: 512m
     cpus: 1
+    # `ingest` was the only long-running service without a restart policy. Once it was stopped it
+    # stayed stopped while every other service kept running, and the ledger missed the 1-2 November
+    # windows. It now restarts like the rest, and `run_daily` catches up a window that passed while
+    # it was down instead of waiting for tomorrow.
+    restart: unless-stopped
 
   oncall:
     build:

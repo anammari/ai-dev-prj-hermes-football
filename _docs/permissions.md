@@ -8,7 +8,7 @@ and the thing it may **not** do.
 
 | Service | Reads | Writes | Reaches upstream | Bound |
 | --- | --- | --- | --- | --- |
-| `ingest` | the corpus | `competitions`, `matches`, `standings`, `top_scorers`, `ingest_runs`, `raw_payloads`, `knowledge_chunks` | yes, through `ingest/client.py` only | owner DB URL; the 10 req/min pacer; no request path imports it |
+| `ingest` | the corpus | `competitions`, `matches`, `standings`, `top_scorers`, `ingest_runs`, `raw_payloads`, `knowledge_chunks` | yes, through `ingest/client.py` only | owner DB URL; the 10 req/min pacer; `restart: unless-stopped`; no request path imports it |
 | `backend` | every served table as `agent_readonly` | `agent_turns.review_status`, `agent_turns.review_note` as `agent_admin` | no | one write operation, admin token, column-level grant |
 | `mcp-server` | the backend API only | nothing | no | no database URL, no owner credentials, own optional token |
 | `hermes` (gateway) | the MCP tools | `agent_turns` insert as `agent_writer` | `clef:cloud` (routing) and `beam:cloud` (complex answers) | no DB read role, no admin token, no Docker socket |
@@ -72,7 +72,7 @@ chunk contains the agent or admin token and that the browser makes no request of
 
 | Job | Where | May |
 | --- | --- | --- |
-| daily ingestion | `ingest` scheduler, `INGEST_SCHEDULE_*` | call upstream within the pacer; write the ledger and the loaded tables |
+| daily ingestion | `ingest` scheduler, `INGEST_SCHEDULE_*` | call upstream within the pacer; write the ledger and the loaded tables; catch up a window missed while the container was down |
 | re-index changed notes | `ingest/knowledge` | rewrite `knowledge_chunks` for changed files only |
 | `make ingest` | one manual run | the same as the scheduler |
 | `make score-delay` | one match poll | one upstream call; writes a ledger row with no competition scope |

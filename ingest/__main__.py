@@ -28,6 +28,7 @@ from ingest.pipeline import (
     DEFAULT_RAW_RETENTION_DAYS,
     _safe_error,
     close_orphaned_runs,
+    last_completed_refresh,
     prune_raw_payloads,
     run_ingestion,
 )
@@ -100,6 +101,10 @@ def main() -> None:
                     logger.warning("closed %d orphaned running run(s): %s", len(closed), ", ".join(closed))
             run_daily(
                 lambda: print(json.dumps(action("schedule"), sort_keys=True), flush=True),
+                # The ledger, not a sleep, decides whether today's window was served. A container
+                # that comes back after the window - a suspended host, a recreated service - runs
+                # immediately instead of leaving the data a day older.
+                last_completed=lambda: last_completed_refresh(factory),
                 hour=int(os.environ.get("INGEST_SCHEDULE_HOUR", "2")),
                 minute=int(os.environ.get("INGEST_SCHEDULE_MINUTE", "0")),
                 timezone_name=os.environ.get("INGEST_TIMEZONE", "UTC"),

@@ -126,7 +126,7 @@ def test_standings_as_of_a_snapshot_returns_the_older_table(client: TestClient, 
     )
     assert response.status_code == 200
     table = response.json()["data"]
-    assert table["updated_at"] < "2026-11-01", "the older snapshot was written before the newer one"
+    assert table["updated_at"] == "2026-10-12T09:00:00Z", "the served table quotes its own snapshot write time"
     assert [row["points"] for row in table["table"]] == [19, 18, 17]
     assert table["table"][0]["played"] == 10
 
