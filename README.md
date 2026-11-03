@@ -169,7 +169,7 @@ Details, signal matrix and troubleshooting: [`observability/README.md`](observab
 ├── README.md, AGENTS.md                   entry point, agent rules (CLAUDE.md points here)
 ├── openapi.yaml                          API contract, v0.4.1 (19 operations)
 ├── docker-compose.yml, docker-compose.observability.yml, Dockerfile, Makefile
-├── .github/                              CI, nightly scans, Dependabot, PR template
+├── .github/                              CI, nightly scans, PR template
 ├── _docs/                                setup, scoping, product spec, decisions, follow-ups, AI usage
 ├── backend/                              FastAPI API over Postgres (one admin write, one documented 404)
 ├── db/                                   SQLAlchemy models, Alembic migrations (0001–0004)

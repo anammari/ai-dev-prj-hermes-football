@@ -201,8 +201,9 @@ runs, turn mix/grounded rate, and eval age. It reports eval age but does **not**
   and that no message/answer column is selected; the digest header names the window, the commit and the counts.
 
 **Security artifacts.** `security/capability-table.md` (every service, tool, token and job, with its bound),
-`security/threat-model.md`, `security/scans/` (generated; a redacted baseline committed), `.gitleaks.toml` and
-`Dependabot`. `make security-scan` runs gitleaks + `pip-audit` + `pnpm audit`; `make scan-images` runs trivy. A new
+`security/threat-model.md`, `security/scans/` (generated; a redacted baseline committed), and `.gitleaks.toml`.
+Automated dependency-update PRs are disabled (Dependabot off, 2026-11-04): `make security-scan` runs gitleaks +
+`pip-audit` + `pnpm audit`, `make scan-images` runs trivy, and a human applies the bumps. A new
 capability without a row is a failing test.
 
 - **AC:** `tests/test_capability_table.py` covers every Compose service, MCP tool, token and job;

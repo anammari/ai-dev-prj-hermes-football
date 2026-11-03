@@ -75,7 +75,7 @@ threat tables, scan policy), `ops/` (runbooks, incident drills), `evals/` (golde
 README.md               AGENTS.md              openapi.yaml         docker-compose.yml   Makefile
 CLAUDE.md               .env.example           Dockerfile
                         ^ Claude Code only imports this file; it holds no rules of its own
-.github/                CI, nightly scans, dependabot, PR template
+.github/                CI, nightly scans, PR template
 _docs/                  setup-and-review.md, scoping.md, product-spec.md, rag.md, data-model.md,
                         notes-sources.md, agent-team.md, follow-ups.md, decisions/, ai-usage-report.md
 db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
