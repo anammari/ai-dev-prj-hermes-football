@@ -20,7 +20,10 @@ What is here, what it is for, and what is generated rather than committed.
 | `trivy fs` | vulnerable lockfiles and committed secrets | CI `security` | yes |
 | `trivy image` | vulnerable OS/package layers in the built images | `make scan-images`, nightly | no (main/nightly) |
 | `actionlint` | workflow syntax and expression mistakes | `make lint-workflows`, CI `lint` | yes |
-| Dependabot | dependency drift, as pull requests | GitHub | no (owner decides) |
+
+Dependabot is disabled (2026-11-04): its config is removed, the open update PRs are closed, and its security
+updates and alerts are off. `pip-audit`, `pnpm audit` and the nightly scan remain the drift signal; a human opens
+the bump PR and applies it. Re-enabling Dependabot needs the config back and an owner decision.
 
 `make security-scan` is the local pair: secret scan plus dependency audit. It reads the repository and
 the public advisory databases; it does not send source, prompts or data to a project service. The

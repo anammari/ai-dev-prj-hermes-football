@@ -38,6 +38,7 @@ testpaths = ["tests"]
 addopts = "--strict-markers --strict-config"
 markers = [
     "integration: needs the Compose stack (Postgres + pgvector + Ollama); excluded from `make test`",
+    "router: calls the signed-off cloud router; local-only, excluded from CI",
 ]
 
 [tool.ruff]

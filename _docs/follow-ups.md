@@ -65,5 +65,8 @@ Until then the dashboard does not offer the button and the runbook uses `make in
 - **Optional Nous Hermes Agent deployment.** `hermes/config.yaml` records the surface; the shipped
   gateway is `agent/gateway` (decision 0007).
 - **Image scanning on every push.** `trivy image` runs on main/nightly, not on every PR, for time.
-- **Actions pinned by SHA.** Dependabot keeps the tags current; a hardening pass can pin every action
-  to a commit SHA.
+- **Dependency updates are manual.** Dependabot was disabled on 2026-11-04 (config removed, open PRs closed,
+  security updates and alerts off). `pip-audit`, `pnpm audit` and the nightly scan still flag drift; a human
+  opens the bump PR and runs the gates. Re-enabling it needs the config back and an owner decision.
+- **Actions pinned by SHA.** Tags are updated by hand since Dependabot was disabled; a hardening pass can pin
+  every action to a commit SHA.

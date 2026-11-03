@@ -74,7 +74,8 @@ threat tables, scan policy), `ops/` (runbooks, incident drills), `evals/` (golde
 ```text
 README.md               AGENTS.md              openapi.yaml         docker-compose.yml   Makefile
 CLAUDE.md               .env.example           Dockerfile
-.github/                CI, nightly scans, dependabot, PR template
+                        ^ Claude Code only imports this file; it holds no rules of its own
+.github/                CI, nightly scans, PR template
 _docs/                  setup-and-review.md, scoping.md, product-spec.md, rag.md, data-model.md,
                         notes-sources.md, agent-team.md, follow-ups.md, decisions/, ai-usage-report.md
 db/                     SQLAlchemy models, Alembic migrations, settings, session helpers
@@ -170,6 +171,36 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
 `FATAL: password authentication failed for user "hermes"`. (Compose's project name is now overridable through
 `COMPOSE_PROJECT_NAME`; the default stays `hermes-football` so the existing `hermes-football_pgdata` is kept.)
 
+## Post-milestone Docker cleanup (required)
+
+Run this after the **final** build of the milestone, before the final commit and push. Do not wait for the owner to
+ask for it. It is housekeeping, not a data operation: no volume is removed.
+
+1. **Recreate services on stale images first.** Run `docker ps --format '{{.Names}} {{.Image}}'`; a container showing
+   `<none>` or an image ID is running a replaced image. `docker compose up -d --force-recreate <service>` so it runs
+   the current tag. Never delete an image that a running container uses.
+2. **Remove dangling images.** `docker image prune -f`. Report the reclaimed size. `prune` removes images with no tag
+   and no child; an image shown as `repo/name:<none>` is digest-only, is not dangling, and is not removed.
+3. **Prune the build cache.** `docker builder prune -f`. The next build is slower; that is the trade.
+4. **Check volumes.** `docker volume ls -f dangling=true` and `docker system df -v`. The project volumes
+   (`hermes-football_pgdata`, `hermes-football_ollama-data`, `hermes-football_oncall-reports`,
+   `hermes-football_{prometheus,loki,tempo,grafana}-data`) hold real state and must never be removed as part of
+   cleanup: `pgdata`/`ollama-data` are the product, `oncall-reports` is the digest history, and the four obs volumes
+   are telemetry with a 7-day retention. Dangling volumes are reported, not deleted, unless the owner explicitly
+   confirms.
+5. **Remove known superseded tagged images** only when no container uses them and the replacement is already built
+   (for example the old `ollama/ollama:0.40.2` after the local Ollama image exists). Ask before deleting third-party
+   images that are not part of this project. The observability images (`otel/opentelemetry-collector-contrib`,
+   `prom/prometheus`, `grafana/loki`, `grafana/tempo`, `grafana/grafana`) are pinned by tag and are in use while the
+   `obs` profile runs; `make obs-down` stops them but does not make them dangling, so leave them for the next demo.
+6. **Never run `docker system prune -a --volumes`.** It removes data volumes and images other projects use.
+7. **Verify the stack afterwards.** `docker compose ps` must show the expected services; `hermes`, `backend`,
+   `ollama`, `mcp-server`, `db` and `oncall` must be healthy; if the obs profile was used, `make telemetry-smoke` must
+   still answer. Check the gateway with:
+   `docker compose exec -T hermes python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8200/health').read().decode())"`.
+8. **Report the before/after** of `docker system df` in the final message, with what was removed and what was
+   deliberately kept.
+
 ## Hard rules
 
 1. **Grounding over fluency.** Never invent scores, fixtures, standings, dates, or player facts. Every factual
@@ -216,6 +247,11 @@ while carrying different `.env` passwords, which broke `make up` and `make itest
   what was reviewed, what was rejected, what tests prove it).
 - Verification is independent: whoever writes a feature does not sign it off. Prefer a test, a scan, or the
   `answer-verifier` subagent over "looks right".
+- Run the gates before a push (at minimum `make test` and `make lint`, after rebuilding the image when code changed;
+  `make ci` is local parity). No agent merges its own pull request, pushes to `main`, or decides a data-policy change:
+  the owner merges.
+- Reviews are the owner's call: never request a Copilot review — no `gh pr edit --add-reviewer`, no review-request API
+  call, no `@copilot review` comment. The owner decides whether Copilot reviews a pull request, and asks manually.
 - Commits: imperative subject, explain *why* in the body when it is not obvious.
 
 ## Current status / next steps
@@ -233,6 +269,12 @@ caps `/matches` at 10 days per request. M3 adds `backend/` served by `make up` o
 renders the contract file): every agent-facing endpoint needs `API_AGENT_TOKEN` as a bearer token, and with no token
 configured it refuses everything instead of opening up. It reads through the `agent_readonly` role. Rebuild images
 (`DOCKER_BUILDKIT=0 make build`) after changing code: the containers bake it in.
+
+The daily scheduler is window-based and ledger-aware. `ingest/scheduler.py` sleeps in short slices and compares the
+newest `succeeded`/`partial` run with the most recent `INGEST_SCHEDULE_*` window, so a host suspend, a Docker engine
+restart or a recreated container produces a **late** run instead of a skipped day; `ingest` carries
+`restart: unless-stopped` like every other long-running service. A manual `make ingest` still runs one collection on
+demand. `tests/test_scheduler.py` and `tests/test_compose_policy.py` hold both halves.
 
 Next, in order:
 1. Telegram is live: the public review bot is [@review_soccer_bot](https://t.me/review_soccer_bot), and the reviewer
