@@ -180,11 +180,11 @@ Dependabot from the active branch, and prove the Docker stack can still serve th
 references in `AGENTS.md`, `README.md`, `_docs/product-spec.md`, `_docs/follow-ups.md`, `security/README.md` and
 `security/threat-model.md` to say dependency updates are manual. Dependabot security updates were already off and
 vulnerability alerts already disabled. Version updates are switched by the config file, which Dependabot reads from
-the default branch (`main`), so new PRs stop when this branch merges - the owner's open #15 (grouping the updates) is
-now obsolete. Reviewed: all 14 services up, `getMe` returned `review_soccer_bot` with no webhook, the review bot
-holds an established TLS connection to Telegram, and `make ask` answered a database question (standings, 926 ms) and
-a notes question (Championship playoff, 19.5 s) through the shipped pipeline with a turn row each. No application
-code changed.
+the default branch (`main`), so the deletion was also sent as #18 (a one-file PR against `main`) to stop them
+independently of #14; #15, the owner's grouping change, was closed as obsolete. Reviewed: all 14 services up, `getMe`
+returned `review_soccer_bot` with no webhook, the review bot holds an established TLS connection to Telegram, and
+`make ask` answered a database question (standings, 926 ms) and a notes question (Championship playoff, 19.5 s)
+through the shipped pipeline with a turn row each. No application code changed.
 
 ## Rejected or revised, in one place
 
