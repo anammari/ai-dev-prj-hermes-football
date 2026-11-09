@@ -259,8 +259,16 @@ def test_bronze_payloads_are_pruned_after_retention_and_repeats_are_flagged(sett
     assert first.payloads_unchanged < first.calls_used
     assert second.payloads_unchanged == second.calls_used
 
+    # Bronze rows carry the wall-clock fetch time (`datetime.now`), which is what production prunes
+    # on, not the frozen ledger clock. The pruning run therefore has to be later than *now*, not
+    # later than `_fixed_now`: the old `_fixed_now + 30 days` cutoff expired with the calendar.
     later = run_ingestion(
-        settings, factory, client, embedder, raw_retention_days=1, now=lambda: _fixed_now() + timedelta(days=30)
+        settings,
+        factory,
+        client,
+        embedder,
+        raw_retention_days=1,
+        now=lambda: datetime.now(UTC) + timedelta(days=2),
     )
     assert later.payloads_pruned == first.calls_used + second.calls_used
     with factory() as session:
