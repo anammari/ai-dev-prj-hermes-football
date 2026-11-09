@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import String, cast, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from db.models import Competition, IngestRun, RawPayload, new_id
@@ -291,6 +291,26 @@ def _fetch(
             )
         )
     return payload
+
+
+def last_completed_refresh(factory: sessionmaker[Session]) -> datetime | None:
+    """When the newest run that actually refreshed the competitions finished.
+
+    `succeeded` and `partial` are the statuses the freshness report treats as a refresh; a `failed`
+    run refreshed nothing and a `running` row has no outcome. A score-delay measurement is
+    `succeeded` too, with `competitions` NULL and one upstream call - it must not count, or polling
+    one match would tell the scheduler that the day's ingestion had already happened.
+    """
+    with session_scope(factory) as session:
+        return session.scalar(
+            select(func.max(IngestRun.finished_at)).where(
+                IngestRun.status.in_(("succeeded", "partial")),
+                # JSON columns store Python `None` as the JSON literal `null`, not SQL NULL
+                # (`none_as_null` is off by default), so `IS NOT NULL` would let a measurement
+                # through. The text form is `null` on both engines; a real run's scope is an array.
+                cast(IngestRun.competitions, String) != "null",
+            )
+        )
 
 
 def close_orphaned_runs(

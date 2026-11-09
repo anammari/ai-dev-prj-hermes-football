@@ -131,7 +131,13 @@ A Next.js dashboard over the same API the agent uses: read-only except the revie
 
 ### F8 — Scheduling
 
-Daily ingestion, re-index changed notes, manual ingest. **AC:** schedule survives restart; failures are recorded.
+Daily ingestion, re-index changed notes, manual ingest. The scheduler reads the run ledger: a `succeeded`/`partial`
+run that finished after the newest `INGEST_SCHEDULE_*` window serves that window, and a window that passed while the
+container was down or the host was suspended is caught up on startup instead of skipped. The loop re-reads the wall
+clock in short slices, so a suspend, a clock jump or a recreated service cannot sleep through a window, and a failed
+attempt is retried after a floor rather than in a tight loop. **AC:** the schedule survives a container restart and a
+Docker engine restart (`restart: unless-stopped`); a missed window runs immediately on startup; failures are recorded;
+`tests/test_scheduler.py` and `tests/test_compose_policy.py` hold the schedule and the restart policy.
 
 ### F9 — Evaluation
 
@@ -195,8 +201,9 @@ runs, turn mix/grounded rate, and eval age. It reports eval age but does **not**
   and that no message/answer column is selected; the digest header names the window, the commit and the counts.
 
 **Security artifacts.** `security/capability-table.md` (every service, tool, token and job, with its bound),
-`security/threat-model.md`, `security/scans/` (generated; a redacted baseline committed), `.gitleaks.toml` and
-`Dependabot`. `make security-scan` runs gitleaks + `pip-audit` + `pnpm audit`; `make scan-images` runs trivy. A new
+`security/threat-model.md`, `security/scans/` (generated; a redacted baseline committed), and `.gitleaks.toml`.
+Automated dependency-update PRs are disabled (Dependabot off, 2026-11-04): `make security-scan` runs gitleaks +
+`pip-audit` + `pnpm audit`, `make scan-images` runs trivy, and a human applies the bumps. A new
 capability without a row is a failing test.
 
 - **AC:** `tests/test_capability_table.py` covers every Compose service, MCP tool, token and job;
@@ -204,7 +211,7 @@ capability without a row is a failing test.
   security-scan` passes with no secret and no high/critical production dependency.
 
 **Reproducibility.** One `make up` starts the eight default services; `make ci` reproduces the pull-request gates
-locally; the retained volumes survive `make down`; the cleanup routine is in `CLAUDE.md`.
+locally; the retained volumes survive `make down`; the cleanup routine is in `AGENTS.md`.
 
 ## 6. Non-functional
 

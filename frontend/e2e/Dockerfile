@@ -6,6 +6,8 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble
 WORKDIR /e2e
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --allow-build=unrs-resolver
+# `packageManager` pins pnpm 10.34.9; the allowlist for the one native postinstall
+# (unrs-resolver) is `pnpm.onlyBuiltDependencies` in package.json, not a pnpm 12 CLI flag.
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 CMD ["pnpm", "exec", "playwright", "test"]

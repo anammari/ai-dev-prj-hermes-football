@@ -70,6 +70,25 @@ def test_every_long_running_service_has_limits_and_a_healthcheck() -> None:
     assert not missing_health, f"services without a healthcheck: {missing_health}"
 
 
+def test_every_long_running_service_restarts_unless_stopped() -> None:
+    """A service that does not come back is a service that silently stops doing its job.
+
+    `ingest` was the one long-running service with `restart: no`; when it was stopped every other
+    service was still running and the scheduler was not, which is how the ledger lost the 1-2
+    November windows. One-shot tool services are the exception because they are meant to exit.
+    """
+    missing: list[str] = []
+    for path in (MAIN, OBS):
+        if not path.exists():
+            continue
+        for name, service in _services(path).items():
+            if name in ONE_SHOT:
+                continue
+            if service.get("restart") != "unless-stopped":
+                missing.append(name)
+    assert not missing, f"services that would stay down after a Docker restart: {missing}"
+
+
 def test_only_the_two_expected_ports_are_published_by_the_default_stack() -> None:
     published = {name for name, service in _services().items() if service.get("ports")}
     assert published == {"backend", "frontend"}, f"published ports moved: {sorted(published)}"

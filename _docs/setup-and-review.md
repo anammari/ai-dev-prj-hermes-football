@@ -148,6 +148,8 @@ tag.
 | dashboards empty | app containers predate the OTLP endpoint | `make obs-up` (it recreates them) |
 | `make itest` notes question fails | MCP/API timeout budget | check `MCP_BACKEND_TIMEOUT_SECONDS`/`MCP_TIMEOUT_SECONDS`; the defaults nest 40 < 45 < 50 |
 | alert fires with `stuck_run` | a killed ingest container left a `running` row | `docker compose restart ingest`; the scheduler closes it at startup |
+| `/` stays stale after the laptop slept or Docker restarted | the scheduler was down across the 02:00 window | `docker compose restart ingest`; it now catches up the missed window on startup instead of waiting for tomorrow |
+| `next scheduled run` shows tomorrow while every competition is stale | the ledger has no completed run since the last window | check `make logs S=ingest`; the scheduler should start a catch-up run within a minute |
 | Wrong note cited | retrieval near-match | improve note wording; do not lower threshold blindly |
 
 ## Evidence

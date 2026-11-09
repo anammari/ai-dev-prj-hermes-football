@@ -24,8 +24,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Full-history secret scan
+        # Run as the runner user, not root. A root container over the runner-owned checkout makes git
+        # refuse with "detected dubious ownership", and gitleaks reports that stderr as a failed scan.
+        # `make scan-secrets` already runs the same way.
         run: |
-          docker run --rm -v "$PWD:/repo" -w /repo -e HOME=/tmp \
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/repo" -w /repo \
             ghcr.io/gitleaks/gitleaks:v8.24.0 detect \
             --source=/repo --redact --config=/repo/.gitleaks.toml \
             --report-format=json --report-path=/dev/stdout > gitleaks-history.json
@@ -36,7 +39,7 @@ jobs:
           pip-audit --progress-spinner off
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.34.9
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

@@ -146,7 +146,8 @@ M6, so `prompts/` gained no file.
 
 **S20 — Observability gallery and final doc audit (2026-10-27).** Delegated: inspect six Grafana screenshots, add
 them to the gallery in the existing style under a last "Observability Dashboard" section, and audit every `_docs` file,
-`README.md` and `CLAUDE.md` against the shipped M6 code before opening the PR.
+`README.md` and the agent rules (then `CLAUDE.md`, now `AGENTS.md`) against the shipped M6 code before
+opening the PR.
 
 Reviewed: the screenshots show the overview, freshness/on-call, Tempo, Loki and two Prometheus views; the sub-headers
 follow what each image actually contains. The audit found and fixed stale text: the product spec still called the owner
@@ -157,6 +158,34 @@ trigger would close "until M6" (now a recorded post-M6 deferral). The criteria t
 Evidence: `_docs/gallery.md` with six images, `_docs/scoping.md` §5, `README.md`, `_docs/gallery.md` image paths checked,
 and the PR. No code changed in this session.
 
+**S21 — Stale ingestion after a Docker restart, and one rules file (2026-11-02).** Delegated: explain why every
+competition on `/` was stale (age 2 d 4 h, ledger's last run 31 October, next window 3 November) and fix it; move the
+`CLAUDE.md` working notes into `AGENTS.md` so one file holds the rules for every agent. The retained evidence names
+two linked defects rather than one: `ingest` had been stopped before the 1–2 November windows and, unlike every other
+long-running service, had `restart: no`, so it stayed down; and `run_daily` slept the whole interval and computed the
+next window from scratch, so when the scheduler was started again at 02:48 - after that day's window - it waited for
+3 November instead of catching up. (The event that stopped the container is not in the retained Docker event log; the
+defect is that nothing brought it back and nothing caught up.) Fixed with a ledger-aware window check, short sleep
+slices and a retry floor in `ingest/scheduler.py`, `restart: unless-stopped` in Compose, and `tests/test_scheduler.py`
+plus a restart-policy case in `tests/test_compose_policy.py`. Reviewed: no prompt, model or label changed; the live
+catch-up run, `make test`, `make lint` and the Docker cleanup are the evidence. One pre-existing test expired with the
+calendar (it compared a seeded standings `updated_at` with a hardcoded `2026-11-01`), so the fixture now writes fixed
+snapshot times and the assertion names the value it means. `CLAUDE.md` now only imports
+`AGENTS.md`; no rule was dropped (the cleanup routine and the review-request rule moved across verbatim, and the
+duplicate branch rules folded into the ones already in `AGENTS.md`).
+
+**S22 — Dependabot off and a reviewer-bot check (2026-11-04).** Delegated: close the open Dependabot PRs, remove
+Dependabot from the active branch, and prove the Docker stack can still serve the public Telegram bot. Closed #17 and
+#16 and deleted their branches; removed `.github/dependabot.yml` on `anammari-m6-cicd-fixes` and updated the
+references in `AGENTS.md`, `README.md`, `_docs/product-spec.md`, `_docs/follow-ups.md`, `security/README.md` and
+`security/threat-model.md` to say dependency updates are manual. Dependabot security updates were already off and
+vulnerability alerts already disabled. Version updates are switched by the config file, which Dependabot reads from
+the default branch (`main`), so the deletion was also sent as #18 (a one-file PR against `main`) to stop them
+independently of #14; #15, the owner's grouping change, was closed as obsolete. Reviewed: all 14 services up, `getMe`
+returned `review_soccer_bot` with no webhook, the review bot holds an established TLS connection to Telegram, and
+`make ask` answered a database question (standings, 926 ms) and a notes question (Championship playoff, 19.5 s)
+through the shipped pipeline with a turn row each. No application code changed.
+
 ## Rejected or revised, in one place
 
 - Deterministic routing, regex, or a second model to paraphrase answers: rejected by the owner and rule 10.
@@ -165,7 +194,7 @@ and the PR. No code changed in this session.
 - Reusing the archived 85-question sample for the new gate: rejected; a new independent holdout was frozen.
 - Answering scorer questions from the nearest table: rejected; the gap is now closed with a real endpoint/tool.
 - Sending simple answers to `beam:cloud`: rejected; only complex answers leave the machine.
-- Requesting Copilot reviews from an agent: now forbidden in `CLAUDE.md`; the owner decides.
+- Requesting Copilot reviews from an agent: forbidden in `AGENTS.md`; the owner decides.
 
 ## Sessions that predate this log (backfill needed)
 

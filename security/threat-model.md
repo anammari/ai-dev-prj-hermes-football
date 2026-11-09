@@ -40,7 +40,7 @@ control rather than by good intentions. It is reviewed with the milestone; a new
 | 6 | Dashboard exposed beyond the demo | tunnel is manual and demo-only; no login; message text masked; no permanent host | `_docs/setup-and-review.md`, decision 0008 |
 | 7 | Telemetry becomes a data exfiltration path | local collector only; no message text, chat id or note text in a span/log attribute; OTLP disabled unless configured; 10 % trace sampling | `tests/test_telemetry.py`, `observability/README.md` |
 | 8 | Alert channel abused or over-privileged | separate alert bot token, one fixed template, one owner chat, disabled by default, metadata only | `agent/oncall/alerts.py`, decision 0010 |
-| 9 | Supply-chain compromise | lockfiles, pinned images, actions pinned by SHA (see follow-up), Dependabot, `pip-audit`/`pnpm audit`/`trivy`, minimal `contents: read` CI permission | `.github/workflows/`, `security/scans/` |
+| 9 | Supply-chain compromise | lockfiles, pinned images, actions pinned by SHA (see follow-up), `pip-audit`/`pnpm audit`/`trivy`, manual dependency updates, minimal `contents: read` CI permission | `.github/workflows/`, `security/scans/` |
 | 10 | Upstream data poisoning or a bad provider payload | bronze payload hash, idempotent upserts, deterministic eval, a failed run stored red | `tests/test_ingest_pipeline.py`, `evals/golden/README.md` |
 | 11 | Cost/abuse: a public bot is flooded or the free tier is exhausted | per-user interval, 500-char cap, allow-all only on the review bot, 10 req/min pacer, rate-limit counters | `tests/test_gateway.py`, `ingest/client.py` |
 | 12 | A crashed run looks healthy | stuck `running` rows closed at startup; staleness alert; freshness report | `tests/test_oncall.py`, `ops/runbooks/ingest-stale.md` |
