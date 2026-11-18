@@ -45,7 +45,10 @@ jobs:
           node-version: "22"
       - name: Frontend dependency audit
         working-directory: frontend
-        run: pnpm audit --audit-level high
+        # A bump cannot fix an advisory that has no patched version, so failing the nightly for one is
+        # noise: the 18 November picomatch advisory (GHSA-fc5q-39xc-vjpf) had no fix and was withdrawn
+        # later that day. An advisory a bump can fix is still fatal.
+        run: pnpm audit --audit-level high --ignore-unfixable
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4

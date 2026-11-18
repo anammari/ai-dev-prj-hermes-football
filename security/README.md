@@ -25,6 +25,10 @@ Dependabot is disabled (2026-11-04): its config is removed, the open update PRs 
 updates and alerts are off. `pip-audit`, `pnpm audit` and the nightly scan remain the drift signal; a human opens
 the bump PR and applies it. Re-enabling Dependabot needs the config back and an owner decision.
 
+The nightly's frontend audit runs with `--ignore-unfixable`: an advisory with no patched version cannot be acted
+on by a bump, so it is logged but does not fail the run (the 18 November picomatch advisory was withdrawn). A high
+advisory that a bump can fix still fails the nightly.
+
 `make security-scan` is the local pair: secret scan plus dependency audit. It reads the repository and
 the public advisory databases; it does not send source, prompts or data to a project service. The
 image scans need the Docker socket **on the host**, not inside a project container; no Compose service
